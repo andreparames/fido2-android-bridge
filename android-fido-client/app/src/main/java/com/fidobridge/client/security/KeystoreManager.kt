@@ -8,7 +8,9 @@ import java.security.KeyFactory
 import java.security.KeyPair
 import java.security.KeyPairGenerator
 import java.security.KeyStore
+import java.security.KeyStoreException
 import java.security.PrivateKey
+import java.security.ProviderException
 import java.security.Signature
 import java.security.spec.ECGenParameterSpec
 
@@ -23,11 +25,13 @@ class KeystoreManager(
             return KeyPair(publicKey, existing as PrivateKey)
         }
 
-        val keyPairGenerator = KeyPairGenerator.getInstance(
-            KeyProperties.KEY_ALGORITHM_EC, ANDROID_KEYSTORE
-        )
-        keyPairGenerator.initialize(buildSpec(alias))
-        return keyPairGenerator.generateKeyPair()
+        return try {
+            generate(alias, strongBox = Build.VERSION.SDK_INT >= Build.VERSION_CODES.P)
+        } catch (e: KeyStoreException) {
+            generate(alias, strongBox = false)
+        } catch (e: ProviderException) {
+            generate(alias, strongBox = false)
+        }
     }
 
     fun getKeyInfo(alias: String): KeyInfo {
@@ -45,7 +49,15 @@ class KeystoreManager(
         }
     }
 
-    private fun buildSpec(alias: String): KeyGenParameterSpec {
+    private fun generate(alias: String, strongBox: Boolean): KeyPair {
+        val keyPairGenerator = KeyPairGenerator.getInstance(
+            KeyProperties.KEY_ALGORITHM_EC, ANDROID_KEYSTORE
+        )
+        keyPairGenerator.initialize(buildSpec(alias, strongBox))
+        return keyPairGenerator.generateKeyPair()
+    }
+
+    fun buildSpec(alias: String, strongBox: Boolean): KeyGenParameterSpec {
         val builder = KeyGenParameterSpec.Builder(alias, KeyProperties.PURPOSE_SIGN)
             .setAlgorithmParameterSpec(ECGenParameterSpec(CURVE))
             .setDigests(KeyProperties.DIGEST_SHA256)
@@ -60,7 +72,7 @@ class KeystoreManager(
             builder.setUserAuthenticationValidityDurationSeconds(0)
         }
 
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P && strongBox) {
             builder.setIsStrongBoxBacked(true)
         }
 

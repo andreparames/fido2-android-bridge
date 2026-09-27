@@ -17,6 +17,7 @@ securityCrypto = "1.1.0-alpha06"
 cbor = "4.5.2"
 zxing = "4.3.0"
 centrifugeJava = "0.7.0"
+fragment = "1.5.1"
 
 junit = "4.13.2"
 mockk = "1.13.12"
@@ -49,6 +50,7 @@ androidx-security-crypto = { group = "androidx.security", name = "security-crypt
 cbor = { group = "com.upokecenter", name = "cbor", version.ref = "cbor" }
 zxing-android-embedded = { group = "com.journeyapps", name = "zxing-android-embedded", version.ref = "zxing" }
 centrifuge-java = { group = "io.github.centrifugal", name = "centrifuge-java", version.ref = "centrifugeJava" }
+androidx-fragment = { group = "androidx.fragment", name = "fragment", version.ref = "fragment" }
 
 junit = { group = "junit", name = "junit", version.ref = "junit" }
 kotlinx-coroutines-test = { group = "org.jetbrains.kotlinx", name = "kotlinx-coroutines-test", version.ref = "coroutines" }

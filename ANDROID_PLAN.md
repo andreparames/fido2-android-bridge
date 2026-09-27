@@ -199,14 +199,76 @@ Source of truth for security requirements: `agents.md`.
 
 ## 10. End-to-End Integration + DoD Verification (M5)
 
-**Objective:** satisfy `agents.md` §6 Definition of Done.
+> **STATUS: PARTIAL** — the wiring is implemented and JVM-green: `BridgePipeline`
+> orchestrator, `BiometricPromptCoordinator` + `BiometricSignerAdapter`,
+> `KeystoreKeyGenerator`, `PersistentCredentialStore`, StrongBox→TEE fallback in
+> `KeystoreManager`, `FidoBridgeService` + `MainActivity` wiring, `RELAY_URL`
+> BuildConfig. 59 JVM unit tests pass, `lint` + `assembleDebug` green. Remaining
+> (device-only DoD, `agents.md` §6): `isInsideSecureHardware == true` and real
+> `BiometricPrompt` verification via `connectedDebugAndroidTest`, plus the
+> manual `https://webauthn.io` E2E (blocked on daemon socket→Centrifugo wiring).
+
+**Objective:** satisfy `agents.md` §6 Definition of Done by wiring the proven
+layers into a running app: `FidoBridgeService` → `BridgePipeline` →
+`RelayClient` → `Ctap2Processor` → real `BiometricSigner` → publish response.
+
+### Missing production pieces (fakes exist only in tests today)
+- **`CredentialStore`** — real impl persisting `StoredCredential` (rpId, alias,
+  credentialId, publicKey, userHandle). Choose: JSON in `SharedPreferences`
+  (metadata is not secret; the private key stays in AndroidKeyStore). Inject a
+  `SharedPreferences` so the store is JVM-testable with mockk.
+- **`KeyGenerator`** — real impl generating EC P-256 via
+  `KeystoreManager.getOrCreateSigningKey(alias)`, returning `GeneratedCredential`
+  with a 32-byte fixed-width public-key coordinate encoding and a
+  `SHA-256(publicKey.encoded)` credential id.
+
+### Core design decision: BiometricPrompt needs an Activity, the pipeline runs in a Service
+`agents.md` §3 says the user opens the app before a login sequence, so the
+Activity is foreground. Decouple via a singleton **`BiometricPromptCoordinator`**:
+- `requests: Flow<SigningRequest>` where `SigningRequest(crypto, title=rpId,
+  subtitle, onResult)`.
+- `MainActivity` (switched to `FragmentActivity`) collects the flow, shows
+  `BiometricPrompt`, and completes the per-request callback.
+- `BiometricSigner`'s `BiometricAuthenticator` becomes a
+  `CoordinatorBiometricAuthenticator` forwarding to the coordinator (so the
+  signer stays unit-testable with a fake authenticator/coordinator).
+
+### Files to create
+| File | Purpose |
+|------|---------|
+| `bridge/BridgePipeline.kt` (+ `BridgeState`) | Orchestrator: load pairing → `AesGcmCipher` + `CentrifugoTransport` + `RelayClient` → collect inbound → `Ctap2Processor` → publish; exposes `StateFlow<BridgeState>`; maps `securityAlerts`/`disconnections`. |
+| `security/BiometricPromptCoordinator.kt` + `SigningRequest` | Prompt request/response channel. |
+| `security/CoordinatorBiometricAuthenticator.kt` | `BiometricAuthenticator` → coordinator. |
+| `security/KeystoreKeyGenerator.kt` | Real `KeyGenerator` (EC P-256 in KeyStore). |
+| `ctap/PersistentCredentialStore.kt` | Real `CredentialStore` (SharedPreferences JSON). |
+| tests: `BridgePipelineTest`, `BiometricPromptCoordinatorTest`, `PersistentCredentialStoreTest` | JVM TDD. |
+
+### Files to modify
+- `MainActivity.kt` → `FragmentActivity`, collect `coordinator.requests` and show
+  `BiometricPrompt`, request `POST_NOTIFICATIONS` (API 33+), start the foreground
+  service when paired.
+- `FidoBridgeService.kt` → Hilt `@AndroidEntryPoint`; `onStartCommand` →
+  `startForeground(DATA_SYNC)` + `pipeline.start()`; `onDestroy` → `pipeline.stop()`.
+- `KeystoreManager.kt` → StrongBox fallback: extract `buildSpec(alias, strongBox)`;
+  on `KeyStoreException`/`ProviderException` retry without StrongBox (TEE/software).
+  Required for emulators and real devices lacking StrongBox.
+- `build.gradle.kts` → `BuildConfig.RELAY_URL` (env `FIDO2_RELAY_URL` override,
+  default `ws://10.0.2.2:8000/connection/websocket`); add `androidx.fragment:fragment-ktx`.
+- `di/DataModule.kt` → providers for `CredentialStore`, `KeyGenerator`,
+  `BiometricPromptCoordinator`, `Signer` (`BiometricSigner` +
+  `CoordinatorBiometricAuthenticator`), `Ctap2Processor`, `BridgePipeline`.
 
 ### Verification checklist
-1. `KeyInfo.isInsideSecureHardware == true` on device (Phase 6 test).
-2. `Signature.sign()` without biometric auth throws (Phase 6 test).
-3. Full loop: inbound JSON → biometric prompt (showing `rpId`) → sign → JSON response, over MockWebServer.
-4. AES-GCM tag tamper → abort + security alert.
-5. Stub daemon + `https://webauthn.io` manual E2E.
+1. JVM unit tests green (pipeline, coordinator, store) — TDD.
+2. Existing JVM harness (Phase 11) stays green.
+3. `connectedDebugAndroidTest` on a device:
+   - `KeyInfo.isInsideSecureHardware == true` (Phase 6 test) — **device-only**.
+   - `Signature.sign()` without auth throws `UserNotAuthenticatedException`.
+4. Real app + `mock-daemon` on a device over live Centrifugo: full loop with a
+   real `BiometricPrompt` (rpId shown in subtitle).
+5. `https://webauthn.io` manual E2E — **blocked on the daemon workstream**
+   (daemon socket→Centrifugo wiring); out of scope for this phase's Android
+   deliverables but tracked.
 
 ### Final commands
 ```bash

@@ -24,6 +24,11 @@ android {
         }
 
         buildConfigField("String", "RELAY_TOKEN", "\"${escapeForBuildConfig(relayTokenFromPass())}\"")
+        buildConfigField(
+            "String",
+            "RELAY_URL",
+            "\"${escapeForBuildConfig(relayUrl())}\""
+        )
     }
 
     buildTypes {
@@ -82,6 +87,7 @@ dependencies {
     implementation(libs.cbor)
     implementation(libs.zxing.android.embedded)
     implementation(libs.centrifuge.java)
+    implementation(libs.androidx.fragment)
 
     debugImplementation(libs.androidx.compose.ui.tooling)
 
@@ -105,6 +111,9 @@ fun relayTokenFromPass(): String {
         ""
     }
 }
+
+fun relayUrl(): String =
+    System.getenv("FIDO2_RELAY_URL") ?: "ws://10.0.2.2:8000/connection/websocket"
 
 fun escapeForBuildConfig(value: String): String =
     value.replace("\\", "\\\\").replace("\"", "\\\"")

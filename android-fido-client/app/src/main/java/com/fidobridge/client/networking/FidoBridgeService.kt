@@ -8,8 +8,15 @@ import android.content.Intent
 import android.content.pm.ServiceInfo
 import android.os.Build
 import android.os.IBinder
+import com.fidobridge.client.bridge.BridgePipeline
+import dagger.hilt.android.AndroidEntryPoint
+import javax.inject.Inject
 
+@AndroidEntryPoint
 class FidoBridgeService : Service() {
+
+    @Inject
+    lateinit var pipeline: BridgePipeline
 
     override fun onBind(intent: Intent?): IBinder? = null
 
@@ -21,7 +28,13 @@ class FidoBridgeService : Service() {
         } else {
             startForeground(NOTIFICATION_ID, notification)
         }
+        pipeline.start()
         return START_STICKY
+    }
+
+    override fun onDestroy() {
+        pipeline.stop()
+        super.onDestroy()
     }
 
     private fun createChannel() {
