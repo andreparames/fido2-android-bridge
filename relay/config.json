@@ -1,0 +1,17 @@
+{
+  "client": {
+    "token": {
+      "hmac_secret_key": "939276e2a4f7d67bad348617470088e74fb4abd66509e1f358575e111af345a6"
+    },
+    "allowed_origins": []
+  },
+  "http_api": {
+    "key": "c3f21f64ccd186431223bcc1abb5b400b0c811e37034cc0a59a30467f1f45f0e"
+  },
+  "admin": {
+    "enabled": false
+  },
+  "log": {
+    "level": "info"
+  }
+}

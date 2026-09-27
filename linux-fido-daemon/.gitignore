@@ -1,0 +1,16 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+dist/
+build/
+.venv/
+
+# IDE
+.idea/
+*.iml
+.DS_Store
+
+# Runtime
+fido2-bridge.sock
+.pytest_cache/

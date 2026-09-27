@@ -1,0 +1,12 @@
+[Unit]
+Description=Remote WebAuthn Android Bridge Daemon
+After=network.target
+
+[Service]
+Type=simple
+ExecStart=/usr/bin/python3 -m fido_daemon.cli --socket /run/user/1000/fido2-bridge.sock
+Restart=on-failure
+Environment=PYTHONUNBUFFERED=1
+
+[Install]
+WantedBy=default.target
