@@ -396,6 +396,79 @@ Centrifugo relay path from the Android side.
 
 ---
 
+## 12. Emulator E2E — Real APK against Live Centrifugo + mock-daemon
+
+**Objective:** run the actual debug APK on a headless Android emulator (KVM)
+against the live Centrifugo + host `mock-daemon`, exercising the full loop:
+daemon → Centrifugo → real `RelayClient` → `Ctap2Processor` → real
+`BiometricPrompt` (emulated fingerprint via `adb emu finger touch`) → sign →
+publish.
+
+> Device-only DoD items (`isInsideSecureHardware == true`, `Signature.sign()`
+> without auth) stay on a physical device; the emulator validates the relay +
+> real-signer path (StrongBox falls back to TEE/software via `KeystoreManager`).
+
+### A. Emulator setup (one-time, ~1 GB downloads)
+```bash
+sdkmanager --licenses
+sdkmanager "emulator" "system-images;android-34;google_apis;x86_64"
+avdmanager create avd -n fido2 -k "system-images;android-34;google_apis;x86_64" -d pixel_5
+emulator -avd fido2 -no-window -no-audio -no-boot-anim -no-snapshot -gpu swiftshader_indirect &
+adb wait-for-device
+adb shell 'while [ "$(getprop sys.boot_completed)" != "1" ]; do sleep 1; done'
+adb shell locksettings set-pin 1234
+adb emu finger touch 1    # verify virtual fingerprint authenticates
+```
+
+### B. Code addition for automation
+- Add a `fidobridge` scheme intent-filter to `MainActivity` so pairing is driven
+  by a deep link:
+  `adb shell am start -a android.intent.action.VIEW -d "fidobridge://pair?channel=…&key=…"`
+  (real tap-to-pair capability; avoids brittle `input text` with `&`/`=`/`:`).
+- After pairing, background+foreground the app to trigger `onResume` and start
+  `FidoBridgeService` (first-pairing gap until an activity resume cycle).
+
+### C. Build & install
+```bash
+./gradlew assembleDebug                      # RELAY_URL defaults to ws://10.0.2.2:8000/connection/websocket
+adb install -r app/build/outputs/apk/debug/app-debug.apk
+```
+
+### D. E2E run
+```bash
+# generate channel + key, build pairing URI (daemon format_pairing_uri)
+FIDO2_CHANNEL_ID=<32-hex> FIDO2_SESSION_KEY_B64=<b64> \
+  python -m fido_daemon.cli --print-pairing   # or format_pairing_uri(Pairing(...))
+
+# pair the app via deep link, foreground-toggle to start the service
+
+# make-credential FIRST (fresh app store is empty)
+FIDO2_CHANNEL_ID=<same> FIDO2_SESSION_KEY_B64=<same> \
+  FIDO2_RELAY_URL=ws://localhost:8000/connection/websocket \
+  FIDO2_RELAY_TOKEN="$(pass show fidobridge/relay-token)" \
+  mock-daemon make-credential --timeout 20 --retries 5 &
+
+# fire the virtual fingerprint ~1s loop while the prompt is up
+for i in $(seq 1 60); do adb emu finger touch 1; sleep 1; done
+# then get-assertion (same flow)
+```
+
+### E. Verification
+- `mock-daemon` logs `make-credential: OK` and `get-assertion: OK`, exit 0.
+- `adb logcat -d | grep -iE "fido|pipeline|bridge"` shows `Connected`, prompt,
+  sign.
+- Do **not** run `connectedDebugAndroidTest` — `isInsideSecureHardware` fails on
+  the emulator (software-backed); that stays device-only.
+
+### Risks
+- Virtual fingerprint enrollment: `finger touch 1` usually works once a PIN is
+  set; fallback = BiometricPrompt PIN entry (`input text 1234`).
+- Replay-on-retry: use `--timeout 20` + continuous touch loop so the first
+  request is answered before any retry.
+- Empty credential store: make-credential before get-assertion.
+
+---
+
 ## Milestones Recap
 
 | Milestone | Content | Test gate |

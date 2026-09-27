@@ -9,11 +9,16 @@ import kotlinx.coroutines.flow.asStateFlow
 
 @HiltViewModel
 class PairingViewModel @Inject constructor(
-    private val repository: PairingRepository
+    private val repository: PairingRepository,
+    dispatcher: PairingUriDispatcher
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow<PairingUiState>(PairingUiState.Scanning)
     val uiState: StateFlow<PairingUiState> = _uiState.asStateFlow()
+
+    init {
+        dispatcher.consume()?.let { submitUri(it) }
+    }
 
     fun onQrResult(uri: String) = submitUri(uri)
 

@@ -15,6 +15,7 @@ import androidx.fragment.app.FragmentActivity
 import androidx.lifecycle.lifecycleScope
 import com.fidobridge.client.networking.FidoBridgeService
 import com.fidobridge.client.pairing.PairingRepository
+import com.fidobridge.client.pairing.PairingUriDispatcher
 import com.fidobridge.client.security.BiometricPromptCoordinator
 import com.fidobridge.client.security.OperationDeniedException
 import com.fidobridge.client.ui.FidoBridgeApp
@@ -33,6 +34,9 @@ class MainActivity : FragmentActivity() {
     @Inject
     lateinit var pairingRepository: PairingRepository
 
+    @Inject
+    lateinit var pairingUriDispatcher: PairingUriDispatcher
+
     private val notificationPermissionLauncher =
         registerForActivityResult(ActivityResultContracts.RequestPermission()) { }
 
@@ -40,8 +44,22 @@ class MainActivity : FragmentActivity() {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
         requestNotificationPermissionIfNeeded()
+        handlePairingIntent(intent)
         setContent { FidoBridgeApp() }
         collectSigningRequests()
+    }
+
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+        handlePairingIntent(intent)
+    }
+
+    private fun handlePairingIntent(intent: Intent?) {
+        val uri = intent?.data?.toString()
+        if (uri?.startsWith("fidobridge://pair") == true) {
+            pairingUriDispatcher.submit(uri)
+        }
     }
 
     override fun onResume() {
