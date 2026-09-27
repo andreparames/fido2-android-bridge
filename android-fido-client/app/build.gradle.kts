@@ -117,7 +117,7 @@ fun relayTokenFromPass(): String {
 }
 
 fun relayUrl(): String =
-    System.getenv("FIDO2_RELAY_URL") ?: "ws://10.0.2.2:8000/connection/websocket"
+    System.getenv("FIDO2_RELAY_URL") ?: "wss://gary.andreparames.com:8000/connection/websocket"
 
 fun escapeForBuildConfig(value: String): String =
     value.replace("\\", "\\\\").replace("\"", "\\\"")

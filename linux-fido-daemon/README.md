@@ -153,7 +153,7 @@ vars as the daemon (`FIDO2_RELAY_URL`, `FIDO2_SESSION_KEY_B64`,
 
 **Test the Android app** (acts as daemon, publishes requests):
 ```bash
-FIDO2_RELAY_URL=ws://localhost:8000/connection/websocket \
+FIDO2_RELAY_URL=wss://gary.andreparames.com:8000/connection/websocket \
 FIDO2_SESSION_KEY_B64=<same-as-app> \
 FIDO2_CHANNEL_ID=<32-hex-from-pairing> \
 mock-daemon get-assertion
@@ -161,7 +161,7 @@ mock-daemon get-assertion
 
 **Test the daemon** (acts as phone, responds to requests):
 ```bash
-FIDO2_RELAY_URL=ws://localhost:8000/connection/websocket \
+FIDO2_RELAY_URL=wss://gary.andreparames.com:8000/connection/websocket \
 FIDO2_SESSION_KEY_B64=<same-as-daemon> \
 FIDO2_CHANNEL_ID=<32-hex-from-pairing> \
 mock-phone

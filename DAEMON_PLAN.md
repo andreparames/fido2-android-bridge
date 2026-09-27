@@ -262,7 +262,7 @@ synthetic CTAP2 requests and consumes the real daemon responses.
    on failure. Intended for quick smoke tests during development:
 
    ```bash
-   FIDO2_RELAY_URL=wss://localhost:8000/connection/websocket \
+   FIDO2_RELAY_URL=wss://gary.andreparames.com:8000/connection/websocket \
    FIDO2_SESSION_KEY_B64=$(python -c "import base64,secrets;print(base64.b64encode(secrets.token_bytes(32)).decode())") \
    python -m fido_daemon.harness all
    ```

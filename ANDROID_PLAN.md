@@ -253,7 +253,7 @@ Activity is foreground. Decouple via a singleton **`BiometricPromptCoordinator`*
   on `KeyStoreException`/`ProviderException` retry without StrongBox (TEE/software).
   Required for emulators and real devices lacking StrongBox.
 - `build.gradle.kts` → `BuildConfig.RELAY_URL` (env `FIDO2_RELAY_URL` override,
-  default `ws://10.0.2.2:8000/connection/websocket`); add `androidx.fragment:fragment-ktx`.
+  default `wss://gary.andreparames.com:8000/connection/websocket`); add `androidx.fragment:fragment-ktx`.
 - `di/DataModule.kt` → providers for `CredentialStore`, `KeyGenerator`,
   `BiometricPromptCoordinator`, `Signer` (`BiometricSigner` +
   `CoordinatorBiometricAuthenticator`), `Ctap2Processor`, `BridgePipeline`.
@@ -344,7 +344,7 @@ synthetic CTAP2 requests and consumes the real app responses.
 
 2. **`androidTest/.../harness/HarnessConfig.kt`** — reads from
    `BuildConfig` or test runner arguments:
-   - `RELAY_URL` (default `ws://10.0.2.2:8000/connection/websocket` for
+   - `RELAY_URL` (default `wss://gary.andreparames.com:8000/connection/websocket` for
      emulator → host loopback; overridable for real device).
    - `RELAY_TOKEN`, `CHANNEL_ID`, `SESSION_KEY_B64` — same values used by the
      Android app under test, injected via `gradle.properties` or env at build
@@ -373,7 +373,7 @@ synthetic CTAP2 requests and consumes the real app responses.
    tests:
 
    ```bash
-   FIDO2_RELAY_URL=ws://localhost:8000/connection/websocket \
+   FIDO2_RELAY_URL=wss://gary.andreparames.com:8000/connection/websocket \
    FIDO2_SESSION_KEY_B64=<same-as-app> \
    python -m android_harness.mock_daemon get-assertion
    ```
@@ -452,7 +452,7 @@ adb emu finger touch 1    # verify virtual fingerprint authenticates
 
 ### C. Build & install
 ```bash
-./gradlew assembleDebug                      # RELAY_URL defaults to ws://10.0.2.2:8000/connection/websocket
+./gradlew assembleDebug                      # RELAY_URL defaults to wss://gary.andreparames.com:8000/connection/websocket
 adb install -r app/build/outputs/apk/debug/app-debug.apk
 ```
 
@@ -466,7 +466,7 @@ FIDO2_CHANNEL_ID=<32-hex> FIDO2_SESSION_KEY_B64=<b64> \
 
 # make-credential FIRST (fresh app store is empty)
 FIDO2_CHANNEL_ID=<same> FIDO2_SESSION_KEY_B64=<same> \
-  FIDO2_RELAY_URL=ws://localhost:8000/connection/websocket \
+  FIDO2_RELAY_URL=wss://gary.andreparames.com:8000/connection/websocket \
   FIDO2_RELAY_TOKEN="$(pass show fidobridge/relay-token)" \
   mock-daemon make-credential --timeout 20 --retries 5 &
 

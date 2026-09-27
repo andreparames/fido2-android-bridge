@@ -13,7 +13,7 @@ state, and no access to the rest of the host filesystem.
 
 ```
 relay/
-  config.json          Centrifugo config (in-memory, WebSocket-only, token auth)
+  config.json          Centrifugo config (in-memory, WebSocket-only, token auth, TLS)
   centrifugo.service   systemd unit with the RootDirectory cage
 ```
 
@@ -93,10 +93,11 @@ Retrieve it with `pass show fidobridge/relay-token`.
 The clients connect to:
 
 ```
-ws://<host>:8000/connection/websocket
+wss://<host>:8000/connection/websocket
 ```
 
-and pass the JWT as the connection `token`.
+and pass the JWT as the connection `token`. Plaintext `ws://` is refused —
+TLS is always on (see [TLS](#tls)).
 
 ## Verify the cage
 
@@ -104,12 +105,75 @@ and pass the JWT as the connection `token`.
 systemd-analyze security centrifugo     # aim for near-zero exposure
 journalctl -u centrifugo -f             # logs still flow
 curl -s -X POST -H 'Content-Type: application/json' \
-  -d '{"method":"info","params":{}}' http://<host>:8000/api
+  -d '{"method":"info","params":{}}' https://<host>:8000/api
 # -> 401 unauthorized (HTTP API locked)
 ```
 
-## TLS (not yet enabled)
+## TLS
 
-`ws://` is cleartext. For `wss://`, either add `http_server.tls` to `config.json`
-(and copy the cert/key into the jail), or terminate TLS at a reverse proxy in
-front of Centrifugo.
+TLS is enabled via `http_server.tls` in `config.json` (Centrifugo v6 unified TLS
+config): the cert and key live inside the jail at
+`/etc/centrifugo/gary.andreparames.com.fullchain.pem` and
+`gary.andreparames.com.privkey.pem` (0440, root:centrifugo). With TLS enabled the
+HTTP server no longer serves plaintext, so the WebSocket endpoint is
+`wss://<host>:8000/connection/websocket` and the HTTP API check above uses
+`https`.
+
+### 6. Issue the certificate
+
+The certificate comes from Let's Encrypt via `certbot` using the webroot
+authenticator. A host-level nginx vhost (`/etc/nginx/sites-available/gary`)
+serves the ACME challenge from `/var/www/challenges` for the domain:
+
+```bash
+certbot certonly --webroot -w /var/www/challenges \
+  -d gary.andreparames.com --agree-tos
+```
+
+The resulting files are at `/etc/letsencrypt/live/gary.andreparames.com/`
+(`fullchain.pem`, `privkey.pem`).
+
+### 7. Copy the cert into the jail
+
+The cage is a `RootDirectory` jail, so the cert must be copied inside it (the
+service cannot read `/etc/letsencrypt`):
+
+```bash
+install -m 0440 -o root -g centrifugo \
+  /etc/letsencrypt/live/gary.andreparames.com/fullchain.pem \
+  /srv/centrifugo/etc/centrifugo/gary.andreparames.com.fullchain.pem
+install -m 0440 -o root -g centrifugo \
+  /etc/letsencrypt/live/gary.andreparames.com/privkey.pem \
+  /srv/centrifugo/etc/centrifugo/gary.andreparames.com.privkey.pem
+```
+
+`config.json` references them as `http_server.tls.cert_pem` and
+`http_server.tls.key_pem`. Restart with `systemctl restart centrifugo`.
+
+### 8. Keep it fresh
+
+certbot renews automatically, but the jail copy would go stale. A deploy hook at
+`/etc/letsencrypt/renewal-hooks/deploy/centrifugo` copies the renewed cert and
+key into the jail and restarts the service after every successful renewal:
+
+```bash
+sudo tee /etc/letsencrypt/renewal-hooks/deploy/centrifugo > /dev/null <<'EOF'
+#!/bin/sh
+set -eu
+
+cert=/etc/letsencrypt/live/gary.andreparames.com
+jail=/srv/centrifugo/etc/centrifugo
+
+install -m 0440 -o root -g centrifugo "$cert/fullchain.pem" "$jail/gary.andreparames.com.fullchain.pem"
+install -m 0440 -o root -g centrifugo "$cert/privkey.pem" "$jail/gary.andreparames.com.privkey.pem"
+systemctl restart centrifugo
+EOF
+sudo chmod 0755 /etc/letsencrypt/renewal-hooks/deploy/centrifugo
+```
+
+Check the live cert with:
+
+```bash
+echo | openssl s_client -connect <host>:8000 -servername gary.andreparames.com 2>/dev/null \
+  | grep -E 'subject=|Verify return code'
+```

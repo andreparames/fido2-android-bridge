@@ -83,7 +83,7 @@ The relay round-trip **is** validated on the host JVM — no emulator needed. Ru
 
 ```bash
 # 1. Write /tmp/fido2_harness.properties:
-#    enabled=true / channel_id=<32-hex> / session_key_b64=<b64> / relay_url=ws://localhost:8000/connection/websocket
+#    enabled=true / channel_id=<32-hex> / session_key_b64=<b64> / relay_url=wss://gary.andreparames.com:8000/connection/websocket
 # 2. In one terminal (daemon-peer, publishes synthetic CTAP2 requests):
 FIDO2_CHANNEL_ID=<same> FIDO2_SESSION_KEY_B64=<same> \
   python -m mock_daemon all --timeout 5 --retries 30

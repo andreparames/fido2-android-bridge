@@ -35,7 +35,7 @@ object HarnessConfig {
             sessionKeyB64 = sessionKeyB64,
             relayUrl = props.getProperty("relay_url")
                 ?: System.getenv("FIDO2_RELAY_URL")
-                ?: "ws://localhost:8000/connection/websocket",
+                ?: "wss://gary.andreparames.com:8000/connection/websocket",
             timeoutSeconds = props.getProperty("timeout_seconds")?.toLongOrNull()
                 ?: System.getenv("FIDO2_HARNESS_TIMEOUT")?.toLongOrNull()
                 ?: 180L
