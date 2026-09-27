@@ -3,6 +3,7 @@ package com.fidobridge.client.bridge
 import android.util.Log
 import com.fidobridge.client.crypto.AesGcmCipher
 import com.fidobridge.client.ctap.Ctap2Processor
+import com.fidobridge.client.networking.DiagnosticLogSink
 import com.fidobridge.client.networking.RelayClient
 import com.fidobridge.client.networking.RelayTransport
 import com.fidobridge.client.pairing.SessionKeyStore
@@ -21,7 +22,8 @@ class BridgePipeline(
     private val sessionKeyStore: SessionKeyStore,
     private val relayUrl: String,
     private val processor: Ctap2Processor,
-    private val transportFactory: (endpoint: String, channel: String) -> RelayTransport
+    private val transportFactory: (endpoint: String, channel: String) -> RelayTransport,
+    private val logSink: DiagnosticLogSink? = null
 ) {
 
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
@@ -39,6 +41,8 @@ class BridgePipeline(
         Log.i(TAG, "pipeline.start key=${key != null} channelId=$channelId relay=$relayUrl")
         if (key == null) return fail("not paired: missing session key")
         if (channelId == null) return fail("not paired: missing channel")
+        logSink?.start(channelId)
+        logSink?.log("pipeline.start channel=$channelId")
 
         val cipher = AesGcmCipher(key)
         val transport = transportFactory(relayUrl, Protocol.relayChannel(channelId))
@@ -47,12 +51,14 @@ class BridgePipeline(
 
         inboundJob = scope.launch {
             relay.inbound.collect { plaintext ->
+                logSink?.log("inbound publication received")
                 try {
                     processor.process(plaintext) { result ->
                         result.onSuccess { response -> relay.send(response) }
                     }
                 } catch (e: Exception) {
                     Log.w(TAG, "processor failure: ${e::class.simpleName}: ${e.message}")
+                    logSink?.log("processor failure: ${e::class.simpleName}: ${e.message}")
                 }
             }
         }
@@ -60,6 +66,7 @@ class BridgePipeline(
         statusJob = scope.launch {
             relay.state.collect { connectionState ->
                 Log.i(TAG, "relay state -> $connectionState")
+                logSink?.log("relay state -> $connectionState")
                 _state.value = when (connectionState) {
                     RelayClient.ConnectionState.DISCONNECTED -> BridgeState.Disconnected
                     RelayClient.ConnectionState.CONNECTING -> BridgeState.Connecting
@@ -71,6 +78,7 @@ class BridgePipeline(
         scope.launch {
             relay.securityAlerts.collect {
                 Log.w(TAG, "SECURITY ALERT: GCM integrity failure")
+                logSink?.log("SECURITY ALERT: GCM integrity failure")
                 _state.value = BridgeState.SecurityAlert
             }
         }
@@ -78,6 +86,7 @@ class BridgePipeline(
         scope.launch {
             relay.disconnections.collect {
                 Log.w(TAG, "relay disconnection")
+                logSink?.log("relay disconnection")
                 _state.value = BridgeState.Disconnected
             }
         }
@@ -91,6 +100,7 @@ class BridgePipeline(
         statusJob?.cancel()
         client?.close()
         client = null
+        logSink?.stop()
         _state.value = BridgeState.Disconnected
     }
 

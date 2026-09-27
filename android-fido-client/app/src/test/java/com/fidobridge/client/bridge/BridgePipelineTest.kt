@@ -35,7 +35,7 @@ class BridgePipelineTest {
 
     private fun newPipeline(transport: FakeRelayTransport, store: SessionKeyStore): BridgePipeline {
         val processor = Ctap2Processor(FakeCredentialStore(), FakeKeyGenerator(), FakeSigner())
-        return BridgePipeline(store, "ws://localhost:8000/connection/websocket", processor) { _, _ -> transport }
+        return BridgePipeline(store, "ws://localhost:8000/connection/websocket", processor, transportFactory = { _, _ -> transport })
     }
 
     private fun wire(plaintext: ByteArray): ByteArray {
@@ -67,7 +67,7 @@ class BridgePipelineTest {
         val signer = FakeSigner()
         val store = FakeSessionKeyStore(key, channelId)
         val processor = Ctap2Processor(FakeCredentialStore(), FakeKeyGenerator(), signer)
-        val pipeline = BridgePipeline(store, "ws://localhost:8000/connection/websocket", processor) { _, _ -> transport }
+        val pipeline = BridgePipeline(store, "ws://localhost:8000/connection/websocket", processor, transportFactory = { _, _ -> transport })
 
         pipeline.start()
         withTimeout(5000) { while (pipeline.state.value != BridgeState.Connected) delay(10) }
@@ -90,7 +90,7 @@ class BridgePipelineTest {
         val transport = FakeRelayTransport()
         val store = FakeSessionKeyStore(key, channelId)
         val processor = Ctap2Processor(FakeCredentialStore(), FakeKeyGenerator(), FakeSigner(fail = true))
-        val pipeline = BridgePipeline(store, "ws://localhost:8000/connection/websocket", processor) { _, _ -> transport }
+        val pipeline = BridgePipeline(store, "ws://localhost:8000/connection/websocket", processor, transportFactory = { _, _ -> transport })
 
         pipeline.start()
         withTimeout(5000) { while (pipeline.state.value != BridgeState.Connected) delay(10) }

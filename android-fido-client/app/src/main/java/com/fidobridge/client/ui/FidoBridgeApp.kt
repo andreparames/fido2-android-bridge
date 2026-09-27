@@ -1,15 +1,18 @@
 package com.fidobridge.client.ui
 
+import android.content.Intent
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.material3.Scaffold
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
+import com.fidobridge.client.networking.FidoBridgeService
 import com.fidobridge.client.ui.pairing.PairingScreen
 import com.fidobridge.client.ui.theme.FidoBridgeTheme
 
@@ -27,8 +30,10 @@ fun FidoBridgeApp() {
 
         NavHost(navController = navController, startDestination = startDestination) {
             composable(Routes.PAIRING) {
+                val context = LocalContext.current
                 PairingScreen(
                     onPaired = {
+                        context.startForegroundService(Intent(context, FidoBridgeService::class.java))
                         navController.navigate(Routes.HOME) {
                             popUpTo(Routes.PAIRING) { inclusive = true }
                         }

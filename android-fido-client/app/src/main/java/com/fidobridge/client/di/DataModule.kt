@@ -8,6 +8,7 @@ import com.fidobridge.client.ctap.CredentialStore
 import com.fidobridge.client.ctap.KeyGenerator
 import com.fidobridge.client.ctap.PersistentCredentialStore
 import com.fidobridge.client.networking.CentrifugoTransport
+import com.fidobridge.client.networking.DiagnosticLogSink
 import com.fidobridge.client.networking.RelayTransport
 import com.fidobridge.client.pairing.EncryptedSessionKeyStore
 import com.fidobridge.client.pairing.PairingRepository
@@ -77,11 +78,13 @@ object DataModule {
     @Singleton
     fun provideBridgePipeline(
         sessionKeyStore: SessionKeyStore,
-        processor: Ctap2Processor
+        processor: Ctap2Processor,
+        logSink: DiagnosticLogSink
     ): BridgePipeline = BridgePipeline(
         sessionKeyStore = sessionKeyStore,
         relayUrl = BuildConfig.RELAY_URL,
         processor = processor,
-        transportFactory = { endpoint, channel: String -> CentrifugoTransport(endpoint, channel) as RelayTransport }
+        transportFactory = { endpoint, channel: String -> CentrifugoTransport(endpoint, channel) as RelayTransport },
+        logSink = logSink
     )
 }

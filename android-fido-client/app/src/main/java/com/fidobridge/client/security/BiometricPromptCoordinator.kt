@@ -12,7 +12,10 @@ class SigningRequest(
     val title: String,
     val subtitle: String,
     val onResult: (Result<BiometricPrompt.CryptoObject?>) -> Unit
-)
+) {
+    @Volatile
+    var claimed = false
+}
 
 @Singleton
 class BiometricPromptCoordinator @Inject constructor() {
@@ -27,5 +30,10 @@ class BiometricPromptCoordinator @Inject constructor() {
         onResult: (Result<BiometricPrompt.CryptoObject?>) -> Unit
     ) {
         channel.trySend(SigningRequest(crypto, title, subtitle, onResult))
+    }
+
+    fun requeue(request: SigningRequest) {
+        request.claimed = false
+        channel.trySend(request)
     }
 }
