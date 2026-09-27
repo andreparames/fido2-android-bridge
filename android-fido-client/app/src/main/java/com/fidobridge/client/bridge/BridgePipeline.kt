@@ -1,5 +1,6 @@
 package com.fidobridge.client.bridge
 
+import android.util.Log
 import com.fidobridge.client.crypto.AesGcmCipher
 import com.fidobridge.client.ctap.Ctap2Processor
 import com.fidobridge.client.networking.RelayClient
@@ -33,8 +34,11 @@ class BridgePipeline(
 
     fun start() {
         if (client != null) return
-        val key = sessionKeyStore.loadKey() ?: return fail("not paired: missing session key")
-        val channelId = sessionKeyStore.loadChannelId() ?: return fail("not paired: missing channel")
+        val key = sessionKeyStore.loadKey()
+        val channelId = sessionKeyStore.loadChannelId()
+        Log.i(TAG, "pipeline.start key=${key != null} channelId=$channelId relay=$relayUrl")
+        if (key == null) return fail("not paired: missing session key")
+        if (channelId == null) return fail("not paired: missing channel")
 
         val cipher = AesGcmCipher(key)
         val transport = transportFactory(relayUrl, Protocol.relayChannel(channelId))
@@ -43,14 +47,19 @@ class BridgePipeline(
 
         inboundJob = scope.launch {
             relay.inbound.collect { plaintext ->
-                processor.process(plaintext) { result ->
-                    result.onSuccess { response -> relay.send(response) }
+                try {
+                    processor.process(plaintext) { result ->
+                        result.onSuccess { response -> relay.send(response) }
+                    }
+                } catch (e: Exception) {
+                    Log.w(TAG, "processor failure: ${e::class.simpleName}: ${e.message}")
                 }
             }
         }
 
         statusJob = scope.launch {
             relay.state.collect { connectionState ->
+                Log.i(TAG, "relay state -> $connectionState")
                 _state.value = when (connectionState) {
                     RelayClient.ConnectionState.DISCONNECTED -> BridgeState.Disconnected
                     RelayClient.ConnectionState.CONNECTING -> BridgeState.Connecting
@@ -61,16 +70,19 @@ class BridgePipeline(
 
         scope.launch {
             relay.securityAlerts.collect {
+                Log.w(TAG, "SECURITY ALERT: GCM integrity failure")
                 _state.value = BridgeState.SecurityAlert
             }
         }
 
         scope.launch {
             relay.disconnections.collect {
+                Log.w(TAG, "relay disconnection")
                 _state.value = BridgeState.Disconnected
             }
         }
 
+        Log.i(TAG, "pipeline connecting to ${Protocol.relayChannel(channelId)}")
         relay.connect()
     }
 
@@ -94,3 +106,5 @@ sealed interface BridgeState {
     data object SecurityAlert : BridgeState
     data class Error(val message: String) : BridgeState
 }
+
+private const val TAG = "FidoBridge"

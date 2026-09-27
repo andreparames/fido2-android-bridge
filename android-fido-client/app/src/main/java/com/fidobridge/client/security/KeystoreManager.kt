@@ -4,13 +4,12 @@ import android.os.Build
 import android.security.keystore.KeyGenParameterSpec
 import android.security.keystore.KeyInfo
 import android.security.keystore.KeyProperties
+import android.util.Log
 import java.security.KeyFactory
 import java.security.KeyPair
 import java.security.KeyPairGenerator
 import java.security.KeyStore
-import java.security.KeyStoreException
 import java.security.PrivateKey
-import java.security.ProviderException
 import java.security.Signature
 import java.security.spec.ECGenParameterSpec
 
@@ -27,9 +26,8 @@ class KeystoreManager(
 
         return try {
             generate(alias, strongBox = Build.VERSION.SDK_INT >= Build.VERSION_CODES.P)
-        } catch (e: KeyStoreException) {
-            generate(alias, strongBox = false)
-        } catch (e: ProviderException) {
+        } catch (e: Exception) {
+            Log.w(TAG, "StrongBox key gen failed (${e::class.simpleName}: ${e.message}); retrying without StrongBox")
             generate(alias, strongBox = false)
         }
     }
@@ -83,5 +81,6 @@ class KeystoreManager(
         const val ANDROID_KEYSTORE = "AndroidKeyStore"
         private const val CURVE = "secp256r1"
         private const val SIGNATURE_ALGORITHM = "SHA256withECDSA"
+        private const val TAG = "FidoBridge"
     }
 }

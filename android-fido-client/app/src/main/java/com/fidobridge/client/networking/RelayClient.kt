@@ -1,5 +1,6 @@
 package com.fidobridge.client.networking
 
+import android.util.Log
 import com.fidobridge.client.crypto.AesGcmCipher
 import com.fidobridge.client.crypto.EncryptedMessage
 import com.fidobridge.client.protocol.Ctap2Status
@@ -78,14 +79,17 @@ class RelayClient(
     }
 
     private fun handlePublication(data: ByteArray) {
+        Log.d(TAG, "handlePublication len=${data.size}")
         val wire = try {
             MessageCodec.decode(data.decodeToString())
         } catch (e: Exception) {
+            Log.w(TAG, "publication dropped: bad wire (${e.message})")
             alertChannel.trySend(Unit)
             return
         }
 
         if (wire.channelId != channelId) {
+            Log.w(TAG, "publication dropped: channel mismatch")
             alertChannel.trySend(Unit)
             return
         }
@@ -93,6 +97,7 @@ class RelayClient(
         val plaintext = try {
             cipher.decrypt(EncryptedMessage(wire.nonce, wire.ciphertext, wire.tag))
         } catch (e: AesGcmCipher.TagMismatchException) {
+            Log.w(TAG, "publication dropped: GCM tag failure")
             alertChannel.trySend(Unit)
             return
         }
@@ -100,15 +105,18 @@ class RelayClient(
         val envelope = try {
             json.decodeFromString(PlaintextEnvelope.serializer(), plaintext.decodeToString())
         } catch (e: Exception) {
+            Log.w(TAG, "publication dropped: bad envelope (${e.message})")
             alertChannel.trySend(Unit)
             return
         }
 
         if (envelope.id.isNotBlank() && replayCache.isReplay(envelope.id)) {
+            Log.w(TAG, "publication is replay id=${envelope.id}; answering operation denied")
             sendError(envelope.id, Ctap2Status.CTAP2_ERR_OPERATION_DENIED)
             return
         }
 
+        Log.d(TAG, "publication queued type=${envelope.type} id=${envelope.id}")
         inboundChannel.trySend(plaintext)
     }
 
@@ -123,5 +131,6 @@ class RelayClient(
 
     companion object {
         private const val TYPE_ERROR = "error"
+        private const val TAG = "FidoBridge"
     }
 }

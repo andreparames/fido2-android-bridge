@@ -1,11 +1,13 @@
 package com.fidobridge.client.pairing
 
 import androidx.lifecycle.ViewModel
+import androidx.lifecycle.viewModelScope
 import dagger.hilt.android.lifecycle.HiltViewModel
 import javax.inject.Inject
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.launch
 
 @HiltViewModel
 class PairingViewModel @Inject constructor(
@@ -17,7 +19,14 @@ class PairingViewModel @Inject constructor(
     val uiState: StateFlow<PairingUiState> = _uiState.asStateFlow()
 
     init {
-        dispatcher.consume()?.let { submitUri(it) }
+        viewModelScope.launch {
+            dispatcher.uri.collect { uri ->
+                if (uri != null) {
+                    dispatcher.consume()
+                    submitUri(uri)
+                }
+            }
+        }
     }
 
     fun onQrResult(uri: String) = submitUri(uri)

@@ -398,6 +398,24 @@ Centrifugo relay path from the Android side.
 
 ## 12. Emulator E2E — Real APK against Live Centrifugo + mock-daemon
 
+> **STATUS: DONE** — the real debug APK runs on a headless emulator (KVM)
+> against live Centrifugo + `mock-daemon`. Both `make-credential` and
+> `get-assertion` pass end-to-end with a real `BiometricPrompt` satisfied by
+> the emulated fingerprint (`adb emu finger touch 1`; enrolled via Settings →
+> Pixel Imprint). Fixes that made it work:
+> - cleartext `ws://` blocked by targetSdk 34 → `network_security_config` allows
+>   `10.0.2.2`/`localhost`/`127.0.0.1`.
+> - `KeystoreManager` StrongBox fallback broadened (any exception → retry
+>   without StrongBox); emulator has no StrongBox/TEE.
+> - duplicate `MainActivity` instances (`standard` launch) broke BiometricPrompt
+>   (`onSaveInstanceState`) → `launchMode="singleTask"` + flow-based
+>   `PairingUriDispatcher` so `onNewIntent` pairing still works.
+> - mock-daemon `getAssertion` sends empty `allowCredentials` (the real app's
+>   credential id is a SHA-256 hash, not the canned `cred-1`).
+> - device screen must stay on during the prompt (`svc power stayon true`).
+> Remaining device-only DoD (`isInsideSecureHardware`, `UserNotAuthenticatedException`)
+> still needs a physical device.
+
 **Objective:** run the actual debug APK on a headless Android emulator (KVM)
 against the live Centrifugo + host `mock-daemon`, exercising the full loop:
 daemon → Centrifugo → real `RelayClient` → `Ctap2Processor` → real
@@ -409,6 +427,10 @@ publish.
 > real-signer path (StrongBox falls back to TEE/software via `KeystoreManager`).
 
 ### A. Emulator setup (one-time, ~1 GB downloads)
+
+> See [`EMULATOR_ENV.md`](EMULATOR_ENV.md) for the exact installed state
+> (SDK packages, AVD, kvm group, temp files) and full cleanup instructions.
+
 ```bash
 sdkmanager --licenses
 sdkmanager "emulator" "system-images;android-34;google_apis;x86_64"

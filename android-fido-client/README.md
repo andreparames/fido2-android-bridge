@@ -132,6 +132,10 @@ Plugin 8.5.2 / Gradle 8.7 (wrapped).
 ./gradlew connectedDebugAndroidTest   # device required
 ```
 
+For the headless-emulator E2E (real APK + live Centrifugo + `mock-daemon`), see
+`ANDROID_PLAN.md` Phase 12; the exact emulator/SDK install state and cleanup
+steps are in [`EMULATOR_ENV.md`](../EMULATOR_ENV.md).
+
 ### Relay token (dev convenience)
 
 The Centrifugo connection JWT is read from the `pass` CLI at build time and embedded as

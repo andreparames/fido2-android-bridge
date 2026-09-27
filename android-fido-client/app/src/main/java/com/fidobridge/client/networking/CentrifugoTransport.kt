@@ -1,5 +1,6 @@
 package com.fidobridge.client.networking
 
+import android.util.Log
 import io.github.centrifugal.centrifuge.Client
 import io.github.centrifugal.centrifuge.ConnectedEvent
 import io.github.centrifugal.centrifuge.ConnectionTokenEvent
@@ -43,11 +44,13 @@ class CentrifugoTransport(
 
     private val client = Client(endpoint, options, object : EventListener() {
         override fun onConnected(client: Client, event: ConnectedEvent) {
+            Log.i(TAG, "onConnected endpoint=$endpoint")
             subscription?.subscribe()
             listener?.onConnected()
         }
 
         override fun onDisconnected(client: Client, event: DisconnectedEvent) {
+            Log.w(TAG, "onDisconnected code=${event.code} reason=${event.reason}")
             listener?.onDisconnected(event.code, event.reason)
         }
     })
@@ -55,6 +58,7 @@ class CentrifugoTransport(
     private var subscription: Subscription? = null
 
     override fun connect() {
+        Log.i(TAG, "transport.connect endpoint=$endpoint channel=$channel")
         if (subscription == null) {
             subscription = client.newSubscription(channel, object : SubscriptionEventListener() {
                 override fun onPublication(sub: Subscription, event: PublicationEvent) {
@@ -95,6 +99,7 @@ class CentrifugoTransport(
 
     companion object {
         private const val CLIENT_NAME = "fidobridge-android"
+        private const val TAG = "FidoBridge"
         private val json = Json
     }
 }

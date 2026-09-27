@@ -40,7 +40,7 @@ def _build_get_assertion_request(request_id: str) -> dict:
         "payload": {
             "clientDataHash": base64.b64encode(CLIENT_DATA_HASH).decode().rstrip("="),
             "rpId": "example.com",
-            "allowCredentials": [base64.b64encode(b"cred-1").decode().rstrip("=")],
+            "allowCredentials": [],
             "option": {"up": True, "uv": True},
         },
     }
