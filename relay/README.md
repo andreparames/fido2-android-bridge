@@ -9,6 +9,14 @@ It runs in a `systemd` `RootDirectory` cage: the process is chrooted into
 API filesystems systemd mounts for it). It has no capabilities, no writable
 state, and no access to the rest of the host filesystem.
 
+> **TODO (security):** `relay/config.json` — which holds `hmac_secret_key` and
+> the `http_api.key` — was tracked in git from the initial commit. It is now
+> `.gitignore`d and removed from the current branch, but the secrets remain in
+> the repo's history and the relay is now public (`wss://gary.andreparames.com`).
+> **Do later:** (1) rotate `hmac_secret_key` + `http_api.key`, regenerate the
+> connection JWT and re-bake into `pass`/clients, and (2) purge the file from
+> history with `git filter-repo`.
+
 ## Files
 
 ```
