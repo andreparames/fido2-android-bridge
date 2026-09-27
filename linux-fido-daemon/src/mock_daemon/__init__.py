@@ -122,16 +122,48 @@ class MockDaemon(RelayClient):
         self._config = config
 
     async def send_and_receive(
-        self, request: dict, timeout: float | None = None
+        self,
+        request: dict,
+        timeout: float | None = None,
+        retries: int = 0,
+        retry_delay: float = 5.0,
     ) -> dict:
-        """Seal + publish a request dict and await the parsed response dict."""
+        """Seal + publish a request dict and await the parsed response dict.
+
+        ``retries`` re-publishes the same request (same ``id``) on timeout.
+        This tolerates the peer subscribing to the channel slightly late, at
+        which point the re-published request is received and answered.
+        """
         timeout = timeout or self._config.request_timeout
-        plaintext = json.dumps(request).encode("utf-8")
-        response_bytes = await self.request(plaintext, timeout=timeout)
-        return json.loads(response_bytes.decode("utf-8"))
+        last_error: BaseException | None = None
+        for attempt in range(retries + 1):
+            if attempt > 0:
+                logger.warning(
+                    "retrying id=%s (attempt %d/%d)",
+                    request.get("id"),
+                    attempt,
+                    retries,
+                )
+                await asyncio.sleep(retry_delay)
+            plaintext = json.dumps(request).encode("utf-8")
+            try:
+                response_bytes = await self.request(plaintext, timeout=timeout)
+                return json.loads(response_bytes.decode("utf-8"))
+            except asyncio.TimeoutError as exc:
+                last_error = exc
+                logger.warning(
+                    "timeout waiting for response id=%s (attempt %d/%d)",
+                    request.get("id"),
+                    attempt + 1,
+                    retries + 1,
+                )
+        assert last_error is not None
+        raise last_error
 
 
-async def _run_scenario(daemon: MockDaemon, scenario: str) -> bool:
+async def _run_scenario(
+    daemon: MockDaemon, scenario: str, retries: int = 0
+) -> bool:
     """Run a single test scenario. Returns True on success."""
     ok = True
 
@@ -141,7 +173,7 @@ async def _run_scenario(daemon: MockDaemon, scenario: str) -> bool:
         logger.info("scenario: get-assertion (id=%s)", request_id)
 
         try:
-            response = await daemon.send_and_receive(request)
+            response = await daemon.send_and_receive(request, retries=retries)
             logger.info("response type=%s id=%s", response.get("type"), response.get("id"))
 
             if response.get("id") != request_id:
@@ -176,7 +208,7 @@ async def _run_scenario(daemon: MockDaemon, scenario: str) -> bool:
         logger.info("scenario: make-credential (id=%s)", request_id)
 
         try:
-            response = await daemon.send_and_receive(request)
+            response = await daemon.send_and_receive(request, retries=retries)
             logger.info("response type=%s id=%s", response.get("type"), response.get("id"))
 
             if response.get("id") != request_id:
@@ -225,6 +257,12 @@ def main(argv: list[str] | None = None) -> int:
         default=None,
         help="override request timeout in seconds (default: from FIDO2_REQUEST_TIMEOUT or 10)",
     )
+    parser.add_argument(
+        "--retries",
+        type=int,
+        default=3,
+        help="re-publish each request on timeout until a response arrives (default: 3)",
+    )
     args = parser.parse_args(argv)
 
     logging.basicConfig(
@@ -244,7 +282,7 @@ def main(argv: list[str] | None = None) -> int:
         daemon = MockDaemon(config)
         try:
             await daemon.connect()
-            return await _run_scenario(daemon, args.scenario)
+            return await _run_scenario(daemon, args.scenario, retries=args.retries)
         finally:
             await daemon.close()
 

@@ -69,13 +69,31 @@ device**.
     (`0x26`, `0x27`, `0x7F`).
 
 ### Not yet done / requires hardware
-- **Instrumented tests** (`app/src/androidTest/…`): `KeystoreManagerTest`,
-  `BiometricSignerTest` compile but need a physical device or emulator:
-  `./gradlew connectedDebugAndroidTest`.
 - **Phase 10 / DoD** (`agents.md` §6): the full loop — inbound JSON → `BiometricPrompt`
-  (showing `rpId`) → sign → response — and the manual `https://webauthn.io` E2E.
+  (showing `rpId`) → sign → response — and the manual `https://webauthn.io` E2E. The
+  service wiring (`FidoBridgeService` → `RelayClient` → `Ctap2Processor` →
+  `BiometricSigner`) and a StrongBox→TEE fallback still need to be built; only a
+  physical device can prove `isInsideSecureHardware`.
 - **Daemon side** of the Centrifugo migration is a separate workstream (see the "daemon
   handoff" note below).
+
+### Integration harness (Phase 11)
+
+The relay round-trip **is** validated on the host JVM — no emulator needed. Run:
+
+```bash
+# 1. Write /tmp/fido2_harness.properties:
+#    enabled=true / channel_id=<32-hex> / session_key_b64=<b64> / relay_url=ws://localhost:8000/connection/websocket
+# 2. In one terminal (daemon-peer, publishes synthetic CTAP2 requests):
+FIDO2_CHANNEL_ID=<same> FIDO2_SESSION_KEY_B64=<same> \
+  python -m mock_daemon all --timeout 5 --retries 30
+# 3. In another:
+./gradlew testDebugUnitTest --tests 'com.fidobridge.client.harness.IntegrationHarnessTest'
+```
+
+Both `get-assertion` and `make-credential` pass end-to-end through a live Centrifugo
+(`CentrifugoTransport` JSON-vs-object payload handling, `onConnected`-subscribe, and
+Python `relay.py` dict tolerance were fixed to make this work).
 
 ---
 

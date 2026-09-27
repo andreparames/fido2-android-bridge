@@ -204,6 +204,11 @@ ls -l /run/user/$UID/fido2-bridge.sock
 
 ## 9. Integration Test Harness — Mocked Browser, Live Centrifugo (M3)
 
+> **STATUS: DONE** — `mock-daemon` + `mock-phone` extend `RelayClient`; both
+> `get-assertion` and `make-credential` scenarios pass end-to-end through a
+> live Centrifugo broker (see `linux-fido-daemon/README.md` "Integration
+> harness").
+
 **Objective:** validate the full daemon → Centrifugo → Android phone path on a
 single machine by replacing the browser/client side with a mock that generates
 synthetic CTAP2 requests and consumes the real daemon responses.

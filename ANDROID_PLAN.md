@@ -220,6 +220,25 @@ Source of truth for security requirements: `agents.md`.
 
 ## 11. Integration Test Harness — Mocked Daemon, Live Centrifugo (M6)
 
+> **STATUS: DONE (JVM, no emulator)** — the harness runs as a plain JVM unit
+> test (`app/src/test/.../harness/IntegrationHarnessTest`) on the host, wiring
+> the real `RelayClient` + `Ctap2Processor` + `CentrifugoTransport` against a
+> live Centrifugo. `mock-daemon all` + the harness test pass both
+> `get-assertion` and `make-credential` end-to-end (Python JSON-protocol peer
+> ⇄ Centrifugo ⇄ centrifuge-java protobuf peer, AES-256-GCM E2EE). Gated
+> behind a config file `/tmp/fido2_harness.properties` (`enabled=true`) so the
+> default `testDebugUnitTest` stays green.
+>
+> Required production fixes found and applied during integration:
+> - `CentrifugoTransport.connect()` subscribed **before** connecting (centrifuge-java
+>   silently drops a subscribe when not `CONNECTED`) → subscribe in `onConnected`.
+> - Publication payload arrives as a JSON string from the JSON-protocol Python
+>   peer → `CentrifugoTransport` unquotes it; Python `relay.py` tolerates dict
+>   payloads from the protobuf Java peer.
+> - Harness `deriveChannelId` used `%02x` (sign-extends negative bytes);
+>   matches `PairingRepository`'s `(it.toInt() and 0xff).toString(16)...`.
+> - `mock_daemon` gained `--retries` to tolerate the peer subscribing late.
+
 **Objective:** validate the full daemon → Centrifugo → Android app path on a
 single machine by replacing the daemon/browser side with a mock that generates
 synthetic CTAP2 requests and consumes the real app responses.

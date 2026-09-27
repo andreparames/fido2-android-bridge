@@ -15,6 +15,7 @@ import io.github.centrifugal.centrifuge.SubscriptionEventListener
 import io.github.centrifugal.centrifuge.TokenCallback
 import io.github.centrifugal.centrifuge.UnauthorizedException
 import com.fidobridge.client.BuildConfig
+import kotlinx.serialization.json.Json
 
 class CentrifugoTransport(
     private val endpoint: String,
@@ -42,6 +43,7 @@ class CentrifugoTransport(
 
     private val client = Client(endpoint, options, object : EventListener() {
         override fun onConnected(client: Client, event: ConnectedEvent) {
+            subscription?.subscribe()
             listener?.onConnected()
         }
 
@@ -56,11 +58,16 @@ class CentrifugoTransport(
         if (subscription == null) {
             subscription = client.newSubscription(channel, object : SubscriptionEventListener() {
                 override fun onPublication(sub: Subscription, event: PublicationEvent) {
-                    listener?.onPublication(event.data)
+                    val raw = event.data.decodeToString()
+                    val wire = try {
+                        json.decodeFromString<String>(raw)
+                    } catch (e: Exception) {
+                        raw
+                    }
+                    listener?.onPublication(wire.toByteArray())
                 }
             })
         }
-        subscription?.subscribe()
         client.connect()
     }
 
@@ -88,5 +95,6 @@ class CentrifugoTransport(
 
     companion object {
         private const val CLIENT_NAME = "fidobridge-android"
+        private val json = Json
     }
 }

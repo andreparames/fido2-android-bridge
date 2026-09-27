@@ -115,6 +115,8 @@ class RelayClient:
         raw = ctx.pub.data
         if isinstance(raw, (bytes, bytearray)):
             raw = bytes(raw).decode("utf-8")
+        if isinstance(raw, dict):
+            raw = json.dumps(raw)
         try:
             wire = message_from_json(raw)
             plaintext = self._cipher.open(wire)
