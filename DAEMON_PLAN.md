@@ -285,6 +285,109 @@ Centrifugo relay path.
 
 ---
 
+## 10. UHID CTAPHID Frontend — Browser WebAuthn (M4)
+
+> **STATUS: IN PROGRESS**
+
+**Objective:** present the daemon to local browsers as a virtual FIDO2
+security key (`/dev/hidraw*`) via the Linux `/dev/uhid` interface, so
+`https://webauthn.io` and any WebAuthn-capable browser authenticate without a
+socket shim or a libfido2 client. The uhid transport terminates in the same
+CTAP2 → PROTOCOL.md handler core as the Unix socket; `PROTOCOL.md` and the
+relay layer are untouched.
+
+### Architecture
+
+```
+Browser (WebAuthn)
+  │  64-byte CTAPHID reports on /dev/hidraw* (virtual device)
+  ▼
+uhid_device.py   — /dev/uhid transport + FIDO HID descriptor
+  │  reassembled MSG/CBOR payloads + CTAPHID responses
+  ▼
+ctaphid.py       — CTAPHID framing + channel/transaction state machine (pure)
+  │  [command_byte, cbor...]
+  ▼
+handle_ctap2_command() — shared handler core with the socket path (cli.py)
+  │  Message (PROTOCOL.md §5)
+  ▼
+relay.py (unchanged) ── AES-256-GCM ──> phone
+```
+
+### Steps
+
+1. **`ctaphid.py`** — pure CTAPHID packet codec (INIT/CONT), per-channel
+   reassembly, CID allocation, and response fragmentation. No I/O; fully
+   unit-testable. Freezes the CTAPHID constants (report size 64, broadcast
+   CID, command bytes, error codes) next to `protocol.py`'s CTAP2 constants.
+2. **`uhid_device.py`** — open `/dev/uhid`, `UHID_CREATE2` with the FIDO HID
+   descriptor (usage page `0xF1D0`, usage `0x06`, three 64-byte reports), serve
+   `UHID_OUTPUT` / `UHID_GET_REPORT`, respond via `UHID_INPUT2`. The uhid fd is
+   pollable, so it is registered on the asyncio loop with `loop.add_reader` —
+   no threads.
+3. **`cli.py` refactor** — extract the socket handler body into a reusable
+   `handle_ctap2_command(command: int, data: bytes) -> bytes` used by both
+   transports; start `UhidDevice` alongside `SocketServer` under a `--uhid`
+   flag / `FIDO2_UHID_ENABLED` env.
+4. **Keepalive** — while a request is in flight to the phone, emit
+   `CTAPHID_KEEPALIVE` (status `processing`) every ~1 s on the active channel
+   so the browser's ~10 s transaction timeout does not fire during the phone's
+   biometric prompt.
+5. **Teardown** — on relay failure or uhid close, reply `CTAPHID_ERROR` to all
+   active channels and clean the reassembly state.
+
+### TDD
+
+- **Tests first** (`test_ctaphid.py`):
+  1. 64-byte INIT packet parse (CID/CMD/BCNT/data) and build round-trip.
+  2. Continuation packet parse/build; init-vs-cont discrimination (bit 0x80).
+  3. Broadcast-CID `CTAPHID_INIT` allocates a fresh non-broadcast CID and
+     echoes the 17-byte nonce in the INIT response (per CTAPHID spec §7).
+  4. Multi-packet request reassembly yields the exact `[cmd, cbor...]` frame
+     consumed by `decode_request_frame` (cross-check with `ctap2.py`).
+  5. Out-of-sequence continuation → `ERR_INVALID_SEQ` (0x04).
+  6. Response fragmentation: INIT + CONT chunks reconstruct the full reply;
+     responses ≤ 57 bytes fit in one INIT packet.
+  7. Unsupported command on an established channel → `ERR_INVALID_CMD` (0x01).
+- **Tests first** (`test_uhid_device.py`, fake uhid fd via socketpair):
+  1. `UhidDevice.start()` writes a `UHID_CREATE2` event carrying the FIDO HID
+     descriptor.
+  2. A kernel `UHID_OUTPUT` containing a CTAPHID report is routed into the
+     handler core and the `UHID_INPUT2` response carries the 64-byte reply.
+  3. `UHID_GET_REPORT` (feature/input) is answered with a zeroed 64-byte
+     report.
+  4. `UhidDevice.close()` writes `UHID_DESTROY` and cleans up channels.
+- **Tests first** (`test_e2e_uhid.py`): a fake browser sends a fragmented
+  `authenticatorGetAssertion` through the uhid transport and receives the
+  signed response via `StubPhone`. Hermetic — runs in default CI on the
+  in-memory `FakeBroker` (no live Centrifugo, no root).
+
+### Implement
+
+- `ctaphid.py`: codec, `Channel`, `CidAllocator`, `FragmentedReader` /
+  `FragmentedWriter`.
+- `uhid_device.py`: UHID event codec + device loop + FIDO HID descriptor.
+- `cli.py`: `handle_ctap2_command()` extraction + `--uhid` flag.
+- `config.py`: `FIDO2_UHID_ENABLED` (default `false`), `FIDO2_UHID_NAME`.
+
+### Refactor
+
+- Reuse `decode_request_frame` / `encode_response` unchanged; the uhid path
+  feeds exactly the same `[command_byte, cbor...]` bytes as the socket path.
+- Keep the Unix socket default-on; uhid is opt-in until a udev rule grants the
+  user's group access to `/dev/uhid` (document in README + systemd unit
+  comment; `/dev/uhid` is root-only by default).
+
+### Verification
+
+- `.venv/bin/pytest` green (existing 77-test suite plus new ctaphid/uhid
+  tests).
+- With `FIDO2_UHID_ENABLED=1`: `ls /dev/hidraw*` shows the virtual device,
+  `udevadm info` reports usage page `0xF1D0`, and `https://webauthn.io`
+  authenticates with the phone (manual, per `agents.md` §6.3).
+
+---
+
 ## Milestones Recap
 
 | Milestone | Content | Test gate |
@@ -292,5 +395,6 @@ Centrifugo relay path.
 | M1 | Scaffold + config + cipher/codec + pairing | config/cipher/codec/pairing tests |
 | M2 | Socket server + CTAP2 interception + JSON schema | socket + ctap2 tests |
 | M3 | Centrifugo relay + token auth + timeout + CLI wiring + DoD + integration harness | relay + token + e2e tests + systemd verification + harness tests |
+| M4 | UHID CTAPHID frontend (browser WebAuthn) | ctaphid + uhid-device tests + shared handler-core refactor |
 
 Each milestone is only "done" when its tests pass — no implementation code precedes its failing test.

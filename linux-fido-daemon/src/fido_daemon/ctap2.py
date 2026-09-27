@@ -28,6 +28,28 @@ from fido_daemon.protocol import (
 
 CMD_MAKE_CREDENTIAL = 0x01
 CMD_GET_ASSERTION = 0x02
+CMD_GET_INFO = 0x04
+
+# Fixed AAGUID for the virtual authenticator (16 bytes). Chrome shows a
+# human-readable name for known AAGUIDs; all-zero is conventional for a
+# software/virtual authenticator.
+AAGUID = bytes(16)
+
+
+def get_info_response() -> bytes:
+    """Static authenticatorGetInfo (0x04) reply advertising our capabilities.
+
+    Browsers call this first when enumerating a HID security key and drop the
+    device if it is not answered, so it is served locally instead of being
+    forwarded to the phone (whose capabilities are fixed).
+    """
+    info = {
+        1: ["FIDO_2_0", "FIDO_2_1"],
+        3: AAGUID,
+        4: {"up": True, "uv": True, "rk": True, "clientPin": False},
+        10: [{"type": "public-key", "alg": COSE_ES256}],
+    }
+    return bytes([CTAP2_OK]) + cbor.encode(info)
 
 # CTAP2 request CBOR integer keys (CTAP2 spec §6).
 _GA_RPID = 0x01

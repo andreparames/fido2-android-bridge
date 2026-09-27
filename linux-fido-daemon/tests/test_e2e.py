@@ -48,6 +48,8 @@ async def test_e2e_get_assertion(broker, tmp_path) -> None:
         session_key_b64=SESSION_KEY_B64,
         relay_token="",
         request_timeout=5.0,
+        uhid_enabled=False,
+        uhid_name="fido-daemon",
     )
 
     cipher = AesGcmCipher(SecretKey(KEY))

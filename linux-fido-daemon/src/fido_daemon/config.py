@@ -13,6 +13,7 @@ DEFAULT_SOCKET_PATH = "/run/user/{uid}/fido2-bridge.sock"
 DEFAULT_RELAY_URL = "wss://relay.example.invalid/connection/websocket"
 DEFAULT_REQUEST_TIMEOUT_SECONDS = 30.0
 DEFAULT_CHANNEL_ID = ""
+DEFAULT_UHID_NAME = "fido-daemon"
 
 
 @dataclass(frozen=True)
@@ -23,6 +24,8 @@ class Config:
     session_key_b64: str
     relay_token: str
     request_timeout: float
+    uhid_enabled: bool
+    uhid_name: str
 
     @classmethod
     def from_env(cls) -> "Config":
@@ -38,4 +41,7 @@ class Config:
             request_timeout=float(
                 os.environ.get("FIDO2_REQUEST_TIMEOUT", DEFAULT_REQUEST_TIMEOUT_SECONDS)
             ),
+            uhid_enabled=os.environ.get("FIDO2_UHID_ENABLED", "0").lower()
+            in ("1", "true", "yes"),
+            uhid_name=os.environ.get("FIDO2_UHID_NAME", DEFAULT_UHID_NAME),
         )

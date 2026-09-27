@@ -167,11 +167,42 @@ FIDO2_CHANNEL_ID=<32-hex-from-pairing> \
 mock-phone
 ```
 
+## Browser WebAuthn (virtual FIDO2 HID device)
+
+By default the daemon only exposes the Unix socket (for libfido2/CLI clients).
+Pass `--uhid` (or set `FIDO2_UHID_ENABLED=1`) to also present a **virtual FIDO2
+security key** via `/dev/uhid`, so any WebAuthn-capable browser
+(`https://webauthn.io`, etc.) sees a normal security key and authenticates
+through the phone. The virtual HID transport terminates in the same CTAP2 →
+PROTOCOL.md handler core as the socket.
+
+```bash
+FIDO2_UHID_ENABLED=1 fido-daemon
+# or: fido-daemon --uhid
+ls /dev/hidraw*          # a new node appears
+udevadm info /dev/hidrawN | grep -i fido
+```
+
+**Permissions:** `/dev/uhid` is root-only by default. Install the udev rule so
+your user can open it:
+
+```bash
+sudo install -m 0644 systemd/70-fido2-bridge-uhid.rules /etc/udev/rules.d/
+sudo udevadm control --reload && sudo udevadm trigger
+sudo usermod -aG uhid $USER    # then log out/in
+```
+
+If your user is not in the `uhid` group, run the daemon under a systemd service
+that has access (the unit is a user unit; the udev rule makes `/dev/uhid`
+group-readable for the `uhid` group).
+
 ## Status & next steps
 
 Implemented (M1–M3 of `DAEMON_PLAN.md`): config, E2EE crypto + wire codec,
 pairing + `derive_channel_id`, Unix socket server, CTAP2 interception + JSON
 schema, Centrifugo relay with token auth + timeout, and CLI end-to-end wiring.
+M4 adds the `--uhid` virtual FIDO2 HID frontend (`ctaphid.py`,
+`uhid_device.py`) for browser WebAuthn.
 
 Not yet done:
 

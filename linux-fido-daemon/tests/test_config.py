@@ -14,6 +14,8 @@ def _clear_config_env(monkeypatch: pytest.MonkeyPatch) -> None:
         "FIDO2_SESSION_KEY_B64",
         "FIDO2_RELAY_TOKEN",
         "FIDO2_REQUEST_TIMEOUT",
+        "FIDO2_UHID_ENABLED",
+        "FIDO2_UHID_NAME",
     ):
         monkeypatch.delenv(name, raising=False)
 
@@ -55,3 +57,19 @@ def test_relay_token_reads_env(monkeypatch: pytest.MonkeyPatch) -> None:
     _clear_config_env(monkeypatch)
     monkeypatch.setenv("FIDO2_RELAY_TOKEN", "jwt-token-value")
     assert Config.from_env().relay_token == "jwt-token-value"
+
+
+def test_uhid_disabled_by_default(monkeypatch: pytest.MonkeyPatch) -> None:
+    _clear_config_env(monkeypatch)
+    config = Config.from_env()
+    assert config.uhid_enabled is False
+    assert config.uhid_name == "fido-daemon"
+
+
+def test_uhid_enabled_from_env(monkeypatch: pytest.MonkeyPatch) -> None:
+    _clear_config_env(monkeypatch)
+    monkeypatch.setenv("FIDO2_UHID_ENABLED", "1")
+    monkeypatch.setenv("FIDO2_UHID_NAME", "my-key")
+    config = Config.from_env()
+    assert config.uhid_enabled is True
+    assert config.uhid_name == "my-key"

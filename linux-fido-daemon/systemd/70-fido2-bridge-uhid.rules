@@ -1,0 +1,9 @@
+# Grant the uhid group access to /dev/uhid so fido-daemon (--uhid) can create
+# the virtual FIDO2 HID device for browser WebAuthn without running as root.
+KERNEL=="uhid", GROUP="uhid", MODE="0660"
+
+# The virtual device registers as /dev/hidrawN; browsers (Chrome/Firefox) open
+# that node to talk to the security key. In sandboxed/containerised CI the
+# browser may run under an arbitrary UID, so make the node world read/write
+# (dev/test setup; the device is a virtual security key on a single-user host).
+KERNEL=="hidraw*", SUBSYSTEM=="hidraw", MODE="0666"

@@ -4,6 +4,9 @@ After=network.target
 
 [Service]
 Type=simple
+# Add --uhid to also expose a virtual FIDO2 HID device for browser WebAuthn.
+# Requires the user's group to have access to /dev/uhid; install
+# systemd/70-fido2-bridge-uhid.rules and add the user to the uhid group.
 ExecStart=/usr/bin/python3 -m fido_daemon.cli --socket /run/user/1000/fido2-bridge.sock
 Restart=on-failure
 Environment=PYTHONUNBUFFERED=1
