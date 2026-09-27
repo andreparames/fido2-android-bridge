@@ -61,6 +61,7 @@ class RelayClient:
         self._client: Client | None = None
         self._sub: centrifuge.Subscription | None = None
         self._pending: dict[str, asyncio.Future] = {}
+        self._pending_wire: dict[str, str] = {}
         self._tampered = False
 
     @property
@@ -100,12 +101,15 @@ class RelayClient:
         self._pending[message_id] = future
         try:
             message = self._cipher.seal(self._channel_id, plaintext)
-            await self._sub.publish(message_to_json(message))
+            wire_data = message_to_json(message)
+            self._pending_wire[message_id] = wire_data
+            await self._sub.publish(wire_data)
             if timeout is None:
                 return await future
             return await asyncio.wait_for(asyncio.shield(future), timeout=timeout)
         finally:
             self._pending.pop(message_id, None)
+            self._pending_wire.pop(message_id, None)
 
     async def _handle_publication(self, ctx: centrifuge.PublicationContext) -> None:
         raw = ctx.pub.data
@@ -125,10 +129,14 @@ class RelayClient:
             logger.warning("dropping malformed relay message: %s", exc)
             return
         future = self._pending.get(message_id)
-        if future is not None and not future.done():
-            future.set_result(plaintext)
-        else:
+        if future is None or future.done():
             logger.warning("dropping unsolicited relay message with id %s", message_id)
+            return
+        # Skip our own echo (Centrifugo publishes back to all subscribers including us)
+        if self._pending_wire.get(message_id) == raw:
+            logger.debug("skipping own echo (id=%s)", message_id)
+            return
+        future.set_result(plaintext)
 
     async def close(self) -> None:
         if self._client is not None:

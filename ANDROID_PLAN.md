@@ -218,16 +218,6 @@ Source of truth for security requirements: `agents.md`.
 
 ---
 
-## Milestones Recap
-
-| Milestone | Content | Test gate |
-|-----------|---------|-----------|
-| M1 | Scaffold + toolchain + Hilt/Compose | smoke test green |
-| M2 | AES-GCM, codec, pairing, QR UI | cipher/codec/pairing/VM tests |
-| M3 | Keystore + biometric signing | instrumented keystore/biometric |
-| M4 | Centrifugo relay + foreground service | RelayClient + fake-transport tests |
-| M5 | CTAP2 processor + DoD | processor + integration tests |
-
 ## 11. Integration Test Harness — Mocked Daemon, Live Centrifugo (M6)
 
 **Objective:** validate the full daemon → Centrifugo → Android app path on a

@@ -49,6 +49,14 @@ src/fido_daemon/
                    correlation, timeout, tamper alert)
   socket_server.py Unix socket server (0600, clean unlink on exit)
   harness.py       integration test harness (mocked browser + phone, live Centrifugo)
+src/harness_common/
+  config.py        shared HarnessConfig for integration harness scripts
+src/mock_daemon/
+  __init__.py      MockDaemon: publish synthetic CTAP2 requests, validate responses
+  __main__.py      entry point (python -m mock_daemon)
+src/mock_phone/
+  __init__.py      MockPhone: subscribe to Centrifugo, respond to daemon requests
+  __main__.py      entry point (python -m mock_phone)
 systemd/           user service unit (fido-daemon.service)
 tests/             pytest suite (fakes/ has an in-memory broker + stub phone)
   harness/         MockBrowser + MockPhone for integration testing (Phase 9)
@@ -135,6 +143,29 @@ timeout), and an end-to-end `getAssertion` loop.
 For integration testing with a live Centrifugo, see Phase 9 of `DAEMON_PLAN.md`.
 The harness (`tests/harness/`) provides `MockBrowser` and `MockPhone` to
 validate the real relay path without a browser or Android device.
+
+### Integration harness scripts
+
+Two standalone scripts test the full Centrifugo relay path against a live
+broker.  Both require a running Centrifugo instance and read the same env
+vars as the daemon (`FIDO2_RELAY_URL`, `FIDO2_SESSION_KEY_B64`,
+`FIDO2_CHANNEL_ID`, `FIDO2_RELAY_TOKEN`).
+
+**Test the Android app** (acts as daemon, publishes requests):
+```bash
+FIDO2_RELAY_URL=ws://localhost:8000/connection/websocket \
+FIDO2_SESSION_KEY_B64=<same-as-app> \
+FIDO2_CHANNEL_ID=<32-hex-from-pairing> \
+mock-daemon get-assertion
+```
+
+**Test the daemon** (acts as phone, responds to requests):
+```bash
+FIDO2_RELAY_URL=ws://localhost:8000/connection/websocket \
+FIDO2_SESSION_KEY_B64=<same-as-daemon> \
+FIDO2_CHANNEL_ID=<32-hex-from-pairing> \
+mock-phone
+```
 
 ## Status & next steps
 

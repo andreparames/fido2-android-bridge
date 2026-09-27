@@ -22,9 +22,17 @@ dev = [
 
 [project.scripts]
 fido-daemon = "fido_daemon.cli:main"
+mock-daemon = "mock_daemon:main"
+mock-phone = "mock_phone:main"
+
+[tool.setuptools.package-data]
+mock_daemon = ["py.typed"]
+mock_phone = ["py.typed"]
+harness_common = ["py.typed"]
 
 [tool.setuptools.packages.find]
 where = ["src"]
+include = ["fido_daemon*", "harness_common*", "mock_daemon*", "mock_phone*"]
 
 [tool.pytest.ini_options]
 asyncio_mode = "auto"

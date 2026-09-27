@@ -35,3 +35,6 @@ build/
 # Runtime
 *.sock
 *.log
+
+# Centrifugo (contains secrets)
+config.json
