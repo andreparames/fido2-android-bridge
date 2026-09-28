@@ -132,7 +132,7 @@ class RelayClient:
             return
         future = self._pending.get(message_id)
         if future is None or future.done():
-            logger.warning("dropping unsolicited relay message with id %s", message_id)
+            logger.warning("dropping unsolicited relay message with id %s payload=%s", message_id, plaintext.decode("utf-8")[:500])
             return
         # Skip our own echo (Centrifugo publishes back to all subscribers including us)
         if self._pending_wire.get(message_id) == raw:

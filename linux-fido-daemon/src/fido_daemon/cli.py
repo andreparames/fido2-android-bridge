@@ -13,7 +13,7 @@ import json
 import logging
 import sys
 
-from fido_daemon.config import Config
+from fido_daemon.config import Config, write_config_file
 from fido_daemon.crypto import AesGcmCipher, SecretKey
 from fido_daemon.ctap2 import (
     CMD_GET_INFO,
@@ -23,7 +23,7 @@ from fido_daemon.ctap2 import (
     error_response,
     get_info_response,
 )
-from fido_daemon.pairing import Pairing, PairingGenerator
+from fido_daemon.pairing import Pairing, PairingGenerator, derive_channel_id
 from fido_daemon.pairing_uri import format_pairing_uri
 from fido_daemon.protocol import CTAP2_ERR_INVALID_COMMAND, CTAP2_ERR_OPERATION_DENIED
 from fido_daemon.relay import RelayClient
@@ -35,6 +35,7 @@ logger = logging.getLogger(__name__)
 
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="fido-daemon")
+    parser.add_argument("-c", "--config", help="path to TOML config file for session key, channel id, and relay token")
     parser.add_argument("--socket", help="Unix socket path (defaults to FIDO2_REMOTE_SOCKET or /run/user/<UID>/fido2-bridge.sock)")
     parser.add_argument("--uhid", action="store_true", help="expose a virtual FIDO2 HID device (/dev/uhid) for browser WebAuthn")
     parser.add_argument("--verbose", action="store_true")
@@ -44,7 +45,7 @@ def build_parser() -> argparse.ArgumentParser:
     return parser
 
 
-def _run_pair(no_qr: bool = False) -> int:
+def _run_pair(no_qr: bool = False, config_path: str | None = None) -> int:
     config = Config.from_env()
     pairing = PairingGenerator.generate()
     # Carry the relay token so the Android client can connect without a rebuild.
@@ -59,11 +60,23 @@ def _run_pair(no_qr: bool = False) -> int:
         import segno
         qr = segno.make(uri)
         qr.terminal()
+    if config_path:
+        import base64 as _b64
+        channel_id = derive_channel_id(pairing.channel_hex)
+        write_config_file(
+            config_path,
+            session_key_b64=_b64.b64encode(pairing.session_key).decode(),
+            channel_id=channel_id,
+            relay_token=config.relay_token or None,
+        )
+        print(f"\nConfig written to {config_path}", file=sys.stderr)
     return 0
 
 
 def _resolve_config(args: argparse.Namespace) -> Config:
     config = Config.from_env()
+    if args.config:
+        config = config.with_config_file(args.config)
     if args.socket or args.uhid:
         config = Config(
             socket_path=args.socket or config.socket_path,
@@ -93,6 +106,7 @@ def build_request_handler(relay: RelayClient, config: Config):
             message = decode_request_frame(data)
         except Ctap2Error as exc:
             return error_response(exc.code)
+        logger.debug("CTAP2 request: type=%s id=%s payload=%s", message.type, message.id, json.dumps(message.payload)[:500])
         plaintext = json.dumps(message.to_dict()).encode("utf-8")
         try:
             response = await relay.request(plaintext, timeout=config.request_timeout)
@@ -100,7 +114,9 @@ def build_request_handler(relay: RelayClient, config: Config):
             logger.warning("relay request timed out")
             return error_response(CTAP2_ERR_OPERATION_DENIED)
         try:
-            return encode_response(json.loads(response.decode("utf-8")))
+            response_msg = json.loads(response.decode("utf-8"))
+            logger.debug("CTAP2 response: type=%s id=%s payload=%s", response_msg.get("type"), response_msg.get("id"), json.dumps(response_msg.get("payload"))[:500])
+            return encode_response(response_msg)
         except (ValueError, KeyError) as exc:
             logger.exception("failed to encode relay response: %s", exc)
             return error_response(CTAP2_ERR_INVALID_COMMAND)
@@ -148,7 +164,7 @@ async def _run(config: Config, *, client_factory=None) -> None:
 def main(argv: list[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
     if args.command == "pair":
-        return _run_pair(no_qr=args.no_qr)
+        return _run_pair(no_qr=args.no_qr, config_path=args.config)
     logging.basicConfig(
         level=logging.DEBUG if args.verbose else logging.INFO,
         format="%(asctime)s %(levelname)s %(name)s: %(message)s",

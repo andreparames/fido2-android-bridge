@@ -13,6 +13,7 @@ dependencies = [
     "cryptography>=42",
     "centrifuge-python>=0.6",
     "segno>=1.5",
+    "tomlkit>=0.11",
 ]
 
 [project.optional-dependencies]
