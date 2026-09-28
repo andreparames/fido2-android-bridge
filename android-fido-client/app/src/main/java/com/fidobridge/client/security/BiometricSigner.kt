@@ -1,6 +1,7 @@
 package com.fidobridge.client.security
 
 import androidx.biometric.BiometricPrompt
+import com.fidobridge.client.ctap.Ctap2Processor
 import java.security.Signature
 
 class BiometricSigner(
@@ -20,7 +21,7 @@ class BiometricSigner(
         authenticator.authenticate(
             crypto = crypto,
             title = PROMPT_TITLE,
-            subtitle = rpId,
+            subtitle = promptSubtitle(rpId),
             onResult = { authResult ->
                 authResult.fold(
                     onSuccess = { authorized ->
@@ -33,6 +34,9 @@ class BiometricSigner(
             }
         )
     }
+
+    private fun promptSubtitle(rpId: String): String =
+        if (rpId == Ctap2Processor.DUMMY_RP_ID) DUMMY_PROBE_SUBTITLE else rpId
 
     private fun produceSignature(
         authorized: BiometricPrompt.CryptoObject?,
@@ -50,5 +54,6 @@ class BiometricSigner(
 
     companion object {
         private const val PROMPT_TITLE = "WebAuthn sign-in"
+        private const val DUMMY_PROBE_SUBTITLE = "Allow a website to use this authenticator?"
     }
 }

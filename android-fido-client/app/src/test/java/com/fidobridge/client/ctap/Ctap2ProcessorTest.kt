@@ -190,6 +190,26 @@ class Ctap2ProcessorTest {
         assertEquals(39, errorCode(response))
     }
 
+    @Test
+    fun `dummy rp makeCredential probe is answered but not persisted`() {
+        val store = FakeCredentialStore()
+        val keyGen = FakeKeyGenerator()
+        val processor = Ctap2Processor(store, keyGen, FakeSigner())
+
+        val userId = Base64.encodeStandard("dummy".toByteArray())
+        val response = processSync(
+            processor,
+            request(
+                "makeCredential", "req-dummy",
+                """{"clientDataHash":"$clientDataHashB64","rpId":".dummy","user":{"id":"$userId","name":"dummy","displayName":"dummy"}}"""
+            )
+        )
+        val env = parseEnvelope(response)
+
+        assertEquals("makeCredentialResult", env["type"]!!.jsonPrimitive.content)
+        assertEquals(0, store.credentials.size)
+    }
+
     private class FakeCredentialStore : CredentialStore {
         val credentials = mutableListOf<StoredCredential>()
 

@@ -2,6 +2,7 @@ package com.fidobridge.client.security
 
 import androidx.biometric.BiometricPrompt
 import androidx.test.ext.junit.runners.AndroidJUnit4
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -32,6 +33,18 @@ class BiometricSignerTest {
         signer.sign("example.com", "hello".toByteArray(), alias) {}
 
         assertTrue(authenticator.lastSubtitle!!.contains("example.com"))
+    }
+
+    @Test
+    fun `dummy rp probe uses a generic subtitle and never leaks the dummy rpId`() {
+        val manager = KeystoreManager().apply { getOrCreateSigningKey(alias) }
+        val authenticator = FakeBiometricAuthenticator(fail = true)
+        val signer = BiometricSigner(manager, authenticator)
+
+        signer.sign(".dummy", "hello".toByteArray(), alias) {}
+
+        assertTrue(authenticator.lastSubtitle!!.contains("website"))
+        assertFalse(authenticator.lastSubtitle!!.contains(".dummy"))
     }
 
     private class FakeBiometricAuthenticator(

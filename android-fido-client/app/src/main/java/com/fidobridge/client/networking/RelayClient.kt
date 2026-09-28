@@ -42,6 +42,8 @@ class RelayClient(
     private val disconnectChannel = Channel<Unit>(Channel.BUFFERED)
     val disconnections: Flow<Unit> = disconnectChannel.receiveAsFlow()
 
+    private val sentIds = ReplayCache()
+
     init {
         transport.setListener(object : RelayTransport.Listener {
             override fun onPublication(data: ByteArray) = handlePublication(data)
@@ -67,10 +69,20 @@ class RelayClient(
         val sealed = cipher.encrypt(payload)
         val wire = WireMessage(channelId, sealed.nonce, sealed.ciphertext, sealed.tag)
         val encoded = MessageCodec.encode(wire).toByteArray()
+        recordSentId(payload)
         transport.publish(encoded) { error ->
             if (error != null) alertChannel.trySend(Unit)
         }
         return true
+    }
+
+    private fun recordSentId(plaintext: ByteArray) {
+        val id = try {
+            json.decodeFromString(PlaintextEnvelope.serializer(), plaintext.decodeToString()).id
+        } catch (e: Exception) {
+            return
+        }
+        if (id.isNotBlank()) sentIds.isReplay(id)
     }
 
     fun close() {
@@ -107,6 +119,13 @@ class RelayClient(
         } catch (e: Exception) {
             Log.w(TAG, "publication dropped: bad envelope (${e.message})")
             alertChannel.trySend(Unit)
+            return
+        }
+
+        // Skip our own published message echoed back by the relay (Centrifugo
+        // publishes back to all subscribers, including the publisher).
+        if (envelope.id.isNotBlank() && sentIds.contains(envelope.id)) {
+            Log.d(TAG, "skipping own echo id=${envelope.id}")
             return
         }
 

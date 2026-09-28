@@ -23,6 +23,17 @@ class ReplayCacheTest {
     }
 
     @Test
+    fun `contains checks membership without recording`() {
+        val cache = ReplayCache()
+
+        assertFalse(cache.contains("id-1"))
+        cache.isReplay("id-1")
+
+        assertTrue(cache.contains("id-1"))
+        assertFalse(cache.contains("id-2"))
+    }
+
+    @Test
     fun `evicts least recently used entry past capacity`() {
         val cache = ReplayCache(2)
         cache.isReplay("a")

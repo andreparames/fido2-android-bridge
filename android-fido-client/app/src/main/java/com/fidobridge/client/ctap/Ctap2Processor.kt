@@ -100,15 +100,18 @@ class Ctap2Processor(
 
         val generated = keyGenerator.generate()
         val userHandle = decodeCredentialId(payload.user.id)
-        credentialStore.add(
-            StoredCredential(
-                rpId = payload.rpId,
-                alias = generated.alias,
-                credentialId = generated.credentialId,
-                publicKey = generated.publicKey,
-                userHandle = userHandle
+        val isDummyProbe = payload.rpId == DUMMY_RP_ID
+        if (!isDummyProbe) {
+            credentialStore.add(
+                StoredCredential(
+                    rpId = payload.rpId,
+                    alias = generated.alias,
+                    credentialId = generated.credentialId,
+                    publicKey = generated.publicKey,
+                    userHandle = userHandle
+                )
             )
-        )
+        }
 
         val cosePublicKey = CoseKey.encode(generated.publicKey)
         val authData = AuthenticatorDataBuilder.buildMakeCredential(payload.rpId, generated.credentialId, cosePublicKey)
@@ -204,5 +207,9 @@ class Ctap2Processor(
         private const val TYPE_PING = "ping"
         private const val ALG_ES256 = -7
         private const val CLIENT_DATA_HASH_BYTES = 32
+
+        // Chromium's reserved relying party id used to solicit a touch for
+        // authenticator selection; the client discards the result.
+        const val DUMMY_RP_ID = ".dummy"
     }
 }

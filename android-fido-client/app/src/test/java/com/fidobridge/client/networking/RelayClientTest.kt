@@ -131,6 +131,34 @@ class RelayClientTest {
     }
 
     @Test
+    fun `own published echo is skipped without publishing a replay error`() = runBlocking {
+        val transport = FakeRelayTransport()
+        val client = relayClient(transport)
+        val received = mutableListOf<ByteArray>()
+        val collector = launch { client.inbound.collect { received.add(it) } }
+
+        client.connect()
+
+        val response = envelope("assertionResult", "id-echo")
+        client.send(response)
+        val publishedAfterSend = transport.published.size
+        assertEquals(1, publishedAfterSend)
+
+        // Centrifugo echoes the phone's own publication back to it.
+        transport.simulatePublication(wire(response))
+
+        // No new outbound message (no replay "operation denied" error).
+        withTimeout(5000) { while (transport.published.size > publishedAfterSend) yield() }
+        assertEquals(publishedAfterSend, transport.published.size)
+
+        // And the echo is not surfaced as a new inbound request.
+        val inbound = withTimeoutOrNull(500) { client.inbound.first() }
+        assertNull(inbound)
+
+        collector.cancel()
+    }
+
+    @Test
     fun `disconnect emits a disconnection and updates state`() = runBlocking {
         val transport = FakeRelayTransport()
         val client = relayClient(transport)

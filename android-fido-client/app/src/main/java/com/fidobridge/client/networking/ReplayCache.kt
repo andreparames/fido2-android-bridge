@@ -13,4 +13,7 @@ class ReplayCache(private val capacity: Int = 512) {
         seen[id] = Unit
         return false
     }
+
+    @Synchronized
+    fun contains(id: String): Boolean = seen.containsKey(id)
 }
