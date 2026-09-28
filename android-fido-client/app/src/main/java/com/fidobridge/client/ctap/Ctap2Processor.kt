@@ -53,7 +53,7 @@ class Ctap2Processor(
 
         val registered = credentialStore.findForRpId(payload.rpId)
         val chosen = resolveCredential(payload.rpId, registered, payload.allowCredentials)
-            ?: return onResult(Result.success(buildError(envelope.id, Ctap2Status.CTAP2_ERR_OPERATION_DENIED)))
+            ?: return onResult(Result.success(buildError(envelope.id, Ctap2Status.CTAP2_ERR_NO_CREDENTIALS)))
 
         val authData = AuthenticatorDataBuilder.buildAssertion(payload.rpId)
         val dataToSign = authData + clientDataHash

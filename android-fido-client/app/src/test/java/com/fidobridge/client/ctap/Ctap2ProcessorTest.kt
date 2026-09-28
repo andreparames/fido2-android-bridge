@@ -99,7 +99,7 @@ class Ctap2ProcessorTest {
     }
 
     @Test
-    fun `rpId mismatch returns operation denied`() {
+    fun `rpId mismatch returns no credentials`() {
         val store = FakeCredentialStore()
         val keyGen = FakeKeyGenerator()
         val processor = Ctap2Processor(store, keyGen, FakeSigner())
@@ -111,11 +111,11 @@ class Ctap2ProcessorTest {
             request("getAssertion", "req-3", """{"clientDataHash":"$clientDataHashB64","rpId":"evil.com"}""")
         )
 
-        assertEquals(39, errorCode(response))
+        assertEquals(46, errorCode(response))
     }
 
     @Test
-    fun `unknown allowCredential returns operation denied`() {
+    fun `unknown allowCredential returns no credentials`() {
         val store = FakeCredentialStore()
         val keyGen = FakeKeyGenerator()
         val processor = Ctap2Processor(store, keyGen, FakeSigner())
@@ -131,11 +131,11 @@ class Ctap2ProcessorTest {
             )
         )
 
-        assertEquals(39, errorCode(response))
+        assertEquals(46, errorCode(response))
     }
 
     @Test
-    fun `empty allowCredentials with multiple credentials returns operation denied`() {
+    fun `empty allowCredentials with multiple credentials returns no credentials`() {
         val store = FakeCredentialStore()
         val keyGen = FakeKeyGenerator()
         val processor = Ctap2Processor(store, keyGen, FakeSigner())
@@ -149,7 +149,7 @@ class Ctap2ProcessorTest {
             request("getAssertion", "req-5", """{"clientDataHash":"$clientDataHashB64","rpId":"example.com"}""")
         )
 
-        assertEquals(39, errorCode(response))
+        assertEquals(46, errorCode(response))
     }
 
     @Test
