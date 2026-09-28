@@ -318,7 +318,14 @@ class UhidDevice:
     def _on_output(self, output: UhidOutputEvent) -> None:
         if output.rtype != UHID_OUTPUT_REPORT:
             return
-        report = output.data[:64]
+        data = output.data
+        # hidraw delivers one leading report-id byte (0x00 for unnumbered
+        # reports) in front of the CTAPHID report; Chrome sends it, while
+        # some clients (python-fido2) omit it. Strip it when present so the
+        # framing parser sees the 64-byte report starting at the CID.
+        if len(data) > 64 and data[0] == 0x00:
+            data = data[1:]
+        report = data[:64]
         if len(report) != 64:
             report = report.ljust(64, b"\x00")
         responses = self._session.handle_report(report)

@@ -49,7 +49,12 @@ ERR_OTHER = 0x7F
 STATUS_PROCESSING = 0x01
 STATUS_UP_NEEDED = 0x02
 
-INIT_NONCE_LEN = 17
+# CTAPHID spec: INIT nonce is 8 bytes; the reply appends the 4-byte channel id
+# and a 5-byte version/capabilities block (protocol, major, minor, build, caps).
+INIT_NONCE_LEN = 8
+CTAPHID_VERSION = 0x02
+CAPABILITY_WINK = 0x01
+CAPABILITY_CBOR = 0x02
 
 _INIT_DATA_LEN = REPORT_SIZE - 7  # 57
 _CONT_DATA_LEN = REPORT_SIZE - 5  # 59
@@ -288,10 +293,16 @@ class CtapHidSession:
             return [build_error(packet.cid, ERR_INVALID_CMD)]
         new_cid = self._allocator.alloc()
         self._channels[new_cid] = _FragmentedReader(new_cid)
-        # CTAPHID spec: the device MUST echo the host's nonce (17 bytes) in the
+        # CTAPHID spec: the device MUST echo the host's nonce (8 bytes) in the
         # INIT response; Chrome and libfido2 drop the device if it does not.
+        # Response payload is 17 bytes: nonce(8) + channel id(4) +
+        # protocol version(1) + major(1) + minor(1) + build(1) + capabilities(1).
         nonce = packet.data[:INIT_NONCE_LEN].ljust(INIT_NONCE_LEN, b"\x00")
-        payload = nonce + new_cid.to_bytes(4, "big")
+        payload = (
+            nonce
+            + new_cid.to_bytes(4, "big")
+            + bytes([CTAPHID_VERSION, 0x01, 0x00, 0x00, CAPABILITY_CBOR])
+        )
         return [build_init(BROADCAST_CID, CMD_INIT, len(payload), payload)]
 
     def _handle_cont_packet(self, packet: CtaphidContPacket) -> list[bytes]:

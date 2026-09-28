@@ -142,9 +142,9 @@ def test_broadcast_init_allocates_fresh_cid_and_echoes_nonce() -> None:
     )
     packet = _parse_one(responses)
     assert packet.cmd == CMD_INIT
-    assert packet.bcnt == INIT_NONCE_LEN + 4
+    assert packet.bcnt == INIT_NONCE_LEN + 9
     assert packet.data[:INIT_NONCE_LEN] == nonce
-    new_cid = int.from_bytes(packet.data[INIT_NONCE_LEN:], "big")
+    new_cid = int.from_bytes(packet.data[INIT_NONCE_LEN : INIT_NONCE_LEN + 4], "big")
     assert new_cid != 0 and new_cid != BROADCAST_CID
     assert new_cid in session.channels
 
@@ -155,7 +155,7 @@ def test_init_without_nonce_source_still_allocates() -> None:
         build_init(BROADCAST_CID, CMD_INIT, INIT_NONCE_LEN, os.urandom(INIT_NONCE_LEN))
     )
     packet = _parse_one(responses)
-    assert len(packet.data) == INIT_NONCE_LEN + 4
+    assert len(packet.data) == INIT_NONCE_LEN + 9
 
 
 def test_non_broadcast_init_is_rejected() -> None:
@@ -183,7 +183,7 @@ def _established_session() -> tuple[CtapHidSession, int]:
     session = CtapHidSession()
     responses = session.handle_report(build_init(BROADCAST_CID, CMD_INIT, 8, b"01234567"))
     packet = _parse_one(responses)
-    cid = int.from_bytes(packet.data[INIT_NONCE_LEN:], "big")
+    cid = int.from_bytes(packet.data[INIT_NONCE_LEN : INIT_NONCE_LEN + 4], "big")
     return session, cid
 
 

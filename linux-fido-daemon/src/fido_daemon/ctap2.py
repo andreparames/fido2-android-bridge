@@ -47,6 +47,7 @@ def get_info_response() -> bytes:
         1: ["FIDO_2_0", "FIDO_2_1"],
         3: AAGUID,
         4: {"up": True, "uv": True, "rk": True, "clientPin": False},
+        6: [1],
         10: [{"type": "public-key", "alg": COSE_ES256}],
     }
     return bytes([CTAP2_OK]) + cbor.encode(info)
