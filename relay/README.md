@@ -21,11 +21,31 @@ state, and no access to the rest of the host filesystem.
 
 ```
 relay/
-  config.json          Centrifugo config (in-memory, WebSocket-only, token auth, TLS)
+  config.json          Centrifugo config (secrets, TLS, gitignored)
   centrifugo.service   systemd unit with the RootDirectory cage
+  Dockerfile           Centrifugo container for Fly.io
+  fly.toml             Fly.io app config
+  fly-config.json      Centrifugo config with env var placeholders (no TLS)
+  setup.sh             One-command Fly.io deployment
 ```
 
-## Setup
+## Deploy to Fly.io (free tier)
+
+Fastest path — no server to manage, TLS handled automatically:
+
+```bash
+# Prerequisites: fly auth login
+cd relay
+./setup.sh
+```
+
+The script generates secrets, deploys Centrifugo, and prints everything you
+need to configure the daemon and Android app (relay URL, connection JWT,
+session key instructions).
+
+See also `ANDROID_PLAN.md` §12 and `DAEMON_PLAN.md` for the full client setup.
+
+## Self-hosted setup
 
 ### 1. Generate secrets
 

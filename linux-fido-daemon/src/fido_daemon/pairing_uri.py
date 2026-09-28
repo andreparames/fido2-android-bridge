@@ -1,11 +1,12 @@
 """Pairing URI formatter/parser per PROTOCOL.md §2.
 
 ABNF:
-    fidobridge://pair?channel=<32_lowercase_hex>&key=<base64url_32byte>[&v=1]
+    fidobridge://pair?channel=<32_lowercase_hex>&key=<base64url_32byte>[&token=<jwt>][&v=2]
 
-`key` is base64url, unpadded; `channel` is 32 lowercase hex chars; `v` is the
-optional protocol version (default 1). Rejects missing/duplicate/unknown
-params, non-hex channel, wrong key length, and version mismatch.
+`key` is base64url, unpadded; `channel` is 32 lowercase hex chars; `token` is
+the optional Centrifugo connection JWT; `v` is the optional protocol version
+(default 1, current 2). Rejects missing/duplicate/unknown params, non-hex
+channel, wrong key length, and version mismatch.
 """
 
 from __future__ import annotations
@@ -25,7 +26,7 @@ from fido_daemon.pairing import (
 )
 
 _CHANNEL_PATTERN = re.compile(r"^[0-9a-f]{32}$")
-_ALLOWED_PARAMS = frozenset({"channel", "key", "v"})
+_ALLOWED_PARAMS = frozenset({"channel", "key", "token", "v"})
 
 
 @dataclass(frozen=True)
@@ -33,6 +34,7 @@ class ParsedPairing:
     channel_hex: str
     session_key: bytes
     version: int
+    relay_token: str | None = None
 
     @property
     def channel_id(self) -> str:
@@ -56,7 +58,10 @@ def _b64url_decode(value: str) -> bytes:
 
 
 def format_pairing_uri(pairing: Pairing) -> str:
-    return f"{PAIRING_SCHEME}?channel={pairing.channel_hex}&key={_b64url_encode(pairing.session_key)}"
+    uri = f"{PAIRING_SCHEME}?channel={pairing.channel_hex}&key={_b64url_encode(pairing.session_key)}"
+    if pairing.relay_token:
+        uri += f"&token={pairing.relay_token}"
+    return uri
 
 
 def parse_pairing_uri(uri: str) -> ParsedPairing:
@@ -96,4 +101,11 @@ def parse_pairing_uri(uri: str) -> ParsedPairing:
         if version != PROTOCOL_VERSION:
             raise ValueError(f"unsupported protocol version: {version}")
 
-    return ParsedPairing(channel_hex=channel_hex, session_key=session_key, version=version)
+    relay_token = params.get("token") or None
+
+    return ParsedPairing(
+        channel_hex=channel_hex,
+        session_key=session_key,
+        version=version,
+        relay_token=relay_token,
+    )

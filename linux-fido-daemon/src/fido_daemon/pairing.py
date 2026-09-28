@@ -23,6 +23,7 @@ CHANNEL_BYTES = 16
 class Pairing:
     session_key: bytes
     channel_hex: str
+    relay_token: str | None = None
 
     def __post_init__(self) -> None:
         if len(self.session_key) != KEY_BYTES:

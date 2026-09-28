@@ -1,7 +1,6 @@
 package com.fidobridge.client.networking
 
 import android.util.Log
-import com.fidobridge.client.BuildConfig
 import io.github.centrifugal.centrifuge.Client
 import io.github.centrifugal.centrifuge.ConnectionTokenEvent
 import io.github.centrifugal.centrifuge.ConnectionTokenGetter
@@ -30,9 +29,9 @@ class DiagnosticLogSink @Inject constructor() {
     private var client: Client? = null
     private var sub: Subscription? = null
 
-    fun start(channelId: String) {
+    fun start(channelId: String, relayUrl: String, relayToken: String?) {
         if (client != null) return
-        val token = BuildConfig.RELAY_TOKEN
+        val token = relayToken ?: ""
         val opts = Options().apply {
             this.token = token
             tokenGetter = object : ConnectionTokenGetter() {
@@ -41,7 +40,7 @@ class DiagnosticLogSink @Inject constructor() {
                 }
             }
         }
-        val c = Client(BuildConfig.RELAY_URL, opts, object : EventListener() {
+        val c = Client(relayUrl, opts, object : EventListener() {
             override fun onConnected(client: Client, event: ConnectedEvent) {
                 Log.i(TAG, "diagnostic log sink connected")
                 sub?.subscribe()

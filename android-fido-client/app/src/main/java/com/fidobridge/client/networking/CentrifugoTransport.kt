@@ -15,17 +15,17 @@ import io.github.centrifugal.centrifuge.Subscription
 import io.github.centrifugal.centrifuge.SubscriptionEventListener
 import io.github.centrifugal.centrifuge.TokenCallback
 import io.github.centrifugal.centrifuge.UnauthorizedException
-import com.fidobridge.client.BuildConfig
 import kotlinx.serialization.json.Json
 
 class CentrifugoTransport(
     private val endpoint: String,
-    private val channel: String
+    private val channel: String,
+    relayToken: String? = null
 ) : RelayTransport {
 
     private var listener: RelayTransport.Listener? = null
 
-    private val token: String = BuildConfig.RELAY_TOKEN
+    private val token: String = relayToken ?: ""
 
     private val options = Options().apply {
         name = CLIENT_NAME

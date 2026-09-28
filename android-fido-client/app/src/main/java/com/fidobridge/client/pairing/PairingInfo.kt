@@ -5,5 +5,6 @@ import com.fidobridge.client.crypto.SessionKey
 data class PairingInfo(
     val channel: String,
     val channelId: String,
-    val key: SessionKey
+    val key: SessionKey,
+    val relayToken: String? = null
 )

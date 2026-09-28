@@ -22,7 +22,7 @@ class BridgePipeline(
     private val sessionKeyStore: SessionKeyStore,
     private val relayUrl: String,
     private val processor: Ctap2Processor,
-    private val transportFactory: (endpoint: String, channel: String) -> RelayTransport,
+    private val transportFactory: (endpoint: String, channel: String, relayToken: String?) -> RelayTransport,
     private val logSink: DiagnosticLogSink? = null
 ) {
 
@@ -38,14 +38,15 @@ class BridgePipeline(
         if (client != null) return
         val key = sessionKeyStore.loadKey()
         val channelId = sessionKeyStore.loadChannelId()
+        val relayToken = sessionKeyStore.loadRelayToken()
         Log.i(TAG, "pipeline.start key=${key != null} channelId=$channelId relay=$relayUrl")
         if (key == null) return fail("not paired: missing session key")
         if (channelId == null) return fail("not paired: missing channel")
-        logSink?.start(channelId)
+        logSink?.start(channelId, relayUrl, relayToken)
         logSink?.log("pipeline.start channel=$channelId")
 
         val cipher = AesGcmCipher(key)
-        val transport = transportFactory(relayUrl, Protocol.relayChannel(channelId))
+        val transport = transportFactory(relayUrl, Protocol.relayChannel(channelId), relayToken)
         val relay = RelayClient(transport, channelId, cipher)
         client = relay
 

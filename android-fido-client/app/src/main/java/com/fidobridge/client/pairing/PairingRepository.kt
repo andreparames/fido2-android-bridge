@@ -20,6 +20,7 @@ class PairingRepository(private val sessionKeyStore: SessionKeyStore) {
     fun pair(info: PairingInfo): Result<Unit> {
         return try {
             sessionKeyStore.save(info.key, info.channelId)
+            sessionKeyStore.saveRelayToken(info.relayToken)
             Result.success(Unit)
         } catch (e: Exception) {
             Result.failure(e)
@@ -68,10 +69,13 @@ class PairingRepository(private val sessionKeyStore: SessionKeyStore) {
             throw MalformedPairingUriException("key must be ${SessionKey.KEY_BYTES} bytes")
         }
 
+        val relayToken = values["token"]?.takeIf { it.isNotEmpty() }
+
         return PairingInfo(
             channel = channel,
             channelId = deriveChannelId(channel),
-            key = SessionKey.fromBytes(keyBytes)
+            key = SessionKey.fromBytes(keyBytes),
+            relayToken = relayToken
         )
     }
 
@@ -103,6 +107,6 @@ class PairingRepository(private val sessionKeyStore: SessionKeyStore) {
 
     companion object {
         private val channelRegex = Regex("^[0-9a-f]{32}$")
-        private val ALLOWED_PARAMS = setOf("channel", "key")
+        private val ALLOWED_PARAMS = setOf("channel", "key", "token")
     }
 }

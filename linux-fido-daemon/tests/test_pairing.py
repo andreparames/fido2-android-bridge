@@ -65,8 +65,9 @@ def test_parse_pairing_uri_roundtrip() -> None:
     parsed = parse_pairing_uri(format_pairing_uri(_pairing()))
     assert parsed.channel_hex == CHANNEL_HEX
     assert parsed.session_key == KEY
-    assert parsed.version == 1
+    assert parsed.version == 2
     assert parsed.channel_id == derive_channel_id(CHANNEL_HEX)
+    assert parsed.relay_token is None
 
 
 def test_parse_rejects_wrong_scheme() -> None:
@@ -116,10 +117,46 @@ def test_parse_rejects_version_mismatch() -> None:
 def test_parse_accepts_default_version() -> None:
     uri = "fidobridge://pair?channel=" + CHANNEL_HEX + "&key=" + KEY_B64URL
     parsed = parse_pairing_uri(uri)
-    assert parsed.version == 1
+    assert parsed.version == 2
 
 
 def test_pair_cli_prints_valid_uri(capsys: pytest.CaptureFixture) -> None:
     assert main(["pair"]) == 0
     out = capsys.readouterr().out.strip()
     assert isinstance(parse_pairing_uri(out), ParsedPairing)
+
+
+def test_format_pairing_uri_includes_token() -> None:
+    token = "eyJhbGciOiJIUzI1NiJ9.test.signature"
+    pairing = Pairing(session_key=KEY, channel_hex=CHANNEL_HEX, relay_token=token)
+    uri = format_pairing_uri(pairing)
+    params = dict(parse_qsl(urlparse(uri).query))
+    assert params["token"] == token
+
+
+def test_format_pairing_uri_omits_token_when_none() -> None:
+    uri = format_pairing_uri(_pairing())
+    params = dict(parse_qsl(urlparse(uri).query))
+    assert "token" not in params
+
+
+def test_parse_pairing_uri_roundtrip_with_token() -> None:
+    token = "eyJhbGciOiJIUzI1NiJ9.test.signature"
+    pairing = Pairing(session_key=KEY, channel_hex=CHANNEL_HEX, relay_token=token)
+    parsed = parse_pairing_uri(format_pairing_uri(pairing))
+    assert parsed.relay_token == token
+    assert parsed.channel_hex == CHANNEL_HEX
+    assert parsed.session_key == KEY
+
+
+def test_parse_pairing_uri_token_optional() -> None:
+    uri = "fidobridge://pair?channel=" + CHANNEL_HEX + "&key=" + KEY_B64URL
+    parsed = parse_pairing_uri(uri)
+    assert parsed.relay_token is None
+
+
+def test_parse_pairing_uri_rejects_empty_token() -> None:
+    uri = "fidobridge://pair?channel=" + CHANNEL_HEX + "&key=" + KEY_B64URL + "&token="
+    parsed = parse_pairing_uri(uri)
+    # Empty token is treated as absent (no token).
+    assert parsed.relay_token is None

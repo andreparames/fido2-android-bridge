@@ -41,7 +41,7 @@ def test_parse_get_assertion() -> None:
     )
     msg = parse_request(CMD_GET_ASSERTION, data, request_id="test-id")
     assert msg.to_dict()["type"] == "getAssertion"
-    assert msg.to_dict()["version"] == 1
+    assert msg.to_dict()["version"] == 2
     assert msg.id == "test-id"
     payload = msg.to_dict()["payload"]
     assert payload["clientDataHash"] == _b64(CLIENT_DATA_HASH)

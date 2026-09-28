@@ -22,8 +22,11 @@ class PairingRepositoryTest {
     private fun uri(
         channel: String = this.channel,
         key: String = this.keyEncoded,
+        token: String? = null,
         v: String? = null
-    ): String = "fidobridge://pair?channel=$channel&key=$key" + (v?.let { "&v=$it" } ?: "")
+    ): String = "fidobridge://pair?channel=$channel&key=$key" +
+        (token?.let { "&token=$it" } ?: "") +
+        (v?.let { "&v=$it" } ?: "")
 
     @Test
     fun `valid uri parses into pairing info with derived channel_id`() {
@@ -87,7 +90,7 @@ class PairingRepositoryTest {
 
     @Test
     fun `mismatched version is rejected with VersionMismatchException`() {
-        val result = repo().parseUri(uri(v = "2"))
+        val result = repo().parseUri(uri(v = "99"))
 
         assertTrue(result.isFailure)
         assertTrue(result.exceptionOrNull() is VersionMismatchException)
@@ -132,5 +135,59 @@ class PairingRepositoryTest {
         repository.pair(info)
 
         assertTrue(repository.isPaired)
+    }
+
+    @Test
+    fun `token is parsed from uri`() {
+        val result = repo().parseUri(uri(token = "my-jwt-token"))
+
+        assertTrue(result.isSuccess)
+        val info = result.getOrThrow()
+        assertEquals("my-jwt-token", info.relayToken)
+    }
+
+    @Test
+    fun `token defaults to null when absent`() {
+        val result = repo().parseUri(uri())
+
+        assertTrue(result.isSuccess)
+        val info = result.getOrThrow()
+        assertEquals(null, info.relayToken)
+    }
+
+    @Test
+    fun `empty token is treated as absent`() {
+        val result = repo().parseUri(uri(token = ""))
+
+        assertTrue(result.isSuccess)
+        val info = result.getOrThrow()
+        assertEquals(null, info.relayToken)
+    }
+
+    @Test
+    fun `store round-trips the relay token`() {
+        val sessionKeyStore = store()
+        val repository = PairingRepository(sessionKeyStore)
+        val info = repository.parseUri(uri(token = "test-token")).getOrThrow()
+
+        repository.pair(info)
+
+        assertEquals("test-token", sessionKeyStore.loadRelayToken())
+    }
+
+    @Test
+    fun `store clears relay token when absent`() {
+        val sessionKeyStore = store()
+        val repository = PairingRepository(sessionKeyStore)
+
+        // First pair with a token
+        val withToken = repository.parseUri(uri(token = "old-token")).getOrThrow()
+        repository.pair(withToken)
+        assertEquals("old-token", sessionKeyStore.loadRelayToken())
+
+        // Then pair without a token
+        val withoutToken = repository.parseUri(uri()).getOrThrow()
+        repository.pair(withoutToken)
+        assertEquals(null, sessionKeyStore.loadRelayToken())
     }
 }

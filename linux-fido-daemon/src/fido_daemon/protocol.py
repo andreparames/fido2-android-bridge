@@ -7,7 +7,7 @@ breaking changes.
 
 from __future__ import annotations
 
-PROTOCOL_VERSION = 1
+PROTOCOL_VERSION = 2
 
 # Message types (PROTOCOL.md §4.1 / §5).
 TYPE_GET_ASSERTION = "getAssertion"

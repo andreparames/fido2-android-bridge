@@ -36,8 +36,19 @@ class EncryptedSessionKeyStore(context: Context) : SessionKeyStore {
 
     override fun loadChannelId(): String? = prefs.getString(CHANNEL_ID_FIELD, null)
 
+    override fun saveRelayToken(token: String?) {
+        if (token.isNullOrEmpty()) {
+            prefs.edit().remove(RELAY_TOKEN_FIELD).apply()
+        } else {
+            prefs.edit().putString(RELAY_TOKEN_FIELD, token).apply()
+        }
+    }
+
+    override fun loadRelayToken(): String? = prefs.getString(RELAY_TOKEN_FIELD, null)
+
     companion object {
         private const val KEY_FIELD = "session_key"
         private const val CHANNEL_ID_FIELD = "channel_id"
+        private const val RELAY_TOKEN_FIELD = "relay_token"
     }
 }

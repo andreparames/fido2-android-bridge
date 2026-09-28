@@ -20,13 +20,17 @@ phone's TEE/StrongBox.
 
 ## 1. Versioning
 
-The protocol is versioned as a whole (`PROTOCOL_VERSION = 1`). Both peers must
+The protocol is versioned as a whole (`PROTOCOL_VERSION = 2`). Both peers must
 agree on the version or refuse to communicate. The version travels in the
 plaintext header (Section 4) and is also embedded in the pairing URI
 (optional, `v` parameter).
 
 Schema constants are frozen at the emitted version; any breaking change bumps
 the version rather than mutating a published field.
+
+Version 2 adds the optional `token` parameter to the pairing URI, carrying a
+Centrifugo connection JWT so the relay token can rotate without rebuilding
+clients.
 
 ---
 
@@ -39,10 +43,11 @@ terminal string, scanned/pasted into the Android app.
 
 ```abnf
 pairing-uri = "fidobridge://pair" "?" pair-params
-pair-params = "channel=" channel-id "&" "key=" b64-key ["&" "v=" version]
+pair-params = "channel=" channel-id "&" "key=" b64-key ["&" "token=" token] ["&" "v=" version]
 channel-id  = 32 LCHEXDIG      ; 16 bytes, 128-bit channel identifier
 b64-key     = 43 BASE64URL     ; 32 bytes of key material, base64url, no padding
-version     = "1"
+token       = 1*( ALPHA / DIGIT / "-" / "_" / "." ) ; Centrifugo connection JWT, compact serialization
+version     = "1" / "2"
 LCHEXDIG    = %x30-39 / %x61-66 ; lowercase hex digit: 0-9 a-f
 ```
 
@@ -55,6 +60,7 @@ padding**, per the "no URL-safe vs standard mixing" rule in both plans.
 |-----------|----------|----------------|---------|
 | `channel` | hex (lowercase) | 16 | Channel identifier |
 | `key`     | base64url, unpadded | 32 | AES-256 session key `K_session` |
+| `token`   | JWT compact serialization | variable | Optional Centrifugo connection token |
 | `v`       | decimal string | – | Protocol version (optional, default `1`) |
 
 ### 2.3 Validation rules
@@ -63,7 +69,9 @@ padding**, per the "no URL-safe vs standard mixing" rule in both plans.
 - `key` must decode to exactly 32 bytes.
 - `channel` must be exactly 32 **lowercase** hex chars (`[0-9a-f]{32}`); uppercase
   hex is rejected, per the `channel_id` derivation in §3.2.
-- If `v` is present and not equal to `PROTOCOL_VERSION` (`1`) → reject with
+- `token` is optional; if present, must be a non-empty string (a Centrifugo
+  connection JWT signed with the relay's `hmac_secret_key`).
+- If `v` is present and not equal to `PROTOCOL_VERSION` (`2`) → reject with
   `VERSION_MISMATCH` (0x7F), mirroring the version check in §4.1. Absent `v`
   defaults to `1`.
 - Unknown/duplicate parameters → reject (fail-safe, no silent nulls).
@@ -163,7 +171,7 @@ multiple in-flight operations on one WebSocket connection.
 
 | Field     | Type   | Description |
 |-----------|--------|-------------|
-| `version` | int    | `PROTOCOL_VERSION` (currently `1`). Mismatch → abort with `VERSION_MISMATCH`. |
+| `version` | int    | `PROTOCOL_VERSION` (currently `2`). Mismatch → abort with `VERSION_MISMATCH`. |
 | `type`    | string | One of the message types in Section 5. |
 | `id`      | string | UUID correlation id. The response to a request echoes the same `id`. |
 | `payload` | object | Typed body per `type` (Sections 5.1–5.4). |
@@ -179,7 +187,7 @@ multiple in-flight operations on one WebSocket connection.
   "additionalProperties": false,
   "required": ["version", "type", "id", "payload"],
   "properties": {
-    "version": { "const": 1 },
+    "version": { "const": 2 },
     "type": {
       "enum": ["getAssertion", "makeCredential",
                "assertionResult", "makeCredentialResult",
@@ -332,7 +340,7 @@ client with the standard error:
 | 0x26 | `CTAP2_ERR_UNSUPPORTED_ALGORITHM` | `pubKeyCredParams` without a supported algorithm |
 | 0x27 | `CTAP2_ERR_OPERATION_DENIED`  | rpId mismatch, unknown credential, biometric fail/cancel/timeout, exclude match |
 | 0x2C | `CTAP2_ERR_INVALID_OPTION`    | Unsupported `option` value |
-| 0x7F | `VERSION_MISMATCH`            | `version != 1` (implementation-specific, non-CTAP2) |
+| 0x7F | `VERSION_MISMATCH`            | `version != 2` (implementation-specific, non-CTAP2) |
 
 Fail-safe: any local failure on the phone (biometric denial, tag mismatch,
 origin mismatch) maps to `operationDenied` and aborts immediately.

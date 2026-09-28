@@ -84,7 +84,7 @@ object DataModule {
         sessionKeyStore = sessionKeyStore,
         relayUrl = BuildConfig.RELAY_URL,
         processor = processor,
-        transportFactory = { endpoint, channel: String -> CentrifugoTransport(endpoint, channel) as RelayTransport },
+        transportFactory = { endpoint, channel, relayToken -> CentrifugoTransport(endpoint, channel, relayToken) as RelayTransport },
         logSink = logSink
     )
 }

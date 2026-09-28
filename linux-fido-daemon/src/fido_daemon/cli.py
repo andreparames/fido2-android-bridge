@@ -23,7 +23,7 @@ from fido_daemon.ctap2 import (
     error_response,
     get_info_response,
 )
-from fido_daemon.pairing import PairingGenerator
+from fido_daemon.pairing import Pairing, PairingGenerator
 from fido_daemon.pairing_uri import format_pairing_uri
 from fido_daemon.protocol import CTAP2_ERR_INVALID_COMMAND, CTAP2_ERR_OPERATION_DENIED
 from fido_daemon.relay import RelayClient
@@ -44,7 +44,15 @@ def build_parser() -> argparse.ArgumentParser:
 
 
 def _run_pair() -> int:
-    print(format_pairing_uri(PairingGenerator.generate()))
+    config = Config.from_env()
+    pairing = PairingGenerator.generate()
+    # Carry the relay token so the Android client can connect without a rebuild.
+    pairing_with_token = Pairing(
+        session_key=pairing.session_key,
+        channel_hex=pairing.channel_hex,
+        relay_token=config.relay_token or None,
+    )
+    print(format_pairing_uri(pairing_with_token))
     return 0
 
 

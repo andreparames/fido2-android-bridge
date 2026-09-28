@@ -23,7 +23,6 @@ android {
             useSupportLibrary = true
         }
 
-        buildConfigField("String", "RELAY_TOKEN", "\"${escapeForBuildConfig(relayTokenFromPass())}\"")
         buildConfigField(
             "String",
             "RELAY_URL",
@@ -103,17 +102,6 @@ dependencies {
 
     androidTestImplementation(libs.androidx.test.ext.junit)
     androidTestImplementation(libs.androidx.test.runner)
-}
-
-fun relayTokenFromPass(): String {
-    val entry = System.getenv("FIDO_RELAY_PASS_ENTRY") ?: "fidobridge/relay-token"
-    return try {
-        val process = ProcessBuilder("pass", "show", entry).redirectErrorStream(true).start()
-        val token = process.inputStream.bufferedReader().readText().trim()
-        if (process.waitFor() == 0) token else ""
-    } catch (e: Exception) {
-        ""
-    }
 }
 
 fun relayUrl(): String =
