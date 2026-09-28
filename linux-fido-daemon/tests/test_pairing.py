@@ -122,8 +122,9 @@ def test_parse_accepts_default_version() -> None:
 
 def test_pair_cli_prints_valid_uri(capsys: pytest.CaptureFixture) -> None:
     assert main(["pair"]) == 0
-    out = capsys.readouterr().out.strip()
-    assert isinstance(parse_pairing_uri(out), ParsedPairing)
+    out = capsys.readouterr().out
+    uri = out.splitlines()[0].strip()
+    assert isinstance(parse_pairing_uri(uri), ParsedPairing)
 
 
 def test_format_pairing_uri_includes_token() -> None:

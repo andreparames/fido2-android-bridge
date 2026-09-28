@@ -39,11 +39,12 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--uhid", action="store_true", help="expose a virtual FIDO2 HID device (/dev/uhid) for browser WebAuthn")
     parser.add_argument("--verbose", action="store_true")
     subparsers = parser.add_subparsers(dest="command")
-    subparsers.add_parser("pair", help="generate a pairing URI for the Android app")
+    pair_parser = subparsers.add_parser("pair", help="generate a pairing URI for the Android app")
+    pair_parser.add_argument("--no-qr", action="store_true", help="skip terminal QR code output")
     return parser
 
 
-def _run_pair() -> int:
+def _run_pair(no_qr: bool = False) -> int:
     config = Config.from_env()
     pairing = PairingGenerator.generate()
     # Carry the relay token so the Android client can connect without a rebuild.
@@ -52,7 +53,12 @@ def _run_pair() -> int:
         channel_hex=pairing.channel_hex,
         relay_token=config.relay_token or None,
     )
-    print(format_pairing_uri(pairing_with_token))
+    uri = format_pairing_uri(pairing_with_token)
+    print(uri)
+    if not no_qr:
+        import segno
+        qr = segno.make(uri)
+        qr.terminal()
     return 0
 
 
@@ -142,7 +148,7 @@ async def _run(config: Config, *, client_factory=None) -> None:
 def main(argv: list[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
     if args.command == "pair":
-        return _run_pair()
+        return _run_pair(no_qr=args.no_qr)
     logging.basicConfig(
         level=logging.DEBUG if args.verbose else logging.INFO,
         format="%(asctime)s %(levelname)s %(name)s: %(message)s",

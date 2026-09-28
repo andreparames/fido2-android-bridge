@@ -1,5 +1,6 @@
 package com.fidobridge.client.ctap
 
+import com.fidobridge.client.protocol.Protocol
 import com.fidobridge.client.util.Base64
 import com.upokecenter.cbor.CBORObject
 import kotlinx.serialization.json.Json
@@ -17,7 +18,7 @@ class Ctap2ProcessorTest {
     private val fixedSignature = ByteArray(32) { 0x77.toByte() }
 
     private fun request(type: String, id: String, payload: String): ByteArray =
-        """{"version":1,"type":"$type","id":"$id","payload":$payload}""".toByteArray()
+        """{"version":${Protocol.VERSION},"type":"$type","id":"$id","payload":$payload}""".toByteArray()
 
     private fun processSync(processor: Ctap2Processor, request: ByteArray): ByteArray {
         var result: Result<ByteArray>? = null
