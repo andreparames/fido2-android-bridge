@@ -1,13 +1,13 @@
 package com.fidobridge.client.pairing
 
-import com.fidobridge.client.crypto.SessionKey
+import com.fidobridge.client.crypto.NoiseSession
 import com.fidobridge.client.protocol.Protocol
 import com.fidobridge.client.util.Base64
 import java.security.MessageDigest
 
-class PairingRepository(private val sessionKeyStore: SessionKeyStore) {
+class PairingRepository(private val identityStore: IdentityStore) {
 
-    val isPaired: Boolean get() = sessionKeyStore.isPaired
+    val isPaired: Boolean get() = identityStore.isPaired
 
     fun parseUri(uri: String): Result<PairingInfo> {
         return try {
@@ -19,8 +19,12 @@ class PairingRepository(private val sessionKeyStore: SessionKeyStore) {
 
     fun pair(info: PairingInfo): Result<Unit> {
         return try {
-            sessionKeyStore.save(info.key, info.channelId)
-            sessionKeyStore.saveRelayToken(info.relayToken)
+            // The phone's static identity key is generated once and reused
+            // across pairings (it identifies this phone to the daemon).
+            val phonePrivate = identityStore.loadPhoneStaticPrivate()
+                ?: NoiseSession.generateStaticKey()
+            identityStore.savePairing(phonePrivate, info.daemonStaticPublic, info.channelId)
+            identityStore.saveRelayToken(info.relayToken)
             Result.success(Unit)
         } catch (e: Exception) {
             Result.failure(e)
@@ -54,19 +58,19 @@ class PairingRepository(private val sessionKeyStore: SessionKeyStore) {
         }
 
         val channel = values["channel"] ?: throw MalformedPairingUriException("Missing channel")
-        val keyEncoded = values["key"] ?: throw MalformedPairingUriException("Missing key")
+        val pubkeyEncoded = values["pubkey"] ?: throw MalformedPairingUriException("Missing pubkey")
 
         if (!channelRegex.matches(channel)) {
             throw MalformedPairingUriException("channel must be 32 lowercase hex chars")
         }
 
-        val keyBytes = try {
-            Base64.decodeUrl(keyEncoded)
+        val daemonStaticPublic = try {
+            Base64.decodeUrl(pubkeyEncoded)
         } catch (e: IllegalArgumentException) {
-            throw MalformedPairingUriException("Invalid key encoding")
+            throw MalformedPairingUriException("Invalid pubkey encoding")
         }
-        if (keyBytes.size != SessionKey.KEY_BYTES) {
-            throw MalformedPairingUriException("key must be ${SessionKey.KEY_BYTES} bytes")
+        if (daemonStaticPublic.size != NoiseSession.STATIC_KEY_BYTES) {
+            throw MalformedPairingUriException("pubkey must be ${NoiseSession.STATIC_KEY_BYTES} bytes")
         }
 
         val relayToken = values["token"]?.takeIf { it.isNotEmpty() }
@@ -74,7 +78,7 @@ class PairingRepository(private val sessionKeyStore: SessionKeyStore) {
         return PairingInfo(
             channel = channel,
             channelId = deriveChannelId(channel),
-            key = SessionKey.fromBytes(keyBytes),
+            daemonStaticPublic = daemonStaticPublic,
             relayToken = relayToken
         )
     }
@@ -107,6 +111,6 @@ class PairingRepository(private val sessionKeyStore: SessionKeyStore) {
 
     companion object {
         private val channelRegex = Regex("^[0-9a-f]{32}$")
-        private val ALLOWED_PARAMS = setOf("channel", "key", "token")
+        private val ALLOWED_PARAMS = setOf("channel", "pubkey", "token")
     }
 }

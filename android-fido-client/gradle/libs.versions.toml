@@ -18,6 +18,7 @@ cbor = "4.5.2"
 zxing = "4.3.0"
 centrifugeJava = "0.7.0"
 fragment = "1.5.1"
+noiseJava = "49377b6dfc6a1e75740bce2318118291a57c0d6e"
 
 junit = "4.13.2"
 mockk = "1.13.12"
@@ -50,6 +51,7 @@ androidx-security-crypto = { group = "androidx.security", name = "security-crypt
 cbor = { group = "com.upokecenter", name = "cbor", version.ref = "cbor" }
 zxing-android-embedded = { group = "com.journeyapps", name = "zxing-android-embedded", version.ref = "zxing" }
 centrifuge-java = { group = "io.github.centrifugal", name = "centrifuge-java", version.ref = "centrifugeJava" }
+noise-java = { group = "com.github.rweather", name = "noise-java", version.ref = "noiseJava" }
 androidx-fragment = { group = "androidx.fragment", name = "fragment", version.ref = "fragment" }
 
 junit = { group = "junit", name = "junit", version.ref = "junit" }

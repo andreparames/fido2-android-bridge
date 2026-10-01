@@ -1,34 +1,46 @@
 package com.fidobridge.client.networking
 
 import android.util.Log
-import com.fidobridge.client.crypto.AesGcmCipher
-import com.fidobridge.client.crypto.EncryptedMessage
-import com.fidobridge.client.protocol.Ctap2Status
+import com.fidobridge.client.crypto.NoiseSession
 import com.fidobridge.client.protocol.MessageCodec
 import com.fidobridge.client.protocol.PlaintextEnvelope
 import com.fidobridge.client.protocol.Protocol
-import com.fidobridge.client.protocol.WireMessage
+import com.fidobridge.client.protocol.WireEnvelope
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.channels.Channel
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.receiveAsFlow
-import kotlinx.serialization.encodeToString
+import kotlinx.coroutines.launch
 import kotlinx.serialization.json.Json
-import kotlinx.serialization.json.JsonPrimitive
-import kotlinx.serialization.json.buildJsonObject
-import kotlinx.serialization.json.put
+import java.util.concurrent.ConcurrentHashMap
 
+/**
+ * Relay client for the phone (Noise IK initiator, PROTOCOL.md §3/§6).
+ *
+ * On connect it publishes an `ik1` handshake message (retrying until it goes
+ * out); on `ik2` it completes the handshake and `split()`s into transport
+ * cipher states. `data` envelopes carry Noise ciphertext: inbound frames are
+ * decrypted and emitted on [inbound]; outbound frames are encrypted by [send].
+ * Any Noise authentication failure raises a security alert.
+ */
 class RelayClient(
     private val transport: RelayTransport,
     private val channelId: String,
-    private val cipher: AesGcmCipher,
-    private val replayCache: ReplayCache = ReplayCache(),
+    private val phoneStaticPrivate: ByteArray,
+    private val daemonStaticPublic: ByteArray,
     private val json: Json = Json { ignoreUnknownKeys = false }
 ) {
 
     enum class ConnectionState { DISCONNECTED, CONNECTING, CONNECTED }
+
+    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
 
     private val inboundChannel = Channel<ByteArray>(Channel.BUFFERED)
     val inbound: Flow<ByteArray> = inboundChannel.receiveAsFlow()
@@ -42,7 +54,10 @@ class RelayClient(
     private val disconnectChannel = Channel<Unit>(Channel.BUFFERED)
     val disconnections: Flow<Unit> = disconnectChannel.receiveAsFlow()
 
-    private val sentIds = ReplayCache()
+    private val sentWireById = ConcurrentHashMap<String, String>()
+
+    private var session: NoiseSession? = null
+    private var handshakeJob: Job? = null
 
     init {
         transport.setListener(object : RelayTransport.Listener {
@@ -50,9 +65,11 @@ class RelayClient(
 
             override fun onConnected() {
                 _state.value = ConnectionState.CONNECTED
+                startHandshake()
             }
 
             override fun onDisconnected(code: Int, reason: String) {
+                teardownSession()
                 _state.value = ConnectionState.DISCONNECTED
                 disconnectChannel.trySend(Unit)
             }
@@ -64,35 +81,73 @@ class RelayClient(
         transport.connect()
     }
 
+    private fun startHandshake() {
+        val noise = NoiseSession.create(phoneStaticPrivate, daemonStaticPublic)
+        session = noise
+        val encoded = MessageCodec.encode(
+            WireEnvelope(channelId, Protocol.KIND_IK1, noise.createIk1())
+        ).toByteArray()
+        // Publish ik1 immediately, then retry if the handshake stalls (e.g. the
+        // relay echoed it before the subscription was confirmed).
+        publishIk1(encoded)
+        handshakeJob?.cancel()
+        handshakeJob = scope.launch {
+            var attempt = 1
+            while (noise === session && !noise.isReady && attempt < HANDSHAKE_ATTEMPTS) {
+                delay(HANDSHAKE_RETRY_MS)
+                if (noise.isReady) break
+                publishIk1(encoded)
+                attempt++
+            }
+        }
+    }
+
+    private fun publishIk1(encoded: ByteArray) {
+        transport.publish(encoded) { error ->
+            if (error != null) Log.w(TAG, "ik1 publish failed: ${error.message}")
+        }
+    }
+
     fun send(payload: ByteArray): Boolean {
-        if (_state.value != ConnectionState.CONNECTED) return false
-        val sealed = cipher.encrypt(payload)
-        val wire = WireMessage(channelId, sealed.nonce, sealed.ciphertext, sealed.tag)
-        val encoded = MessageCodec.encode(wire).toByteArray()
-        recordSentId(payload)
+        val noise = session ?: return false
+        if (_state.value != ConnectionState.CONNECTED || !noise.isReady) return false
+        val ciphertext = try {
+            noise.encrypt(payload)
+        } catch (e: Exception) {
+            Log.w(TAG, "send failed to encrypt: ${e.message}")
+            alertChannel.trySend(Unit)
+            return false
+        }
+        val encoded = MessageCodec.encode(WireEnvelope(channelId, Protocol.KIND_DATA, ciphertext)).toByteArray()
+        val id = try {
+            json.decodeFromString(PlaintextEnvelope.serializer(), payload.decodeToString()).id
+        } catch (e: Exception) {
+            null
+        }
+        if (!id.isNullOrBlank()) sentWireById[id] = encoded.decodeToString()
         transport.publish(encoded) { error ->
             if (error != null) alertChannel.trySend(Unit)
         }
         return true
     }
 
-    private fun recordSentId(plaintext: ByteArray) {
-        val id = try {
-            json.decodeFromString(PlaintextEnvelope.serializer(), plaintext.decodeToString()).id
-        } catch (e: Exception) {
-            return
-        }
-        if (id.isNotBlank()) sentIds.isReplay(id)
-    }
-
     fun close() {
+        teardownSession()
         transport.disconnect()
         _state.value = ConnectionState.DISCONNECTED
     }
 
+    private fun teardownSession() {
+        handshakeJob?.cancel()
+        handshakeJob = null
+        session?.destroy()
+        session = null
+        sentWireById.clear()
+    }
+
     private fun handlePublication(data: ByteArray) {
         Log.d(TAG, "handlePublication len=${data.size}")
-        val wire = try {
+        val envelope = try {
             MessageCodec.decode(data.decodeToString())
         } catch (e: Exception) {
             Log.w(TAG, "publication dropped: bad wire (${e.message})")
@@ -100,21 +155,52 @@ class RelayClient(
             return
         }
 
-        if (wire.channelId != channelId) {
+        if (envelope.channelId != channelId) {
             Log.w(TAG, "publication dropped: channel mismatch")
             alertChannel.trySend(Unit)
             return
         }
 
+        when (envelope.kind) {
+            Protocol.KIND_IK1 -> {
+                // The phone (initiator) only ever publishes ik1; any ik1 we
+                // receive is our own relay echo.
+                Log.d(TAG, "skipping own ik1 echo")
+            }
+
+            Protocol.KIND_IK2 -> {
+                val noise = session ?: return
+                if (noise.isReady) return
+                try {
+                    noise.receiveIk2(envelope.payload)
+                    Log.d(TAG, "handshake complete")
+                } catch (e: NoiseSession.AuthenticationException) {
+                    Log.w(TAG, "publication dropped: ik2 authentication failed")
+                    alertChannel.trySend(Unit)
+                }
+            }
+
+            Protocol.KIND_DATA -> handleData(envelope, data.decodeToString())
+        }
+    }
+
+    private fun handleData(envelope: WireEnvelope, raw: String) {
+        val noise = session ?: return
+        // Skip our own relay echo BEFORE decrypting: our own publications are
+        // sealed with the sender key and cannot be opened with the receiver key.
+        if (sentWireById.containsValue(raw)) {
+            Log.d(TAG, "skipping own echo")
+            return
+        }
         val plaintext = try {
-            cipher.decrypt(EncryptedMessage(wire.nonce, wire.ciphertext, wire.tag))
-        } catch (e: AesGcmCipher.TagMismatchException) {
-            Log.w(TAG, "publication dropped: GCM tag failure")
+            noise.decrypt(envelope.payload)
+        } catch (e: NoiseSession.AuthenticationException) {
+            Log.w(TAG, "publication dropped: Noise authentication failed")
             alertChannel.trySend(Unit)
             return
         }
 
-        val envelope = try {
+        val plain = try {
             json.decodeFromString(PlaintextEnvelope.serializer(), plaintext.decodeToString())
         } catch (e: Exception) {
             Log.w(TAG, "publication dropped: bad envelope (${e.message})")
@@ -122,34 +208,13 @@ class RelayClient(
             return
         }
 
-        // Skip our own published message echoed back by the relay (Centrifugo
-        // publishes back to all subscribers, including the publisher).
-        if (envelope.id.isNotBlank() && sentIds.contains(envelope.id)) {
-            Log.d(TAG, "skipping own echo id=${envelope.id}")
-            return
-        }
-
-        if (envelope.id.isNotBlank() && replayCache.isReplay(envelope.id)) {
-            Log.w(TAG, "publication is replay id=${envelope.id}; answering operation denied")
-            sendError(envelope.id, Ctap2Status.CTAP2_ERR_OPERATION_DENIED)
-            return
-        }
-
-        Log.d(TAG, "publication queued type=${envelope.type} id=${envelope.id}")
+        Log.d(TAG, "publication queued type=${plain.type} id=${plain.id}")
         inboundChannel.trySend(plaintext)
     }
 
-    private fun sendError(id: String, code: Int) {
-        val payload = buildJsonObject {
-            put("code", JsonPrimitive(code))
-            put("message", JsonPrimitive("operation denied"))
-        }
-        val envelope = PlaintextEnvelope(version = Protocol.VERSION, type = TYPE_ERROR, id = id, payload = payload)
-        send(json.encodeToString(PlaintextEnvelope.serializer(), envelope).toByteArray())
-    }
-
     companion object {
-        private const val TYPE_ERROR = "error"
+        private const val HANDSHAKE_ATTEMPTS = 10
+        private const val HANDSHAKE_RETRY_MS = 300L
         private const val TAG = "FidoBridge"
     }
 }

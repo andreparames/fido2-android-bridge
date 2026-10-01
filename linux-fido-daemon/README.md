@@ -178,7 +178,9 @@ timeout), and an end-to-end `getAssertion` loop.
 
 For integration testing with a live Centrifugo, see Phase 9 of `DAEMON_PLAN.md`.
 The harness (`tests/harness/`) provides `MockBrowser` and `MockPhone` to
-validate the real relay path without a browser or Android device.
+validate the real relay path without a browser or Android device. See
+[`tests/harness/README.md`](tests/harness/README.md) for scenarios, CLI usage,
+and how to extend.
 
 ### Integration harness scripts
 
@@ -243,8 +245,6 @@ Not yet done:
 
 - **Phase 8** (`DAEMON_PLAN.md` §8): systemd install + Definition-of-Done
   verification against a live Centrifugo and `https://webauthn.io`.
-- **Phase 9** (`DAEMON_PLAN.md` §9): integration test harness with mocked
-  browser/phone to validate the real Centrifugo relay path locally.
 - **Cross-peer lock-step:** the Android side (`android-fido-client`) must speak
   the same Noise handshake, envelope, and pairing URI; `PROTOCOL.md` remains the
   source of truth for any change.

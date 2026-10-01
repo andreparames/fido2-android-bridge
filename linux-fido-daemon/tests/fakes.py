@@ -137,6 +137,14 @@ class NoisePhonePeer:
         ik1 = self._session.create_ik1()
         await self.sub.publish(envelope_to_json(WireEnvelope(self._channel_id, KIND_IK1, ik1)))
 
+    async def wait_ready(self, timeout: float = 2.0) -> None:
+        """Wait until this peer's handshake completes (ik2 received)."""
+        deadline = asyncio.get_event_loop().time() + timeout
+        while self._session is None or not self._session.handshake_finished:
+            if asyncio.get_event_loop().time() > deadline:
+                raise TimeoutError("phone handshake did not complete")
+            await asyncio.sleep(0.01)
+
     async def _handle(self, ctx: PublicationContext) -> None:
         envelope = envelope_from_json(ctx.pub.data)
         if envelope.kind == KIND_IK2:

@@ -34,7 +34,7 @@ CLIENT_DATA_HASH = b"\x11" * 32
 def _build_get_assertion_request(request_id: str) -> dict:
     """Build a PROTOCOL.md §5.1 getAssertion plaintext message."""
     return {
-        "version": 1,
+        "version": 3,
         "type": "getAssertion",
         "id": request_id,
         "payload": {
@@ -49,7 +49,7 @@ def _build_get_assertion_request(request_id: str) -> dict:
 def _build_make_credential_request(request_id: str) -> dict:
     """Build a PROTOCOL.md §5.2 makeCredential plaintext message."""
     return {
-        "version": 1,
+        "version": 3,
         "type": "makeCredential",
         "id": request_id,
         "payload": {

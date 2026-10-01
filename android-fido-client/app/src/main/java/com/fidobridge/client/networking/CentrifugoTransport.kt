@@ -30,13 +30,17 @@ class CentrifugoTransport(
     private val options = Options().apply {
         name = CLIENT_NAME
         token = this@CentrifugoTransport.token
-        tokenGetter = object : ConnectionTokenGetter() {
-            override fun getConnectionToken(event: ConnectionTokenEvent, cb: TokenCallback) {
-                val current = this@CentrifugoTransport.token
-                if (current.isEmpty()) {
-                    cb.Done(UnauthorizedException(), "")
-                } else {
-                    cb.Done(null, current)
+        if (this@CentrifugoTransport.token.isNotEmpty()) {
+            // Only wire the refresh getter when a token is configured; an
+            // empty-token getter returning an error aborts anonymous connects.
+            tokenGetter = object : ConnectionTokenGetter() {
+                override fun getConnectionToken(event: ConnectionTokenEvent, cb: TokenCallback) {
+                    val current = this@CentrifugoTransport.token
+                    if (current.isEmpty()) {
+                        cb.Done(UnauthorizedException(), "")
+                    } else {
+                        cb.Done(null, current)
+                    }
                 }
             }
         }

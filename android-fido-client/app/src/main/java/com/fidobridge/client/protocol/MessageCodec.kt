@@ -1,6 +1,5 @@
 package com.fidobridge.client.protocol
 
-import com.fidobridge.client.crypto.AesGcmCipher
 import com.fidobridge.client.util.Base64
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
@@ -17,56 +16,44 @@ object MessageCodec {
 
     private val channelIdRegex = Regex("^[0-9a-f]{32}$")
 
-    fun encode(message: WireMessage): String {
-        val dto = WireMessageDto(
-            channelId = message.channelId,
-            nonce = Base64.encodeStandard(message.nonce),
-            ciphertext = Base64.encodeStandard(message.ciphertext),
-            tag = Base64.encodeStandard(message.tag)
+    fun encode(envelope: WireEnvelope): String {
+        val dto = WireEnvelopeDto(
+            channelId = envelope.channelId,
+            kind = envelope.kind,
+            payload = Base64.encodeStandard(envelope.payload)
         )
         return json.encodeToString(dto)
     }
 
-    fun decode(raw: String): WireMessage {
+    fun decode(raw: String): WireEnvelope {
         val dto = try {
-            json.decodeFromString<WireMessageDto>(raw)
+            json.decodeFromString<WireEnvelopeDto>(raw)
         } catch (e: SerializationException) {
-            throw DecodeException("Malformed wire message: ${e.message}", e)
+            throw DecodeException("Malformed wire envelope: ${e.message}", e)
         } catch (e: IllegalArgumentException) {
-            throw DecodeException("Malformed wire message: ${e.message}", e)
+            throw DecodeException("Malformed wire envelope: ${e.message}", e)
         }
 
         if (!channelIdRegex.matches(dto.channelId)) {
             throw DecodeException("channel_id must be 32 lowercase hex chars")
         }
-
-        val nonce = decodeField(dto.nonce, "nonce")
-        val ciphertext = decodeField(dto.ciphertext, "ciphertext")
-        val tag = decodeField(dto.tag, "tag")
-
-        if (nonce.size != AesGcmCipher.NONCE_BYTES) {
-            throw DecodeException("nonce must be ${AesGcmCipher.NONCE_BYTES} bytes")
-        }
-        if (tag.size != AesGcmCipher.TAG_BYTES) {
-            throw DecodeException("tag must be ${AesGcmCipher.TAG_BYTES} bytes")
+        if (dto.kind !in Protocol.ENVELOPE_KINDS) {
+            throw DecodeException("kind must be one of ${Protocol.ENVELOPE_KINDS}")
         }
 
-        return WireMessage(channelId = dto.channelId, nonce = nonce, ciphertext = ciphertext, tag = tag)
-    }
-
-    private fun decodeField(value: String, name: String): ByteArray {
-        return try {
-            Base64.decodeStandard(value)
+        val payload = try {
+            Base64.decodeStandard(dto.payload)
         } catch (e: IllegalArgumentException) {
-            throw DecodeException("Invalid base64 in $name: ${e.message}", e)
+            throw DecodeException("Invalid base64 in payload: ${e.message}", e)
         }
+
+        return WireEnvelope(channelId = dto.channelId, kind = dto.kind, payload = payload)
     }
 
     @Serializable
-    private data class WireMessageDto(
+    private data class WireEnvelopeDto(
         @SerialName("channel_id") val channelId: String,
-        val nonce: String,
-        val ciphertext: String,
-        val tag: String
+        val kind: String,
+        val payload: String
     )
 }

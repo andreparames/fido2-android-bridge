@@ -1,5 +1,6 @@
 package com.fidobridge.client.harness
 
+import com.fidobridge.client.crypto.NoiseSession
 import com.fidobridge.client.util.Base64
 import java.io.File
 import java.security.MessageDigest
@@ -23,16 +24,17 @@ object HarnessConfig {
         val channelHex = props.getProperty("channel_id")
             ?: System.getenv("FIDO2_CHANNEL_ID")
             ?: randomHex(16)
-        val sessionKeyB64 = props.getProperty("session_key_b64")
-            ?: System.getenv("FIDO2_SESSION_KEY_B64")
-            ?: run {
-                val key = ByteArray(32)
-                SecureRandom().nextBytes(key)
-                java.util.Base64.getEncoder().withoutPadding().encodeToString(key)
-            }
+        val daemonPublicB64 = props.getProperty("daemon_static_public_b64")
+            ?: System.getenv("FIDO2_DAEMON_PUBLIC_B64")
+            ?: throw IllegalStateException("FIDO2_DAEMON_PUBLIC_B64 is required for the harness")
+        val phoneStaticPrivate = props.getProperty("phone_static_private_b64")
+            ?.let { Base64.decodeStandard(it) }
+            ?: System.getenv("FIDO2_PHONE_STATIC_PRIVATE_B64")?.let { Base64.decodeStandard(it) }
+            ?: NoiseSession.generateStaticKey()
         return Config(
             channelId = deriveChannelId(channelHex),
-            sessionKeyB64 = sessionKeyB64,
+            daemonStaticPublic = Base64.decodeStandard(daemonPublicB64),
+            phoneStaticPrivate = phoneStaticPrivate,
             relayUrl = props.getProperty("relay_url")
                 ?: System.getenv("FIDO2_RELAY_URL")
                 ?: "wss://gary.andreparames.com:8000/connection/websocket",
@@ -67,10 +69,9 @@ object HarnessConfig {
 
     data class Config(
         val channelId: String,
-        val sessionKeyB64: String,
+        val daemonStaticPublic: ByteArray,
+        val phoneStaticPrivate: ByteArray,
         val relayUrl: String,
         val timeoutSeconds: Long
-    ) {
-        val sessionKeyBytes: ByteArray get() = Base64.decodeStandard(sessionKeyB64)
-    }
+    )
 }

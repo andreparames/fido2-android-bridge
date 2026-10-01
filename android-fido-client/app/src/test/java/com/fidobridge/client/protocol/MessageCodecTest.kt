@@ -1,8 +1,6 @@
 package com.fidobridge.client.protocol
 
-import com.fidobridge.client.crypto.AesGcmCipher
-import com.fidobridge.client.crypto.EncryptedMessage
-import com.fidobridge.client.crypto.SessionKey
+import com.fidobridge.client.util.Base64
 import org.junit.Assert.assertArrayEquals
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertThrows
@@ -12,28 +10,26 @@ class MessageCodecTest {
 
     private val channelId = "a".repeat(32)
 
-    private fun sample() = WireMessage(
+    private fun sample(payload: ByteArray = byteArrayOf(1, 2, 3, 4, 5)) = WireEnvelope(
         channelId = channelId,
-        nonce = ByteArray(12) { it.toByte() },
-        ciphertext = byteArrayOf(1, 2, 3, 4, 5),
-        tag = ByteArray(16) { (it + 1).toByte() }
+        kind = Protocol.KIND_IK1,
+        payload = payload
     )
 
     @Test
     fun `encode then decode returns an equal message`() {
-        val message = sample()
+        val envelope = sample()
 
-        val decoded = MessageCodec.decode(MessageCodec.encode(message))
+        val decoded = MessageCodec.decode(MessageCodec.encode(envelope))
 
-        assertEquals(message.channelId, decoded.channelId)
-        assertArrayEquals(message.nonce, decoded.nonce)
-        assertArrayEquals(message.ciphertext, decoded.ciphertext)
-        assertArrayEquals(message.tag, decoded.tag)
+        assertEquals(envelope.channelId, decoded.channelId)
+        assertEquals(envelope.kind, decoded.kind)
+        assertArrayEquals(envelope.payload, decoded.payload)
     }
 
     @Test
-    fun `missing nonce field throws DecodeException`() {
-        val raw = """{"channel_id":"$channelId","ciphertext":"AQIDBAU","tag":"${"B".repeat(22)}"}"""
+    fun `missing kind field throws DecodeException`() {
+        val raw = """{"channel_id":"$channelId","payload":"AQIDBAU"}"""
 
         assertThrows(MessageCodec.DecodeException::class.java) {
             MessageCodec.decode(raw)
@@ -41,8 +37,8 @@ class MessageCodecTest {
     }
 
     @Test
-    fun `missing tag field throws DecodeException`() {
-        val raw = """{"channel_id":"$channelId","nonce":"${"A".repeat(16)}","ciphertext":"AQIDBAU"}"""
+    fun `missing payload field throws DecodeException`() {
+        val raw = """{"channel_id":"$channelId","kind":"ik1"}"""
 
         assertThrows(MessageCodec.DecodeException::class.java) {
             MessageCodec.decode(raw)
@@ -50,8 +46,8 @@ class MessageCodecTest {
     }
 
     @Test
-    fun `malformed base64 field throws DecodeException`() {
-        val raw = """{"channel_id":"$channelId","nonce":"!!!!","ciphertext":"AQIDBAU","tag":"${"B".repeat(22)}"}"""
+    fun `unknown kind is rejected`() {
+        val raw = """{"channel_id":"$channelId","kind":"bogus","payload":"AQIDBAU"}"""
 
         assertThrows(MessageCodec.DecodeException::class.java) {
             MessageCodec.decode(raw)
@@ -59,8 +55,8 @@ class MessageCodecTest {
     }
 
     @Test
-    fun `wrong nonce byte length throws DecodeException`() {
-        val raw = """{"channel_id":"$channelId","nonce":"AQID","ciphertext":"AQIDBAU","tag":"${"B".repeat(22)}"}"""
+    fun `malformed base64 payload throws DecodeException`() {
+        val raw = """{"channel_id":"$channelId","kind":"data","payload":"!!!!"}"""
 
         assertThrows(MessageCodec.DecodeException::class.java) {
             MessageCodec.decode(raw)
@@ -68,23 +64,30 @@ class MessageCodecTest {
     }
 
     @Test
-    fun `round trip with real cipher output`() {
-        val key = SessionKey.fromBytes(ByteArray(32) { it.toByte() })
-        val cipher = AesGcmCipher(key)
-        val plaintext = "integration".toByteArray()
-        val sealed = cipher.encrypt(plaintext)
-        val message = WireMessage(
-            channelId = channelId,
-            nonce = sealed.nonce,
-            ciphertext = sealed.ciphertext,
-            tag = sealed.tag
-        )
+    fun `malformed channel id throws DecodeException`() {
+        for (bad in listOf("", "ABC", "a".repeat(31), "z".repeat(32))) {
+            val raw = """{"channel_id":"$bad","kind":"ik1","payload":"AQIDBAU"}"""
+            assertThrows(MessageCodec.DecodeException::class.java) {
+                MessageCodec.decode(raw)
+            }
+        }
+    }
 
-        val decoded = MessageCodec.decode(MessageCodec.encode(message))
-        val decrypted = cipher.decrypt(
-            EncryptedMessage(decoded.nonce, decoded.ciphertext, decoded.tag)
-        )
+    @Test
+    fun `round trip with real noise cipher output`() {
+        val payload = "integration".toByteArray()
+        val envelope = WireEnvelope(channelId, Protocol.KIND_DATA, payload)
 
-        assertArrayEquals(plaintext, decrypted)
+        val decoded = MessageCodec.decode(MessageCodec.encode(envelope))
+        assertArrayEquals(payload, decoded.payload)
+    }
+
+    @Test
+    fun `payload uses unpadded standard base64`() {
+        val envelope = sample(byteArrayOf(0x00, 0x01, 0x7f))
+        val json = MessageCodec.encode(envelope)
+        val payloadField = """\"payload\":\"([^\"]*)\"""".toRegex().find(json)!!.groupValues[1]
+        assertEquals(false, payloadField.contains("="))
+        assertArrayEquals(envelope.payload, Base64.decodeStandard(payloadField))
     }
 }

@@ -1,20 +1,15 @@
 package com.fidobridge.client.networking
 
-import com.fidobridge.client.crypto.AesGcmCipher
-import com.fidobridge.client.crypto.EncryptedMessage
-import com.fidobridge.client.crypto.SessionKey
+import com.fidobridge.client.crypto.NoiseSession
 import com.fidobridge.client.protocol.MessageCodec
-import com.fidobridge.client.protocol.WireMessage
+import com.fidobridge.client.protocol.Protocol
+import com.fidobridge.client.protocol.WireEnvelope
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withTimeout
 import kotlinx.coroutines.withTimeoutOrNull
 import kotlinx.coroutines.yield
-import kotlinx.serialization.json.Json
-import kotlinx.serialization.json.int
-import kotlinx.serialization.json.jsonObject
-import kotlinx.serialization.json.jsonPrimitive
 import org.junit.Assert.assertArrayEquals
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -25,47 +20,63 @@ import org.junit.Test
 class RelayClientTest {
 
     private val channelId = "a".repeat(32)
-    private val cipher = AesGcmCipher(SessionKey.fromBytes(ByteArray(32) { it.toByte() }))
+    private val phonePrivate = ByteArray(32) { it.toByte() }
+    private val daemonPrivate = ByteArray(32) { (it + 1).toByte() }
+    private val daemonPublic = NoiseSession.staticPublicKey(daemonPrivate)
 
     private fun envelope(type: String, id: String): ByteArray =
-        """{"version":1,"type":"$type","id":"$id","payload":{}}""".toByteArray()
-
-    private fun wire(plaintext: ByteArray, channelId: String = this.channelId): ByteArray {
-        val sealed = cipher.encrypt(plaintext)
-        return MessageCodec.encode(WireMessage(channelId, sealed.nonce, sealed.ciphertext, sealed.tag)).toByteArray()
-    }
+        """{"version":3,"type":"$type","id":"$id","payload":{}}""".toByteArray()
 
     private fun relayClient(transport: FakeRelayTransport) =
-        RelayClient(transport, channelId, cipher)
+        RelayClient(transport, channelId, phonePrivate, daemonPublic)
+
+    private fun peer(transport: FakeRelayTransport) =
+        TestRelayPeer(transport, channelId, daemonPrivate)
+
+    private fun dataEnvelopes(transport: FakeRelayTransport): List<WireEnvelope> =
+        transport.published
+            .mapNotNull { try { MessageCodec.decode(it.decodeToString()) } catch (e: Exception) { null } }
+            .filter { it.kind == Protocol.KIND_DATA }
+
+    @Test
+    fun `connect publishes an ik1 handshake message`() = runBlocking {
+        val transport = FakeRelayTransport()
+        val client = relayClient(transport)
+        client.connect()
+
+        val ik1 = transport.published
+            .mapNotNull { try { MessageCodec.decode(it.decodeToString()) } catch (e: Exception) { null } }
+            .first { it.kind == Protocol.KIND_IK1 }
+        assertEquals(96, ik1.payload.size) // pinned by PROTOCOL.md §7
+    }
 
     @Test
     fun `send encrypts before publishing`() = runBlocking {
         val transport = FakeRelayTransport()
         val client = relayClient(transport)
+        val daemon = peer(transport)
         client.connect()
+        daemon.completeHandshake()
 
         val plaintext = "super-secret".toByteArray()
         val sent = client.send(plaintext)
 
         assertEquals(true, sent)
-        assertEquals(1, transport.published.size)
-
-        val raw = transport.published.first().decodeToString()
-        assertFalse(raw.contains("super-secret"))
-
-        val decoded = MessageCodec.decode(raw)
-        val decrypted = cipher.decrypt(EncryptedMessage(decoded.nonce, decoded.ciphertext, decoded.tag))
-        assertArrayEquals(plaintext, decrypted)
+        val envelope = dataEnvelopes(transport).single()
+        assertFalse(envelope.payload.decodeToString().contains("super-secret"))
+        assertArrayEquals(plaintext, daemon.decryptPublishedData().single())
     }
 
     @Test
     fun `inbound publication is decrypted and emitted`() = runBlocking {
         val transport = FakeRelayTransport()
         val client = relayClient(transport)
+        val daemon = peer(transport)
         client.connect()
+        daemon.completeHandshake()
 
         val payload = envelope("ping", "id-1")
-        transport.simulatePublication(wire(payload))
+        daemon.sendRequest(payload)
 
         val received = withTimeout(5000) { client.inbound.first() }
         assertArrayEquals(payload, received)
@@ -75,13 +86,15 @@ class RelayClientTest {
     fun `tag failure drops message and raises security alert`() = runBlocking {
         val transport = FakeRelayTransport()
         val client = relayClient(transport)
+        val daemon = peer(transport)
         client.connect()
+        daemon.completeHandshake()
 
-        val good = MessageCodec.decode(wire(envelope("ping", "id-1")).decodeToString())
-        val tamperedTag = good.tag.copyOf().also { it[0] = (it[0] + 1).toByte() }
-        val bad = MessageCodec.encode(WireMessage(good.channelId, good.nonce, good.ciphertext, tamperedTag))
-
-        transport.simulatePublication(bad.toByteArray())
+        val ciphertext = daemon.encryptForPhone(envelope("ping", "id-1"))
+        val tampered = ciphertext.copyOf().also { it[0] = (it[0] + 1).toByte() }
+        transport.simulatePublication(
+            MessageCodec.encode(WireEnvelope(channelId, Protocol.KIND_DATA, tampered)).toByteArray()
+        )
 
         val alert = withTimeout(5000) { client.securityAlerts.first() }
         assertNotNull(alert)
@@ -90,71 +103,59 @@ class RelayClientTest {
     }
 
     @Test
+    fun `replayed frame is rejected by the transport nonce`() = runBlocking {
+        val transport = FakeRelayTransport()
+        val client = relayClient(transport)
+        val daemon = peer(transport)
+        client.connect()
+        daemon.completeHandshake()
+
+        val payload = envelope("getAssertion", "id-1")
+        val ciphertext = daemon.encryptForPhone(payload)
+        transport.simulatePublication(
+            MessageCodec.encode(WireEnvelope(channelId, Protocol.KIND_DATA, ciphertext)).toByteArray()
+        )
+        assertArrayEquals(payload, withTimeout(5000) { client.inbound.first() })
+
+        // Replaying the same frame fails authentication (Noise nonce counter).
+        transport.simulatePublication(
+            MessageCodec.encode(WireEnvelope(channelId, Protocol.KIND_DATA, ciphertext)).toByteArray()
+        )
+        assertNotNull(withTimeout(5000) { client.securityAlerts.first() })
+    }
+
+    @Test
     fun `channel_id mismatch raises security alert`() = runBlocking {
         val transport = FakeRelayTransport()
         val client = relayClient(transport)
         client.connect()
 
-        transport.simulatePublication(wire(envelope("ping", "id-1"), channelId = "b".repeat(32)))
+        transport.simulatePublication(
+            MessageCodec.encode(WireEnvelope("b".repeat(32), Protocol.KIND_DATA, ByteArray(0))).toByteArray()
+        )
 
-        val alert = withTimeout(5000) { client.securityAlerts.first() }
-        assertNotNull(alert)
+        assertNotNull(withTimeout(5000) { client.securityAlerts.first() })
     }
 
     @Test
-    fun `replay is dropped and answered with operation denied`() = runBlocking {
+    fun `own published echo is skipped without re-emitting`() = runBlocking {
         val transport = FakeRelayTransport()
         val client = relayClient(transport)
+        val daemon = peer(transport)
+        client.connect()
+        daemon.completeHandshake()
+
         val received = mutableListOf<ByteArray>()
         val collector = launch { client.inbound.collect { received.add(it) } }
 
-        client.connect()
+        client.send(envelope("assertionResult", "id-echo"))
 
-        val payload = envelope("getAssertion", "id-1")
-        transport.simulatePublication(wire(payload))
-        transport.simulatePublication(wire(payload))
+        // Centrifugo echoes the phone's own publication back with exact bytes.
+        val echo = transport.published.last()
+        transport.simulatePublication(echo)
 
-        withTimeout(5000) { while (received.isEmpty()) yield() }
-        assertEquals(1, received.size)
-        assertArrayEquals(payload, received[0])
-
-        withTimeout(5000) { while (transport.published.isEmpty()) yield() }
-        val rawError = transport.published.first().decodeToString()
-        val decoded = MessageCodec.decode(rawError)
-        val decrypted = cipher.decrypt(EncryptedMessage(decoded.nonce, decoded.ciphertext, decoded.tag))
-        val errorEnvelope = Json.parseToJsonElement(decrypted.decodeToString()).jsonObject
-
-        assertEquals("error", errorEnvelope["type"]!!.jsonPrimitive.content)
-        assertEquals(39, errorEnvelope["payload"]!!.jsonObject["code"]!!.jsonPrimitive.int)
-
-        collector.cancel()
-    }
-
-    @Test
-    fun `own published echo is skipped without publishing a replay error`() = runBlocking {
-        val transport = FakeRelayTransport()
-        val client = relayClient(transport)
-        val received = mutableListOf<ByteArray>()
-        val collector = launch { client.inbound.collect { received.add(it) } }
-
-        client.connect()
-
-        val response = envelope("assertionResult", "id-echo")
-        client.send(response)
-        val publishedAfterSend = transport.published.size
-        assertEquals(1, publishedAfterSend)
-
-        // Centrifugo echoes the phone's own publication back to it.
-        transport.simulatePublication(wire(response))
-
-        // No new outbound message (no replay "operation denied" error).
-        withTimeout(5000) { while (transport.published.size > publishedAfterSend) yield() }
-        assertEquals(publishedAfterSend, transport.published.size)
-
-        // And the echo is not surfaced as a new inbound request.
-        val inbound = withTimeoutOrNull(500) { client.inbound.first() }
-        assertNull(inbound)
-
+        yield()
+        assertEquals(0, received.size)
         collector.cancel()
     }
 
@@ -168,8 +169,7 @@ class RelayClientTest {
 
         transport.simulateDisconnect()
 
-        val disconnect = withTimeout(5000) { client.disconnections.first() }
-        assertNotNull(disconnect)
+        assertNotNull(withTimeout(5000) { client.disconnections.first() })
         assertEquals(RelayClient.ConnectionState.DISCONNECTED, client.state.value)
     }
 }

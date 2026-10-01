@@ -1,6 +1,6 @@
 package com.fidobridge.client.pairing
 
-import com.fidobridge.client.crypto.SessionKey
+import com.fidobridge.client.crypto.NoiseSession
 import com.fidobridge.client.util.Base64
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
@@ -28,11 +28,12 @@ class PairingViewModelTest {
     }
 
     private val channel = "0123456789abcdef0123456789abcdef"
-    private val keyEncoded = Base64.encodeUrl(SessionKey.fromBytes(ByteArray(32) { it.toByte() }).bytes)
+    private val daemonPublic = NoiseSession.staticPublicKey(ByteArray(32) { (it + 1).toByte() })
+    private val pubkeyEncoded = Base64.encodeUrl(daemonPublic)
 
-    private fun validUri() = "fidobridge://pair?channel=$channel&key=$keyEncoded"
+    private fun validUri() = "fidobridge://pair?channel=$channel&pubkey=$pubkeyEncoded"
 
-    private fun viewModel(store: FakeSessionKeyStore = FakeSessionKeyStore(), dispatcher: PairingUriDispatcher = PairingUriDispatcher()): PairingViewModel =
+    private fun viewModel(store: FakeIdentityStore = FakeIdentityStore(), dispatcher: PairingUriDispatcher = PairingUriDispatcher()): PairingViewModel =
         PairingViewModel(PairingRepository(store), dispatcher)
 
     @Test
@@ -43,57 +44,58 @@ class PairingViewModelTest {
     }
 
     @Test
-    fun `valid qr result becomes paired and stores key`() {
-        val store = FakeSessionKeyStore()
+    fun `valid qr result becomes paired and stores identity`() {
+        val store = FakeIdentityStore()
         val vm = viewModel(store)
 
         vm.onQrResult(validUri())
 
         assertEquals(PairingUiState.Paired, vm.uiState.value)
-        assertNotNull(store.loadKey())
+        assertNotNull(store.loadDaemonStaticPublic())
+        assertNotNull(store.loadPhoneStaticPrivate())
     }
 
     @Test
     fun `invalid qr result becomes error`() {
         val vm = viewModel()
 
-        vm.onQrResult("fidobridge://pair?channel=zz&key=bad")
+        vm.onQrResult("fidobridge://pair?channel=zz&pubkey=bad")
 
         assertTrue(vm.uiState.value is PairingUiState.Error)
     }
 
     @Test
     fun `manual input behaves identically to qr`() {
-        val store = FakeSessionKeyStore()
+        val store = FakeIdentityStore()
         val vm = viewModel(store)
 
         vm.onManualSubmit(validUri())
 
         assertEquals(PairingUiState.Paired, vm.uiState.value)
-        assertNotNull(store.loadKey())
+        assertNotNull(store.loadDaemonStaticPublic())
     }
 
     @Test
     fun `pending deep link uri is consumed and pairs`() {
-        val store = FakeSessionKeyStore()
+        val store = FakeIdentityStore()
         val dispatcher = PairingUriDispatcher()
         dispatcher.submit(validUri())
 
         val vm = viewModel(store, dispatcher)
 
         assertEquals(PairingUiState.Paired, vm.uiState.value)
-        assertNotNull(store.loadKey())
+        assertNotNull(store.loadDaemonStaticPublic())
     }
 
     @Test
     fun `deep link uri submitted after viewmodel creation is still consumed`() {
-        val store = FakeSessionKeyStore()
+        val store = FakeIdentityStore()
         val dispatcher = PairingUriDispatcher()
         val vm = viewModel(store, dispatcher)
 
         dispatcher.submit(validUri())
 
         assertEquals(PairingUiState.Paired, vm.uiState.value)
-        assertNotNull(store.loadKey())
+        assertNotNull(store.loadDaemonStaticPublic())
     }
 }

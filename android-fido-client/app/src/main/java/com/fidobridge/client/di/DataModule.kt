@@ -10,9 +10,9 @@ import com.fidobridge.client.ctap.PersistentCredentialStore
 import com.fidobridge.client.networking.CentrifugoTransport
 import com.fidobridge.client.networking.DiagnosticLogSink
 import com.fidobridge.client.networking.RelayTransport
-import com.fidobridge.client.pairing.EncryptedSessionKeyStore
+import com.fidobridge.client.pairing.EncryptedIdentityStore
+import com.fidobridge.client.pairing.IdentityStore
 import com.fidobridge.client.pairing.PairingRepository
-import com.fidobridge.client.pairing.SessionKeyStore
 import com.fidobridge.client.security.BiometricPromptCoordinator
 import com.fidobridge.client.security.BiometricSigner
 import com.fidobridge.client.security.BiometricSignerAdapter
@@ -32,13 +32,13 @@ object DataModule {
 
     @Provides
     @Singleton
-    fun provideSessionKeyStore(@ApplicationContext context: Context): SessionKeyStore =
-        EncryptedSessionKeyStore(context)
+    fun provideIdentityStore(@ApplicationContext context: Context): IdentityStore =
+        EncryptedIdentityStore(context)
 
     @Provides
     @Singleton
-    fun providePairingRepository(sessionKeyStore: SessionKeyStore): PairingRepository =
-        PairingRepository(sessionKeyStore)
+    fun providePairingRepository(identityStore: IdentityStore): PairingRepository =
+        PairingRepository(identityStore)
 
     @Provides
     @Singleton
@@ -77,11 +77,11 @@ object DataModule {
     @Provides
     @Singleton
     fun provideBridgePipeline(
-        sessionKeyStore: SessionKeyStore,
+        identityStore: IdentityStore,
         processor: Ctap2Processor,
         logSink: DiagnosticLogSink
     ): BridgePipeline = BridgePipeline(
-        sessionKeyStore = sessionKeyStore,
+        identityStore = identityStore,
         relayUrl = BuildConfig.RELAY_URL,
         processor = processor,
         transportFactory = { endpoint, channel, relayToken -> CentrifugoTransport(endpoint, channel, relayToken) as RelayTransport },

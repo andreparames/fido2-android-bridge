@@ -90,6 +90,7 @@ dependencies {
     implementation(libs.cbor)
     implementation(libs.zxing.android.embedded)
     implementation(libs.centrifuge.java)
+    implementation(libs.noise.java)
     implementation(libs.androidx.fragment)
 
     debugImplementation(libs.androidx.compose.ui.tooling)

@@ -1,8 +1,6 @@
 package com.fidobridge.client.bridge
 
-import com.fidobridge.client.crypto.AesGcmCipher
-import com.fidobridge.client.crypto.EncryptedMessage
-import com.fidobridge.client.crypto.SessionKey
+import com.fidobridge.client.crypto.NoiseSession
 import com.fidobridge.client.ctap.CredentialStore
 import com.fidobridge.client.ctap.Ctap2Processor
 import com.fidobridge.client.ctap.GeneratedCredential
@@ -11,10 +9,12 @@ import com.fidobridge.client.ctap.PublicKeyCoords
 import com.fidobridge.client.ctap.Signer
 import com.fidobridge.client.ctap.StoredCredential
 import com.fidobridge.client.networking.FakeRelayTransport
-import com.fidobridge.client.pairing.SessionKeyStore
+import com.fidobridge.client.networking.TestRelayPeer
+import com.fidobridge.client.pairing.FakeIdentityStore
 import com.fidobridge.client.protocol.MessageCodec
 import com.fidobridge.client.protocol.PlaintextEnvelope
-import com.fidobridge.client.protocol.WireMessage
+import com.fidobridge.client.protocol.Protocol
+import com.fidobridge.client.protocol.WireEnvelope
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withTimeout
@@ -29,34 +29,40 @@ import org.junit.Test
 class BridgePipelineTest {
 
     private val channelId = "b".repeat(32)
-    private val key = SessionKey.fromBytes(ByteArray(32) { it.toByte() })
-    private val cipher = AesGcmCipher(key)
+    private val phonePrivate = ByteArray(32) { it.toByte() }
+    private val daemonPrivate = ByteArray(32) { (it + 33).toByte() }
+    private val daemonPublic = NoiseSession.staticPublicKey(daemonPrivate)
     private val json = Json { ignoreUnknownKeys = false }
 
-    private fun newPipeline(transport: FakeRelayTransport, store: SessionKeyStore): BridgePipeline {
+    private fun pairedStore() = FakeIdentityStore(phonePrivate, daemonPublic, channelId)
+
+    private fun newPipeline(transport: FakeRelayTransport, store: FakeIdentityStore): BridgePipeline {
         val processor = Ctap2Processor(FakeCredentialStore(), FakeKeyGenerator(), FakeSigner())
         return BridgePipeline(store, "ws://localhost:8000/connection/websocket", processor, transportFactory = { _, _, _ -> transport })
     }
 
-    private fun wire(plaintext: ByteArray): ByteArray {
-        val sealed = cipher.encrypt(plaintext)
-        return MessageCodec.encode(WireMessage(channelId, sealed.nonce, sealed.ciphertext, sealed.tag)).toByteArray()
+    private suspend fun awaitConnected(pipeline: BridgePipeline) {
+        withTimeout(5000) { while (pipeline.state.value != BridgeState.Connected) delay(10) }
     }
 
-    private fun publishedEnvelope(transport: FakeRelayTransport): PlaintextEnvelope {
-        val decoded = MessageCodec.decode(transport.published.last().decodeToString())
-        val plaintext = cipher.decrypt(EncryptedMessage(decoded.nonce, decoded.ciphertext, decoded.tag))
-        return json.decodeFromString(PlaintextEnvelope.serializer(), plaintext.decodeToString())
+    private suspend fun awaitPublishedData(peer: TestRelayPeer): ByteArray {
+        var data: ByteArray? = null
+        withTimeout(5000) {
+            while (data == null) {
+                data = peer.decryptPublishedData().lastOrNull()
+                if (data == null) yield()
+            }
+        }
+        return data!!
     }
 
     @Test
     fun `start connects and emits connected state`() = runBlocking {
         val transport = FakeRelayTransport()
-        val pipeline = newPipeline(transport, FakeSessionKeyStore(key, channelId))
+        val pipeline = newPipeline(transport, pairedStore())
 
         pipeline.start()
-
-        withTimeout(5000) { while (pipeline.state.value != BridgeState.Connected) delay(10) }
+        awaitConnected(pipeline)
         assertEquals(BridgeState.Connected, pipeline.state.value)
         pipeline.stop()
     }
@@ -65,19 +71,17 @@ class BridgePipelineTest {
     fun `inbound getAssertion signs and publishes assertionResult`() = runBlocking {
         val transport = FakeRelayTransport()
         val signer = FakeSigner()
-        val store = FakeSessionKeyStore(key, channelId)
         val processor = Ctap2Processor(FakeCredentialStore(), FakeKeyGenerator(), signer)
-        val pipeline = BridgePipeline(store, "ws://localhost:8000/connection/websocket", processor, transportFactory = { _, _, _ -> transport })
+        val pipeline = BridgePipeline(pairedStore(), "ws://localhost:8000/connection/websocket", processor, transportFactory = { _, _, _ -> transport })
+        val daemon = TestRelayPeer(transport, channelId, daemonPrivate)
 
         pipeline.start()
-        withTimeout(5000) { while (pipeline.state.value != BridgeState.Connected) delay(10) }
+        awaitConnected(pipeline)
+        daemon.completeHandshake()
 
-        val request = getAssertionEnvelope("req-1")
-        transport.simulatePublication(wire(request))
+        daemon.sendRequest(getAssertionEnvelope("req-1"))
 
-        withTimeout(5000) { while (transport.published.isEmpty()) yield() }
-
-        val envelope = publishedEnvelope(transport)
+        val envelope = json.decodeFromString(PlaintextEnvelope.serializer(), awaitPublishedData(daemon).decodeToString())
         assertEquals("assertionResult", envelope.type)
         assertEquals("req-1", envelope.id)
         assertNotNull(signer.data)
@@ -88,18 +92,18 @@ class BridgePipelineTest {
     @Test
     fun `signer failure publishes operationDenied error`() = runBlocking {
         val transport = FakeRelayTransport()
-        val store = FakeSessionKeyStore(key, channelId)
-        val processor = Ctap2Processor(FakeCredentialStore(), FakeKeyGenerator(), FakeSigner(fail = true))
-        val pipeline = BridgePipeline(store, "ws://localhost:8000/connection/websocket", processor, transportFactory = { _, _, _ -> transport })
+        val signer = FakeSigner(fail = true)
+        val processor = Ctap2Processor(FakeCredentialStore(), FakeKeyGenerator(), signer)
+        val pipeline = BridgePipeline(pairedStore(), "ws://localhost:8000/connection/websocket", processor, transportFactory = { _, _, _ -> transport })
+        val daemon = TestRelayPeer(transport, channelId, daemonPrivate)
 
         pipeline.start()
-        withTimeout(5000) { while (pipeline.state.value != BridgeState.Connected) delay(10) }
+        awaitConnected(pipeline)
+        daemon.completeHandshake()
 
-        transport.simulatePublication(wire(getAssertionEnvelope("req-2")))
+        daemon.sendRequest(getAssertionEnvelope("req-2"))
 
-        withTimeout(5000) { while (transport.published.isEmpty()) yield() }
-
-        val envelope = publishedEnvelope(transport)
+        val envelope = json.decodeFromString(PlaintextEnvelope.serializer(), awaitPublishedData(daemon).decodeToString())
         assertEquals("error", envelope.type)
         val code = (envelope.payload["code"] as JsonPrimitive).content
         assertEquals(0x27, code.toInt())
@@ -109,7 +113,7 @@ class BridgePipelineTest {
     @Test
     fun `not paired emits error state`() = runBlocking {
         val transport = FakeRelayTransport()
-        val pipeline = newPipeline(transport, FakeSessionKeyStore(null, null))
+        val pipeline = newPipeline(transport, FakeIdentityStore(null, null, null))
 
         pipeline.start()
 
@@ -120,17 +124,19 @@ class BridgePipelineTest {
     }
 
     @Test
-    fun `GCM tag tamper emits security alert`() = runBlocking {
+    fun `Noise authentication tamper emits security alert`() = runBlocking {
         val transport = FakeRelayTransport()
-        val pipeline = newPipeline(transport, FakeSessionKeyStore(key, channelId))
+        val pipeline = newPipeline(transport, pairedStore())
+        val daemon = TestRelayPeer(transport, channelId, daemonPrivate)
 
         pipeline.start()
-        withTimeout(5000) { while (pipeline.state.value != BridgeState.Connected) delay(10) }
+        awaitConnected(pipeline)
+        daemon.completeHandshake()
 
-        val good = MessageCodec.decode(wire(getAssertionEnvelope("req-3")).decodeToString())
-        val tamperedTag = good.tag.copyOf().also { it[0] = (it[0] + 1).toByte() }
+        val ciphertext = daemon.encryptForPhone(getAssertionEnvelope("req-3"))
+        val tampered = ciphertext.copyOf().also { it[0] = (it[0] + 1).toByte() }
         transport.simulatePublication(
-            MessageCodec.encode(WireMessage(good.channelId, good.nonce, good.ciphertext, tamperedTag)).toByteArray()
+            MessageCodec.encode(WireEnvelope(channelId, Protocol.KIND_DATA, tampered)).toByteArray()
         )
 
         withTimeout(5000) { while (pipeline.state.value != BridgeState.SecurityAlert) delay(10) }
@@ -139,7 +145,7 @@ class BridgePipelineTest {
     }
 
     private fun getAssertionEnvelope(id: String): ByteArray = (
-        """{"version":2,"type":"getAssertion","id":"$id","payload":{""" +
+        """{"version":3,"type":"getAssertion","id":"$id","payload":{""" +
             """"clientDataHash":"$CLIENT_DATA_HASH_B64","rpId":"example.com",""" +
             """"allowCredentials":["Y3JlZC0x"]}}"""
         ).toByteArray()
@@ -147,17 +153,6 @@ class BridgePipelineTest {
     companion object {
         private const val CLIENT_DATA_HASH_B64 = "ERERERERERERERERERERERERERERERERERERERERERE="
     }
-}
-
-private class FakeSessionKeyStore(
-    private val storedKey: SessionKey?,
-    private val storedChannelId: String?
-) : SessionKeyStore {
-    override fun save(key: SessionKey, channelId: String) = Unit
-    override fun loadKey(): SessionKey? = storedKey
-    override fun loadChannelId(): String? = storedChannelId
-    override fun saveRelayToken(token: String?) = Unit
-    override fun loadRelayToken(): String? = null
 }
 
 private class FakeCredentialStore : CredentialStore {

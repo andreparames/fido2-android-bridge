@@ -1,7 +1,5 @@
 package com.fidobridge.client.harness
 
-import com.fidobridge.client.crypto.AesGcmCipher
-import com.fidobridge.client.crypto.SessionKey
 import com.fidobridge.client.ctap.Ctap2Processor
 import com.fidobridge.client.networking.CentrifugoTransport
 import com.fidobridge.client.networking.RelayClient
@@ -33,10 +31,14 @@ class IntegrationHarnessTest {
         )
 
         val config = HarnessConfig.fromEnv()
-        val cipher = AesGcmCipher(SessionKey.fromBytes(config.sessionKeyBytes))
         val processor = Ctap2Processor(FakeCredentialStore(), FakeKeyGenerator(), FakeSigner())
         val transport = CentrifugoTransport(config.relayUrl, Protocol.relayChannel(config.channelId))
-        val client = RelayClient(transport, config.channelId, cipher)
+        val client = RelayClient(
+            transport,
+            config.channelId,
+            config.phoneStaticPrivate,
+            config.daemonStaticPublic
+        )
 
         val sentTypes = CopyOnWriteArraySet<String>()
         val sentErrors = CopyOnWriteArraySet<String>()

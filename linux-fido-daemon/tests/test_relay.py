@@ -89,6 +89,7 @@ async def test_tampered_publication_flagged(broker) -> None:
         broker, CHANNEL_ID, DAEMON_PUBLIC, _echo_responder, static_private=PHONE_PRIVATE
     )
     await phone.start()
+    await phone.wait_ready()
 
     ct = phone._session.encrypt(b"payload")
     tampered = WireEnvelope(CHANNEL_ID, KIND_DATA, b"\xff" + ct[1:])

@@ -1,12 +1,11 @@
 package com.fidobridge.client.bridge
 
 import android.util.Log
-import com.fidobridge.client.crypto.AesGcmCipher
 import com.fidobridge.client.ctap.Ctap2Processor
 import com.fidobridge.client.networking.DiagnosticLogSink
 import com.fidobridge.client.networking.RelayClient
 import com.fidobridge.client.networking.RelayTransport
-import com.fidobridge.client.pairing.SessionKeyStore
+import com.fidobridge.client.pairing.IdentityStore
 import com.fidobridge.client.protocol.Protocol
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -19,7 +18,7 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 
 class BridgePipeline(
-    private val sessionKeyStore: SessionKeyStore,
+    private val identityStore: IdentityStore,
     private val relayUrl: String,
     private val processor: Ctap2Processor,
     private val transportFactory: (endpoint: String, channel: String, relayToken: String?) -> RelayTransport,
@@ -36,18 +35,19 @@ class BridgePipeline(
 
     fun start() {
         if (client != null) return
-        val key = sessionKeyStore.loadKey()
-        val channelId = sessionKeyStore.loadChannelId()
-        val relayToken = sessionKeyStore.loadRelayToken()
-        Log.i(TAG, "pipeline.start key=${key != null} channelId=$channelId relay=$relayUrl")
-        if (key == null) return fail("not paired: missing session key")
+        val phonePrivate = identityStore.loadPhoneStaticPrivate()
+        val daemonPublic = identityStore.loadDaemonStaticPublic()
+        val channelId = identityStore.loadChannelId()
+        val relayToken = identityStore.loadRelayToken()
+        Log.i(TAG, "pipeline.start phoneKey=${phonePrivate != null} daemonKey=${daemonPublic != null} channelId=$channelId relay=$relayUrl")
+        if (phonePrivate == null) return fail("not paired: missing phone static key")
+        if (daemonPublic == null) return fail("not paired: missing daemon static key")
         if (channelId == null) return fail("not paired: missing channel")
         logSink?.start(channelId, relayUrl, relayToken)
         logSink?.log("pipeline.start channel=$channelId")
 
-        val cipher = AesGcmCipher(key)
         val transport = transportFactory(relayUrl, Protocol.relayChannel(channelId), relayToken)
-        val relay = RelayClient(transport, channelId, cipher)
+        val relay = RelayClient(transport, channelId, phonePrivate, daemonPublic)
         client = relay
 
         inboundJob = scope.launch {
@@ -78,8 +78,8 @@ class BridgePipeline(
 
         scope.launch {
             relay.securityAlerts.collect {
-                Log.w(TAG, "SECURITY ALERT: GCM integrity failure")
-                logSink?.log("SECURITY ALERT: GCM integrity failure")
+                Log.w(TAG, "SECURITY ALERT: Noise integrity failure")
+                logSink?.log("SECURITY ALERT: Noise integrity failure")
                 _state.value = BridgeState.SecurityAlert
             }
         }

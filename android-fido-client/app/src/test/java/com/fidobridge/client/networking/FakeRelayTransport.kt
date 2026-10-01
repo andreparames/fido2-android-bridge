@@ -5,7 +5,7 @@ class FakeRelayTransport : RelayTransport {
     var listener: RelayTransport.Listener? = null
         private set
 
-    val published = mutableListOf<ByteArray>()
+    val published = java.util.concurrent.CopyOnWriteArrayList<ByteArray>()
     var connected = false
         private set
 

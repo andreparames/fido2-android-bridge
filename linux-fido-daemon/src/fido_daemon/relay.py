@@ -195,15 +195,30 @@ class RelayClient:
                 except Exception:
                     logger.exception("failed to persist phone static key pin")
         self._session = session
-        await self._sub.publish(
-            envelope_to_json(WireEnvelope(self._channel_id, KIND_IK2, ik2))
-        )
-        self._handshake_done.set()
+        # Publish ik2 from a background task: awaiting the publish ack inside
+        # a publication handler blocks the client's reply loop and times out
+        # (centrifuge-python re-entrancy). handshake_done is set only once ik2
+        # is on the wire, so requests never overtake it.
+        async def _send_ik2() -> None:
+            try:
+                await self._sub.publish(
+                    envelope_to_json(WireEnvelope(self._channel_id, KIND_IK2, ik2))
+                )
+                self._handshake_done.set()
+            except Exception:
+                logger.exception("SECURITY/failure publishing ik2; awaiting phone retry")
+        asyncio.create_task(_send_ik2())
         logger.info("Noise handshake established (remote static=%s)", session.remote_static[:8].hex())
 
     async def _handle_data(self, envelope: WireEnvelope, raw: str) -> None:
         if self._session is None or not self._handshake_done.is_set():
             logger.warning("dropping data before handshake complete")
+            return
+        # Skip our own relay echo BEFORE attempting to decrypt: our own
+        # publications are sealed with the sender key and cannot be opened
+        # with the receiver key (unlike the legacy symmetric AES-GCM).
+        if raw in self._pending_wire.values():
+            logger.debug("skipping own echo")
             return
         try:
             plaintext = self._session.decrypt(envelope.payload)
@@ -221,10 +236,6 @@ class RelayClient:
         future = self._pending.get(message_id)
         if future is None or future.done():
             logger.warning("dropping unsolicited relay message with id %s", message_id)
-            return
-        # Skip our own echo (Centrifugo publishes back to all subscribers including us)
-        if self._pending_wire.get(message_id) == raw:
-            logger.debug("skipping own echo (id=%s)", message_id)
             return
         future.set_result(plaintext)
 
