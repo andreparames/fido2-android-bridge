@@ -150,10 +150,10 @@ jobs:
             }
           }
           EOF
-          ./centrifugo --config centrifugo-config.json --port 9000 --log-level debug \
+          ./centrifugo -p 9000 --config centrifugo-config.json --log.level debug \
             > centrifugo.log 2>&1 &
           echo "CENTRIFUGO_PID=$!" >> "$GITHUB_ENV"
-          python3 - <<'PY'
+          python3 - <<'PY' || { echo "--- centrifugo.log ---"; cat "$RUNNER_TEMP/centrifugo.log"; exit 1; }
           import socket, time
           deadline = time.time() + 60
           while time.time() < deadline:
