@@ -3,6 +3,8 @@ package com.fidobridge.client.ctap
 import com.fidobridge.client.protocol.Ctap2Status
 import com.fidobridge.client.protocol.PlaintextEnvelope
 import com.fidobridge.client.protocol.Protocol
+import com.fidobridge.client.ui.model.NoOpRequestLog
+import com.fidobridge.client.ui.model.RequestLog
 import com.fidobridge.client.util.Base64
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonObject
@@ -16,6 +18,7 @@ class Ctap2Processor(
     private val credentialStore: CredentialStore,
     private val keyGenerator: KeyGenerator,
     private val signer: Signer,
+    private val requestLog: RequestLog = NoOpRequestLog,
     private val json: Json = Json { ignoreUnknownKeys = false }
 ) {
 

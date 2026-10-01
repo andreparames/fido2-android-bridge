@@ -19,6 +19,8 @@ import com.fidobridge.client.security.BiometricSignerAdapter
 import com.fidobridge.client.security.CoordinatorBiometricAuthenticator
 import com.fidobridge.client.security.KeystoreKeyGenerator
 import com.fidobridge.client.security.KeystoreManager
+import com.fidobridge.client.ui.model.InMemoryRequestLog
+import com.fidobridge.client.ui.model.RequestLog
 import dagger.Module
 import dagger.Provides
 import dagger.hilt.InstallIn
@@ -68,11 +70,16 @@ object DataModule {
 
     @Provides
     @Singleton
+    fun provideRequestLog(): RequestLog = InMemoryRequestLog()
+
+    @Provides
+    @Singleton
     fun provideCtap2Processor(
         credentialStore: CredentialStore,
         keyGenerator: KeyGenerator,
-        signer: com.fidobridge.client.ctap.Signer
-    ): Ctap2Processor = Ctap2Processor(credentialStore, keyGenerator, signer)
+        signer: com.fidobridge.client.ctap.Signer,
+        requestLog: RequestLog
+    ): Ctap2Processor = Ctap2Processor(credentialStore, keyGenerator, signer, requestLog)
 
     @Provides
     @Singleton
