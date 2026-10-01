@@ -5,6 +5,7 @@ import com.fidobridge.client.protocol.PlaintextEnvelope
 import com.fidobridge.client.protocol.Protocol
 import com.fidobridge.client.ui.model.NoOpRequestLog
 import com.fidobridge.client.ui.model.RequestLog
+import com.fidobridge.client.ui.model.RequestType
 import com.fidobridge.client.util.Base64
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonObject
@@ -51,12 +52,14 @@ class Ctap2Processor(
             return
         }
 
+        requestLog.record(envelope.id, RequestType.SIGN_IN, payload.rpId)
+
         val clientDataHash = decodeHash(payload.clientDataHash)
-            ?: return onResult(Result.success(buildError(envelope.id, Ctap2Status.CTAP2_ERR_CMD_NOT_SUPPORTED)))
+            ?: return reject(envelope.id, onResult, Ctap2Status.CTAP2_ERR_CMD_NOT_SUPPORTED)
 
         val registered = credentialStore.findForRpId(payload.rpId)
         val chosen = resolveCredential(payload.rpId, registered, payload.allowCredentials)
-            ?: return onResult(Result.success(buildError(envelope.id, Ctap2Status.CTAP2_ERR_NO_CREDENTIALS)))
+            ?: return reject(envelope.id, onResult, Ctap2Status.CTAP2_ERR_NO_CREDENTIALS)
 
         val authData = AuthenticatorDataBuilder.buildAssertion(payload.rpId)
         val dataToSign = authData + clientDataHash
@@ -70,10 +73,11 @@ class Ctap2Processor(
                         signature = Base64.encodeStandard(signature),
                         userHandle = chosen.userHandle?.let { Base64.encodeStandard(it) }
                     )
+                    requestLog.markAccepted(envelope.id)
                     onResult(Result.success(buildResponse(envelope.id, TYPE_ASSERTION_RESULT, result)))
                 },
                 onFailure = {
-                    onResult(Result.success(buildError(envelope.id, Ctap2Status.CTAP2_ERR_OPERATION_DENIED)))
+                    reject(envelope.id, onResult, Ctap2Status.CTAP2_ERR_OPERATION_DENIED)
                 }
             )
         }
@@ -87,19 +91,22 @@ class Ctap2Processor(
             return
         }
 
+        val type = if (payload.rpId == DUMMY_RP_ID) RequestType.BROWSER_CHECK else RequestType.REGISTER
+        requestLog.record(envelope.id, type, payload.rpId)
+
         if (!payload.pubKeyCredParams.any { it.alg == ALG_ES256 }) {
-            onResult(Result.success(buildError(envelope.id, Ctap2Status.CTAP2_ERR_INVALID_OPTION)))
+            reject(envelope.id, onResult, Ctap2Status.CTAP2_ERR_INVALID_OPTION)
             return
         }
 
         val excluded = payload.excludeCredentials.mapNotNull { decodeCredentialId(it) }
         if (excluded.any { credentialStore.findByCredentialId(payload.rpId, it) != null }) {
-            onResult(Result.success(buildError(envelope.id, Ctap2Status.CTAP2_ERR_OPERATION_DENIED)))
+            reject(envelope.id, onResult, Ctap2Status.CTAP2_ERR_OPERATION_DENIED)
             return
         }
 
         val clientDataHash = decodeHash(payload.clientDataHash)
-            ?: return onResult(Result.success(buildError(envelope.id, Ctap2Status.CTAP2_ERR_CMD_NOT_SUPPORTED)))
+            ?: return reject(envelope.id, onResult, Ctap2Status.CTAP2_ERR_CMD_NOT_SUPPORTED)
 
         val generated = keyGenerator.generate()
         val userHandle = decodeCredentialId(payload.user.id)
@@ -129,13 +136,19 @@ class Ctap2Processor(
                         attestationObject = Base64.encodeStandard(AttestationObjectBuilder.build(authData)),
                         signature = Base64.encodeStandard(signature)
                     )
+                    requestLog.markAccepted(envelope.id)
                     onResult(Result.success(buildResponse(envelope.id, TYPE_MAKE_CREDENTIAL_RESULT, result)))
                 },
                 onFailure = {
-                    onResult(Result.success(buildError(envelope.id, Ctap2Status.CTAP2_ERR_OPERATION_DENIED)))
+                    reject(envelope.id, onResult, Ctap2Status.CTAP2_ERR_OPERATION_DENIED)
                 }
             )
         }
+    }
+
+    private fun reject(id: String, onResult: (Result<ByteArray>) -> Unit, code: Int) {
+        requestLog.markRejected(id)
+        onResult(Result.success(buildError(id, code)))
     }
 
     private fun resolveCredential(
