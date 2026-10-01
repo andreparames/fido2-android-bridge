@@ -121,6 +121,36 @@ class BridgePipelineTest {
     }
 
     @Test
+    fun `reconnect re-establishes the pipeline after a disconnect`() = runBlocking {
+        val transport = FakeRelayTransport()
+        val signer = FakeSigner()
+        val processor = Ctap2Processor(FakeCredentialStore(), FakeKeyGenerator(), signer)
+        val pipeline = BridgePipeline(
+            pairedStore(), "ws://localhost:8000/connection/websocket", processor,
+            transportFactory = { _, _, _ -> transport }
+        )
+
+        pipeline.start()
+        awaitConnected(pipeline)
+        TestRelayPeer(transport, channelId, daemonPrivate).completeHandshake()
+
+        transport.simulateDisconnect()
+        withTimeout(5000) { while (pipeline.state.value != BridgeState.Disconnected) delay(10) }
+
+        pipeline.reconnect()
+        awaitConnected(pipeline)
+
+        val daemon2 = TestRelayPeer(transport, channelId, daemonPrivate)
+        daemon2.completeHandshake()
+        daemon2.sendRequest(getAssertionEnvelope("req-after-reconnect"))
+
+        val envelope = json.decodeFromString(PlaintextEnvelope.serializer(), awaitPublishedData(daemon2).decodeToString())
+        assertEquals("assertionResult", envelope.type)
+        assertEquals("req-after-reconnect", envelope.id)
+        pipeline.stop()
+    }
+
+    @Test
     fun `not paired emits error state`() = runBlocking {
         val transport = FakeRelayTransport()
         val pipeline = newPipeline(transport, FakeIdentityStore(null, null, null))

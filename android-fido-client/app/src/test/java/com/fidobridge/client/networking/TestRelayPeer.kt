@@ -21,7 +21,7 @@ class TestRelayPeer(
     fun completeHandshake() {
         val ik1 = transport.published
             .mapNotNull { try { MessageCodec.decode(it.decodeToString()) } catch (e: Exception) { null } }
-            .firstOrNull { it.kind == Protocol.KIND_IK1 }
+            .lastOrNull { it.kind == Protocol.KIND_IK1 }
             ?: error("no ik1 published by the phone")
         val ik2 = responder.receiveIk1(ik1.payload)
         transport.simulatePublication(

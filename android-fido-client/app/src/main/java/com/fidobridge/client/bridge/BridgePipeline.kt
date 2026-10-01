@@ -33,6 +33,8 @@ class BridgePipeline(
     private var client: RelayClient? = null
     private var inboundJob: Job? = null
     private var statusJob: Job? = null
+    private var alertJob: Job? = null
+    private var disconnectJob: Job? = null
 
     fun start() {
         if (client != null) return
@@ -79,7 +81,7 @@ class BridgePipeline(
             }
         }
 
-        scope.launch {
+        alertJob = scope.launch {
             relay.securityAlerts.collect {
                 Log.w(TAG, "SECURITY ALERT: Noise integrity failure")
                 logSink?.log("SECURITY ALERT: Noise integrity failure")
@@ -91,7 +93,7 @@ class BridgePipeline(
             }
         }
 
-        scope.launch {
+        disconnectJob = scope.launch {
             relay.disconnections.collect {
                 Log.w(TAG, "relay disconnection")
                 logSink?.log("relay disconnection")
@@ -107,10 +109,21 @@ class BridgePipeline(
     fun stop() {
         inboundJob?.cancel()
         statusJob?.cancel()
+        alertJob?.cancel()
+        disconnectJob?.cancel()
         client?.close()
         client = null
         logSink?.stop()
         _state.value = BridgeState.Disconnected
+    }
+
+    /**
+     * Tears the pipeline down and re-establishes the relay connection from
+     * scratch. Used to recover a dead connection without restarting the app.
+     */
+    fun reconnect() {
+        stop()
+        start()
     }
 
     /**
