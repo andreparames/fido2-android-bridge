@@ -10,6 +10,7 @@ import com.fidobridge.client.ctap.PersistentCredentialStore
 import com.fidobridge.client.networking.CentrifugoTransport
 import com.fidobridge.client.networking.DiagnosticLogSink
 import com.fidobridge.client.networking.RelayTransport
+import com.fidobridge.client.pairing.AppResetManager
 import com.fidobridge.client.pairing.EncryptedIdentityStore
 import com.fidobridge.client.pairing.IdentityStore
 import com.fidobridge.client.pairing.PairingRepository
@@ -67,6 +68,15 @@ object DataModule {
         BiometricSignerAdapter(
             BiometricSigner(keystoreManager, CoordinatorBiometricAuthenticator(coordinator))
         )
+
+    @Provides
+    @Singleton
+    fun provideAppResetManager(
+        identityStore: IdentityStore,
+        credentialStore: CredentialStore,
+        keystoreManager: KeystoreManager,
+        requestLog: RequestLog
+    ): AppResetManager = AppResetManager(identityStore, credentialStore, keystoreManager, requestLog)
 
     @Provides
     @Singleton

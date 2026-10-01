@@ -7,6 +7,7 @@ interface IdentityStore {
     fun loadChannelId(): String?
     fun saveRelayToken(token: String?)
     fun loadRelayToken(): String?
+    fun clear()
 
     val isPaired: Boolean
         get() = loadPhoneStaticPrivate() != null &&

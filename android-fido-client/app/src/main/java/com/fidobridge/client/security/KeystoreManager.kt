@@ -47,6 +47,17 @@ class KeystoreManager(
         }
     }
 
+    /** Deletes every credential signing key (all `fido-cred-*` aliases). */
+    fun deleteAllSigningKeys() {
+        val aliases = keyStore.aliases()
+        while (aliases.hasMoreElements()) {
+            val alias = aliases.nextElement()
+            if (alias.startsWith(CREDENTIAL_ALIAS_PREFIX)) {
+                keyStore.deleteEntry(alias)
+            }
+        }
+    }
+
     private fun generate(alias: String, strongBox: Boolean): KeyPair {
         val keyPairGenerator = KeyPairGenerator.getInstance(
             KeyProperties.KEY_ALGORITHM_EC, ANDROID_KEYSTORE
@@ -79,6 +90,7 @@ class KeystoreManager(
 
     companion object {
         const val ANDROID_KEYSTORE = "AndroidKeyStore"
+        const val CREDENTIAL_ALIAS_PREFIX = "fido-cred-"
         private const val CURVE = "secp256r1"
         private const val SIGNATURE_ALGORITHM = "SHA256withECDSA"
         private const val TAG = "FidoBridge"

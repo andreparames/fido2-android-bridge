@@ -278,6 +278,10 @@ private class FakeCredentialStore : CredentialStore {
     override fun add(credential: StoredCredential) {
         credentials.add(credential)
     }
+
+    override fun clear() {
+        credentials.clear()
+    }
 }
 
 private class FakeKeyGenerator : KeyGenerator {

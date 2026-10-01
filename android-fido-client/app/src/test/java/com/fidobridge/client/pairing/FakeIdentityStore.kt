@@ -22,4 +22,11 @@ class FakeIdentityStore(
     }
 
     override fun loadRelayToken(): String? = storedRelayToken
+
+    override fun clear() {
+        storedPhonePrivate = null
+        storedDaemonPublic = null
+        storedChannelId = null
+        storedRelayToken = null
+    }
 }

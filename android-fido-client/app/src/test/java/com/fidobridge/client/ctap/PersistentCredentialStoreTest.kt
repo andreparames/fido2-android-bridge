@@ -80,4 +80,15 @@ class PersistentCredentialStoreTest {
         val store = PersistentCredentialStore(prefs)
         assertEquals(0, store.findForRpId("example.com").size)
     }
+
+    @Test
+    fun `clear removes the persisted credentials key`() {
+        val h = Harness()
+        val store = h.store()
+
+        store.add(credential)
+        store.clear()
+
+        verify { h.editor.remove("credentials") }
+    }
 }

@@ -105,12 +105,12 @@ Source of truth for security requirements: `agents.md` and `PROTOCOL.md`.
 
 ## 5. Reset / Re-Pair
 
-**Files:** `pairing/SessionKeyStore.kt`, `pairing/EncryptedSessionKeyStore.kt`,
+**Files:** `pairing/IdentityStore.kt`, `pairing/EncryptedIdentityStore.kt`,
 `ctap/Credential.kt`, `ctap/PersistentCredentialStore.kt`,
-`security/KeystoreManager.kt`, `AppResetManager.kt` (new), `di/DataModule.kt`
+`security/KeystoreManager.kt`, `pairing/AppResetManager.kt` (new), `di/DataModule.kt`
 
-- Add `clear()` to `SessionKeyStore` + `EncryptedSessionKeyStore` (wipe the
-  EncryptedSharedPreferences: key, channel, relay token).
+- Add `clear()` to `IdentityStore` + `EncryptedIdentityStore` (wipe the
+  EncryptedSharedPreferences: phone key, daemon key, channel, relay token).
 - Add `clear()` to `CredentialStore` + `PersistentCredentialStore`.
 - Add `KeystoreManager.deleteAllSigningKeys()` — delete `fido-cred-*` aliases
   from `AndroidKeyStore` (private keys must not linger after unpairing).
