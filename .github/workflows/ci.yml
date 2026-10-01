@@ -207,13 +207,13 @@ jobs:
           FIDO2_STATIC_KEY_PATH="/tmp/daemon_key.bin" \
           FIDO2_RELAY_URL="$FIDO2_RELAY_URL" \
           FIDO2_REQUEST_TIMEOUT=180 \
-          ../.venv/bin/python -m mock_daemon all --timeout 180 > "$log" 2>&1 &
+          timeout 900 ../.venv/bin/python -m mock_daemon all --timeout 180 > "$log" 2>&1 &
           mock_pid=$!
           # 2. Run the Android harness second (Noise initiator).
           set +e
           ./gradlew testDebugUnitTest --tests "com.fidobridge.client.harness.IntegrationHarnessTest"
           gradle_rc=$?
-          timeout 400 bash -c 'wait "$1"' _ "$mock_pid"
+          wait "$mock_pid"
           mock_rc=$?
           set -e
           cat "$log"
