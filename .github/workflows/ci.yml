@@ -210,8 +210,11 @@ jobs:
           timeout 900 ../.venv/bin/python -m mock_daemon all --timeout 180 > "$log" 2>&1 &
           mock_pid=$!
           # 2. Run the Android harness second (Noise initiator).
+          #    --no-build-cache: the harness test must run live against the
+          #    local Centrifugo; the Gradle build cache would restore the
+          #    cached unit-test result (env vars are not task inputs).
           set +e
-          ./gradlew testDebugUnitTest --tests "com.fidobridge.client.harness.IntegrationHarnessTest"
+          ./gradlew --no-build-cache testDebugUnitTest --tests "com.fidobridge.client.harness.IntegrationHarnessTest"
           gradle_rc=$?
           wait "$mock_pid"
           mock_rc=$?
