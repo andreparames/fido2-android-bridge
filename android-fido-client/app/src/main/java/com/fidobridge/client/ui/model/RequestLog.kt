@@ -11,6 +11,7 @@ interface RequestLog {
     fun markAccepted(id: String)
     fun markRejected(id: String)
     fun clear()
+    fun replace(records: List<RequestRecord>)
 }
 
 class InMemoryRequestLog(
@@ -45,6 +46,10 @@ class InMemoryRequestLog(
         _records.value = emptyList()
     }
 
+    override fun replace(records: List<RequestRecord>) {
+        _records.value = records.take(maxEntries)
+    }
+
     private fun updateOutcome(id: String, outcome: RequestOutcome) {
         _records.update { current ->
             current.map { if (it.id == id) it.copy(outcome = outcome) else it }
@@ -62,4 +67,5 @@ object NoOpRequestLog : RequestLog {
     override fun markAccepted(id: String) = Unit
     override fun markRejected(id: String) = Unit
     override fun clear() = Unit
+    override fun replace(records: List<RequestRecord>) = Unit
 }

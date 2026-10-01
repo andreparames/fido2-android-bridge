@@ -27,6 +27,8 @@ class AppViewModel @Inject constructor(
 
     fun clearLog() = requestLog.clear()
 
+    fun restoreRequests(records: List<RequestRecord>) = requestLog.replace(records)
+
     fun acknowledgeSecurityAlert() = pipeline.acknowledgeSecurityAlert()
 
     fun reconnect() = pipeline.reconnect()
