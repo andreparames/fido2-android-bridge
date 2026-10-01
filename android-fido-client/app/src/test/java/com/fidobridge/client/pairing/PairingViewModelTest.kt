@@ -9,6 +9,7 @@ import kotlinx.coroutines.test.resetMain
 import kotlinx.coroutines.test.setMain
 import org.junit.After
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertTrue
 import org.junit.Before
@@ -97,5 +98,30 @@ class PairingViewModelTest {
 
         assertEquals(PairingUiState.Paired, vm.uiState.value)
         assertNotNull(store.loadDaemonStaticPublic())
+    }
+
+    @Test
+    fun `valid uri passes validation`() {
+        val vm = viewModel()
+
+        assertTrue(vm.validateUri(validUri()))
+    }
+
+    @Test
+    fun `invalid uri fails validation`() {
+        val vm = viewModel()
+
+        assertFalse(vm.validateUri("not-a-uri"))
+    }
+
+    @Test
+    fun `error state clears back to scanning`() {
+        val vm = viewModel()
+        vm.onQrResult("fidobridge://pair?channel=zz&pubkey=bad")
+        assertTrue(vm.uiState.value is PairingUiState.Error)
+
+        vm.clearError()
+
+        assertEquals(PairingUiState.Scanning, vm.uiState.value)
     }
 }

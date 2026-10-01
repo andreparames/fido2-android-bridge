@@ -53,14 +53,10 @@ class MainActivity : FragmentActivity() {
     private val notificationPermissionLauncher =
         registerForActivityResult(ActivityResultContracts.RequestPermission()) { }
 
-    private val cameraPermissionLauncher =
-        registerForActivityResult(ActivityResultContracts.RequestPermission()) { }
-
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         logSink.log("MainActivity#$instanceId onCreate saved=${savedInstanceState != null}")
         enableEdgeToEdge()
-        requestCameraPermissionIfNeeded()
         requestNotificationPermissionIfNeeded()
         handlePairingIntent(intent)
         setContent { FidoBridgeApp() }
@@ -106,14 +102,6 @@ class MainActivity : FragmentActivity() {
     override fun onDestroy() {
         logSink.log("MainActivity#$instanceId onDestroy changingConfig=${isChangingConfigurations}")
         super.onDestroy()
-    }
-
-    private fun requestCameraPermissionIfNeeded() {
-        if (ContextCompat.checkSelfPermission(this, Manifest.permission.CAMERA) !=
-            PackageManager.PERMISSION_GRANTED
-        ) {
-            cameraPermissionLauncher.launch(Manifest.permission.CAMERA)
-        }
     }
 
     private fun requestNotificationPermissionIfNeeded() {

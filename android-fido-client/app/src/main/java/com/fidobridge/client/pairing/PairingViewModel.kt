@@ -33,7 +33,16 @@ class PairingViewModel @Inject constructor(
 
     fun onManualSubmit(uri: String) = submitUri(uri)
 
+    fun validateUri(uri: String): Boolean = repository.parseUri(uri).isSuccess
+
+    fun clearError() {
+        if (_uiState.value is PairingUiState.Error) {
+            _uiState.value = PairingUiState.Scanning
+        }
+    }
+
     private fun submitUri(uri: String) {
+        _uiState.value = PairingUiState.Pairing
         repository.parseUri(uri)
             .onSuccess { info -> repository.pair(info) }
             .fold(
