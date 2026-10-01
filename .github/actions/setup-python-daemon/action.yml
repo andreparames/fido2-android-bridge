@@ -1,0 +1,25 @@
+name: Setup Python + venv for fido-daemon
+description: Set up Python 3.12 with cached pip deps and create a project venv
+
+inputs:
+  workdir:
+    description: Directory of the daemon package (used for the pip cache key)
+    required: false
+    default: linux-fido-daemon
+  python-version:
+    description: Python version to install
+    required: false
+    default: "3.12"
+
+runs:
+  using: composite
+  steps:
+    - uses: actions/setup-python@v5
+      with:
+        python-version: ${{ inputs.python-version }}
+        cache: pip
+        cache-dependency-path: ${{ inputs.workdir }}/pyproject.toml
+
+    - name: Create virtualenv
+      shell: bash
+      run: python3 -m venv .venv

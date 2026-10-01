@@ -1,0 +1,229 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  daemon-static:
+    name: Daemon static (ruff)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/setup-python-daemon
+      - name: Install package (editable + dev extras)
+        shell: bash
+        run: .venv/bin/pip install -e "linux-fido-daemon[dev]"
+      - name: Ruff check
+        working-directory: linux-fido-daemon
+        run: ../.venv/bin/ruff check .
+
+  daemon-unit:
+    name: Daemon unit (pytest)
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/setup-python-daemon
+      - name: Install package (editable + dev extras)
+        shell: bash
+        run: .venv/bin/pip install -e "linux-fido-daemon[dev]"
+      - name: Run unit tests
+        working-directory: linux-fido-daemon
+        run: ../.venv/bin/pytest -q
+
+  android-static:
+    name: Android lint (lintDebug)
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/setup-android
+      - name: Lint debug build
+        working-directory: android-fido-client
+        run: ./gradlew lintDebug
+
+  android-unit:
+    name: Android unit tests (testDebugUnitTest)
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/setup-android
+      - name: Run unit tests
+        working-directory: android-fido-client
+        run: ./gradlew testDebugUnitTest
+
+  build-daemon:
+    name: Package daemon (sdist + wheel)
+    runs-on: ubuntu-latest
+    needs: [daemon-static, daemon-unit, android-static, android-unit]
+    if: github.ref == 'refs/heads/main' || github.event_name == 'workflow_dispatch'
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install build frontend
+        run: python -m pip install --upgrade build
+      - name: Build sdist and wheel
+        working-directory: linux-fido-daemon
+        run: python -m build
+      - uses: actions/upload-artifact@v4
+        with:
+          name: daemon-dist
+          path: linux-fido-daemon/dist
+          if-no-files-found: error
+          retention-days: 7
+          overwrite: true
+
+  build-android:
+    name: Package Android APK (assembleDebug)
+    runs-on: ubuntu-latest
+    needs: [daemon-static, daemon-unit, android-static, android-unit]
+    if: github.ref == 'refs/heads/main' || github.event_name == 'workflow_dispatch'
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/setup-android
+      - name: Assemble debug APK
+        working-directory: android-fido-client
+        run: ./gradlew assembleDebug
+      - uses: actions/upload-artifact@v4
+        with:
+          name: android-apk
+          path: android-fido-client/app/build/outputs/apk/debug/app-debug.apk
+          if-no-files-found: error
+          retention-days: 7
+          overwrite: true
+
+  integration:
+    name: Cross-peer integration (live Centrifugo)
+    runs-on: ubuntu-latest
+    needs: [build-daemon, build-android]
+    if: github.ref == 'refs/heads/main' || github.event_name == 'workflow_dispatch'
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/setup-python-daemon
+      - uses: ./.github/actions/setup-android
+      - uses: actions/download-artifact@v4
+        with:
+          name: daemon-dist
+          path: /tmp/daemon-dist
+
+      - name: Install daemon from built wheel
+        run: .venv/bin/pip install /tmp/daemon-dist/*.whl
+
+      - name: Start local Centrifugo v6.9.6
+        run: |
+          set -euo pipefail
+          cd "$RUNNER_TEMP"
+          curl -fsSL -o centrifugo.tar.gz \
+            https://github.com/centrifugal/centrifugo/releases/download/v6.9.6/centrifugo_6.9.6_linux_amd64.tar.gz
+          tar -xzf centrifugo.tar.gz
+          cat > centrifugo-config.json <<'EOF'
+          {
+            "client": {
+              "allow_anonymous_connect_without_token": true
+            },
+            "channel": {
+              "without_namespace": {
+                "allow_subscribe_for_client": true,
+                "allow_subscribe_for_anonymous": true,
+                "allow_publish_for_client": true,
+                "allow_publish_for_anonymous": true,
+                "allow_publish_for_subscriber": true
+              }
+            }
+          }
+          EOF
+          ./centrifugo --config centrifugo-config.json --port 9000 --log-level debug \
+            > centrifugo.log 2>&1 &
+          echo "CENTRIFUGO_PID=$!" >> "$GITHUB_ENV"
+          python3 - <<'PY'
+          import socket, time
+          deadline = time.time() + 60
+          while time.time() < deadline:
+              try:
+                  s = socket.create_connection(("127.0.0.1", 9000), timeout=1)
+                  s.close()
+                  print("centrifugo ready")
+                  break
+              except OSError:
+                  time.sleep(1)
+          else:
+              raise SystemExit("centrifugo did not start on port 9000")
+          PY
+
+      - name: Generate pairing material
+        run: |
+          set -euo pipefail
+          .venv/bin/python - <<'PY'
+          import os, secrets
+          from pathlib import Path
+          from fido_daemon.crypto import b64encode
+          from fido_daemon.noise import StaticKeyStore
+
+          channel_hex = secrets.token_hex(16)
+          key_path = Path("/tmp/daemon_key.bin")
+          StaticKeyStore.save(key_path, StaticKeyStore.generate())
+          daemon_pub_b64 = b64encode(
+              StaticKeyStore.public_key(StaticKeyStore.load(key_path))
+          )
+          with open(os.environ["GITHUB_ENV"], "a") as fh:
+              fh.write(f"CHANNEL_HEX={channel_hex}\n")
+              fh.write(f"DAEMON_PUBLIC_B64={daemon_pub_b64}\n")
+          print(f"channel_hex={channel_hex}")
+          print(f"daemon_public_b64={daemon_pub_b64}")
+          PY
+
+      - name: Run cross-peer harness (mock-daemon + Android over Centrifugo)
+        working-directory: android-fido-client
+        env:
+          FIDO2_HARNESS: "1"
+          FIDO2_CHANNEL_ID: ${{ env.CHANNEL_HEX }}
+          FIDO2_DAEMON_PUBLIC_B64: ${{ env.DAEMON_PUBLIC_B64 }}
+          FIDO2_RELAY_URL: ws://localhost:9000/connection/websocket
+          FIDO2_HARNESS_TIMEOUT: "200"
+        run: |
+          set -euo pipefail
+          log="$RUNNER_TEMP/mock_daemon.log"
+          # 1. Start the mock daemon FIRST — it is the Noise responder and
+          #    blocks awaiting the Android initiator's handshake.
+          FIDO2_CHANNEL_ID="$FIDO2_CHANNEL_ID" \
+          FIDO2_STATIC_KEY_PATH="/tmp/daemon_key.bin" \
+          FIDO2_RELAY_URL="$FIDO2_RELAY_URL" \
+          FIDO2_REQUEST_TIMEOUT=180 \
+          ../.venv/bin/python -m mock_daemon all --timeout 180 > "$log" 2>&1 &
+          mock_pid=$!
+          # 2. Run the Android harness second (Noise initiator).
+          set +e
+          ./gradlew testDebugUnitTest --tests "com.fidobridge.client.harness.IntegrationHarnessTest"
+          gradle_rc=$?
+          timeout 400 bash -c 'wait "$1"' _ "$mock_pid"
+          mock_rc=$?
+          set -e
+          cat "$log"
+          test "$gradle_rc" -eq 0
+          test "$mock_rc" -eq 0
+          grep -q "get-assertion: OK" "$log"
+          grep -q "make-credential: OK" "$log"
+
+      - name: Cleanup background processes
+        if: always()
+        run: |
+          kill "${CENTRIFUGO_PID:-}" 2>/dev/null || true
+          true
