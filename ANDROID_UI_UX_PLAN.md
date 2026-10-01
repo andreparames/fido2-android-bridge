@@ -60,26 +60,31 @@ Source of truth for security requirements: `agents.md` and `PROTOCOL.md`.
 
 ---
 
-## 3. GCM-Tag Failure → Threshold-Based, Sticky, Neutral
+## 3. Integrity-Failure → Threshold-Based, Sticky, Neutral
 
-**Files:** `networking/RelayClient.kt`, `bridge/BridgePipeline.kt`
+> Note: the client now uses the Noise IK transport (`PROTOCOL.md` §3/§6), so the
+> "GCM-tag failure" of the original review manifests as a Noise authentication
+> failure (`NoiseSession.AuthenticationException`) in `RelayClient`.
+
+**Files:** `bridge/IntegrityFailureTracker.kt` (new), `bridge/BridgePipeline.kt`
 
 - Keep current behavior for **isolated** failures: drop the message, log, stay
   quiet (crypto already prevented anything bad).
-- Add a **sliding-window failure counter** (constants in one `companion object`,
-  e.g. `≥3` failures within `60s`). Threshold must be generous — isolated
-  corruption on a flaky link must never trip it. (TLS already provides transport
-  integrity, so an app-layer tag failure is already unexpected; the counter is
-  for *sustained* patterns, not single blips.)
+- `IntegrityFailureTracker`: **sliding-window failure counter** (constants in one
+  `companion object`, defaults `≥3` failures within `60s`). Threshold is
+  generous — isolated corruption on a flaky link must never trip it. (TLS already
+  provides transport integrity, so an app-layer integrity failure is already
+  unexpected; the counter is for *sustained* patterns, not single blips.)
 - Only when the threshold is crossed: raise `SecurityAlert` and make it
-  **sticky** — `BridgePipeline`'s `statusJob` (`:67-77`) must not overwrite it on
-  the next `Connected` event — and **pause approvals** until acknowledged.
+  **sticky** — `BridgePipeline`'s `statusJob` / disconnection collector must not
+  overwrite it on the next `Connected`/`Disconnected` event — and **pause
+  approvals** (inbound requests are dropped) until acknowledged.
 - **Neutral user-facing copy — never claim an attack.** Example:
   > "Corrupted messages were received on the relay connection. This can happen
   > with network interference or a relay problem. Approvals are paused for your
   > safety — reconnect or re-pair."
-- `acknowledgeSecurityAlert()` returns the UI to the current connection state.
-  (Technical detail can stay in logs.)
+- `acknowledgeSecurityAlert()` resets the counter and returns the UI to the
+  current connection state. (Technical detail can stay in logs.)
 
 ---
 
