@@ -8,13 +8,13 @@ from __future__ import annotations
 
 import argparse
 import asyncio
-import base64
 import json
 import logging
 import sys
+from pathlib import Path
 
-from fido_daemon.config import Config, write_config_file
-from fido_daemon.crypto import AesGcmCipher, SecretKey
+from fido_daemon.config import Config, clear_phone_pin, write_config_file
+from fido_daemon.crypto import b64encode
 from fido_daemon.ctap2 import (
     CMD_GET_INFO,
     Ctap2Error,
@@ -23,7 +23,8 @@ from fido_daemon.ctap2 import (
     error_response,
     get_info_response,
 )
-from fido_daemon.pairing import Pairing, PairingGenerator, derive_channel_id
+from fido_daemon.noise import StaticKeyStore
+from fido_daemon.pairing import Pairing, derive_channel_id
 from fido_daemon.pairing_uri import format_pairing_uri
 from fido_daemon.protocol import CTAP2_ERR_INVALID_COMMAND, CTAP2_ERR_OPERATION_DENIED
 from fido_daemon.relay import RelayClient
@@ -42,34 +43,71 @@ def build_parser() -> argparse.ArgumentParser:
     subparsers = parser.add_subparsers(dest="command")
     pair_parser = subparsers.add_parser("pair", help="generate a pairing URI for the Android app")
     pair_parser.add_argument("--no-qr", action="store_true", help="skip terminal QR code output")
+    pair_parser.add_argument("-c", "--config", help="path to TOML config file for channel id, relay token, and phone pin", default=argparse.SUPPRESS)
+    unpair_parser = subparsers.add_parser(
+        "unpair",
+        help="clear the pinned phone key so a different phone can pair (requires -c)",
+    )
+    unpair_parser.add_argument("-c", "--config", help="path to TOML config file holding the phone_public_key pin", default=argparse.SUPPRESS)
+    unpair_parser.add_argument("--confirm", action="store_true", help="skip the interactive confirmation prompt")
     return parser
 
 
 def _run_pair(no_qr: bool = False, config_path: str | None = None) -> int:
     config = Config.from_env()
-    pairing = PairingGenerator.generate()
+    key_path = Path(config.static_key_path)
+    static_private = StaticKeyStore.load_or_create(key_path)
+    static_public = StaticKeyStore.public_key(static_private)
     # Carry the relay token so the Android client can connect without a rebuild.
-    pairing_with_token = Pairing(
-        session_key=pairing.session_key,
-        channel_hex=pairing.channel_hex,
-        relay_token=config.relay_token or None,
-    )
-    uri = format_pairing_uri(pairing_with_token)
+    from fido_daemon.pairing import PairingGenerator
+
+    pairing = PairingGenerator.generate(static_public)
+    if config.relay_token:
+        pairing = Pairing(
+            static_public=static_public,
+            channel_hex=pairing.channel_hex,
+            relay_token=config.relay_token,
+        )
+    uri = format_pairing_uri(pairing)
     print(uri)
     if not no_qr:
         import segno
+
         qr = segno.make(uri)
         qr.terminal()
     if config_path:
-        import base64 as _b64
         channel_id = derive_channel_id(pairing.channel_hex)
         write_config_file(
             config_path,
-            session_key_b64=_b64.b64encode(pairing.session_key).decode(),
             channel_id=channel_id,
             relay_token=config.relay_token or None,
         )
         print(f"\nConfig written to {config_path}", file=sys.stderr)
+    return 0
+
+
+def _run_unpair(config_path: str | None = None, confirm: bool = False) -> int:
+    """Clear the pinned phone key (trust-on-first-use reset).
+
+    Prompts for confirmation unless ``--confirm`` is passed (or stdin is not a
+    TTY, in which case the prompt is treated as declined).
+    """
+    if not config_path:
+        print("unpair requires a config file: pass -c PATH", file=sys.stderr)
+        return 2
+    if not confirm:
+        try:
+            answer = input(
+                f"Clear the pinned phone key in {config_path}? "
+                "A different phone will be accepted on its next handshake. [y/N] "
+            ).strip().lower()
+        except EOFError:
+            answer = ""
+        if answer not in ("y", "yes"):
+            print("Aborted — pin not cleared.", file=sys.stderr)
+            return 1
+    clear_phone_pin(config_path)
+    print(f"Cleared pinned phone key from {config_path}", file=sys.stderr)
     return 0
 
 
@@ -82,7 +120,7 @@ def _resolve_config(args: argparse.Namespace) -> Config:
             socket_path=args.socket or config.socket_path,
             relay_url=config.relay_url,
             channel_id=config.channel_id,
-            session_key_b64=config.session_key_b64,
+            static_key_path=config.static_key_path,
             relay_token=config.relay_token,
             request_timeout=config.request_timeout,
             uhid_enabled=config.uhid_enabled or args.uhid,
@@ -125,12 +163,24 @@ def build_request_handler(relay: RelayClient, config: Config):
 
 
 async def _run(config: Config, *, client_factory=None) -> None:
-    cipher = AesGcmCipher(SecretKey(base64.b64decode(config.session_key_b64)))
+    static_private = StaticKeyStore.load(Path(config.static_key_path))
+
+    def _persist_phone_key(phone_public: bytes) -> None:
+        if config.config_path:
+            write_config_file(config.config_path, phone_public_key=b64encode(phone_public))
+            logger.info("pinned phone static key to %s", config.config_path)
+        else:
+            logger.warning(
+                "no config file set; phone static key pin lasts only for this session"
+            )
+
     relay = RelayClient(
         config.relay_url,
         config.channel_id,
-        cipher,
+        static_private,
         token=config.relay_token,
+        phone_public_key=config.phone_public_key,
+        on_phone_identified=_persist_phone_key,
         client_factory=client_factory,
     )
     await relay.connect()
@@ -165,13 +215,15 @@ def main(argv: list[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
     if args.command == "pair":
         return _run_pair(no_qr=args.no_qr, config_path=args.config)
+    if args.command == "unpair":
+        return _run_unpair(config_path=args.config, confirm=args.confirm)
     logging.basicConfig(
         level=logging.DEBUG if args.verbose else logging.INFO,
         format="%(asctime)s %(levelname)s %(name)s: %(message)s",
     )
     config = _resolve_config(args)
-    if not config.session_key_b64:
-        logger.error("FIDO2_SESSION_KEY_B64 must be set (pair the device first)")
+    if not config.channel_id:
+        logger.error("not paired: run `fido-daemon pair` and configure FIDO2_CHANNEL_ID (or a config file) first")
         return 2
     try:
         asyncio.run(_run(config))

@@ -3,9 +3,9 @@
 Provides ``MockPhone`` and ``MockBrowser`` for exercising the full
 daemon -> Centrifugo -> phone path in a controlled, single-machine setup.
 
-``MockPhone`` wraps the existing ``StubPhone`` logic but accepts a
-config-derived cipher and channel, making it easy to pair with a real
-or fake Centrifugo broker via ``client_factory``.
+``MockPhone`` is a Noise IK initiator peer (like ``tests.fakes.NoisePhonePeer``)
+that loads the daemon's static key from the daemon ``Config`` so it interoperates
+with ``RelayClient`` over a real or fake broker.
 
 ``MockBrowser`` opens the daemon's Unix socket, writes a synthetic
 CTAP2 CBOR request, and reads back the CTAP2 response.
@@ -16,20 +16,16 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
-from dataclasses import dataclass, field
+from dataclasses import dataclass
+from pathlib import Path
 from typing import Any, Callable
 
 import fido2.cbor as cbor
 
 from fido_daemon.config import Config
-from fido_daemon.crypto import (
-    AesGcmCipher,
-    SecretKey,
-    message_from_json,
-    message_to_json,
-)
 from fido_daemon.ctap2 import CMD_GET_ASSERTION, CMD_MAKE_CREDENTIAL
-from tests.fakes import FakeBroker, _PhoneHandler
+from fido_daemon.noise import StaticKeyStore
+from tests.fakes import FakeBroker, NoisePhonePeer
 
 logger = logging.getLogger(__name__)
 
@@ -40,7 +36,7 @@ class HarnessConfig:
 
     socket_path: str
     channel_id: str
-    session_key_b64: str
+    static_key_path: str
     relay_url: str = "ws://localhost:8000/connection/websocket"
     relay_token: str = ""
     request_timeout: float = 5.0
@@ -50,19 +46,20 @@ class HarnessConfig:
         return cls(
             socket_path=config.socket_path,
             channel_id=config.channel_id,
-            session_key_b64=config.session_key_b64,
+            static_key_path=config.static_key_path,
             relay_url=config.relay_url,
             relay_token=config.relay_token,
             request_timeout=config.request_timeout,
         )
 
 
-class MockPhone:
-    """A phone peer that subscribes to the Centrifugo channel, decrypts
-    incoming requests, calls a responder, and publishes the sealed reply.
+class MockPhone(NoisePhonePeer):
+    """A phone peer that subscribes to the Centrifugo channel, opens the Noise
+    handshake, decrypts incoming requests, calls a responder, and publishes the
+    encrypted reply.
 
-    Uses the same cipher and channel derivation as the real daemon, so it
-    interoperates with ``RelayClient`` over a real or fake broker.
+    Uses the daemon's static key (from config) to authenticate the daemon, so
+    it interoperates with ``RelayClient`` over a real or fake broker.
     """
 
     def __init__(
@@ -71,41 +68,10 @@ class MockPhone:
         config: Config | HarnessConfig,
         responder: Callable[[dict], dict | None],
     ) -> None:
-        key_bytes = (
-            config.session_key_b64
-            if isinstance(config.session_key_b64, bytes)
-            else __import__("base64").b64decode(config.session_key_b64)
+        daemon_pub = StaticKeyStore.public_key(
+            StaticKeyStore.load(Path(config.static_key_path).expanduser())
         )
-        self._cipher = AesGcmCipher(SecretKey(key_bytes))
-        self._channel_id = config.channel_id
-        self._channel = f"fidobridge.{config.channel_id}"
-        self._broker = broker
-        self._responder = responder
-        self.client: Any = None
-        self.sub: Any = None
-        self.received: list[dict] = []
-
-    async def start(self) -> None:
-        self.client = self._broker.new_client()
-        await self.client.connect()
-        self.sub = self.client.new_subscription(
-            self._channel, events=_PhoneHandler(self)
-        )
-        await self.sub.subscribe()
-
-    async def _handle(self, ctx) -> None:
-        wire = message_from_json(ctx.pub.data)
-        plaintext = self._cipher.open(wire)
-        request = json.loads(plaintext.decode("utf-8"))
-        self.received.append(request)
-        response = self._responder(request)
-        if asyncio.iscoroutine(response):
-            response = await response
-        if response is None:
-            return
-        reply = json.dumps(response).encode("utf-8")
-        sealed = self._cipher.seal(self._channel_id, reply)
-        await self.sub.publish(message_to_json(sealed))
+        super().__init__(broker, config.channel_id, daemon_pub, responder)
 
 
 class MockBrowser:

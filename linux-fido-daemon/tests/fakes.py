@@ -1,10 +1,27 @@
-"""Shared in-memory Centrifugo fakes and a stub phone peer for tests."""
+"""Shared in-memory Centrifugo fakes and a Noise IK initiator phone peer.
 
+``NoisePhonePeer`` simulates the Android client: it is the Noise handshake
+*initiator* (per PROTOCOL.md §6), initiating a fresh ``ik1`` handshake on
+``start()``, then decrypting daemon requests, calling a canned responder, and
+publishing the encrypted reply.
+"""
+
+import asyncio
 import json
+import secrets
 
 from centrifuge import Publication, PublicationContext, SubscriptionEventHandler
 
-from fido_daemon.crypto import AesGcmCipher, message_from_json, message_to_json
+from fido_daemon.noise import (
+    KIND_DATA,
+    KIND_IK1,
+    KIND_IK2,
+    NoiseError,
+    NoiseInitiatorSession,
+    WireEnvelope,
+    envelope_from_json,
+    envelope_to_json,
+)
 
 CHANNEL_ID = "0123456789abcdef0123456789abcdef"
 RELAY_URL = "ws://localhost:8000/connection/websocket"
@@ -77,43 +94,72 @@ class FakeClient:
 
 
 class _PhoneHandler(SubscriptionEventHandler):
-    def __init__(self, phone: "StubPhone") -> None:
+    def __init__(self, phone: "NoisePhonePeer") -> None:
         self._phone = phone
 
     async def on_publication(self, ctx: PublicationContext) -> None:
         await self._phone._handle(ctx)
 
 
-class StubPhone:
-    """A stand-in phone peer that opens requests and replies with a canned
-    response produced by `responder(request_dict) -> response_dict`."""
+class NoisePhonePeer:
+    """A stand-in phone peer (Noise IK initiator) that opens the handshake and
+    replies to daemon requests with a canned response produced by
+    `responder(request_dict) -> response_dict`."""
 
     def __init__(
-        self, broker: FakeBroker, channel_id: str, cipher: AesGcmCipher, responder
+        self,
+        broker: FakeBroker,
+        channel_id: str,
+        daemon_static_public: bytes,
+        responder,
+        *,
+        static_private: bytes | None = None,
     ) -> None:
         self._broker = broker
         self._channel_id = channel_id
         self._channel = f"fidobridge.{channel_id}"
-        self._cipher = cipher
+        self._daemon_static_public = daemon_static_public
+        self._static_private = static_private or secrets.token_bytes(32)
         self._responder = responder
         self.client: FakeClient | None = None
         self.sub: FakeSubscription | None = None
         self.received: list[dict] = []
+        self._session: NoiseInitiatorSession | None = None
 
     async def start(self) -> None:
         self.client = self._broker.new_client()
         await self.client.connect()
         self.sub = self.client.new_subscription(self._channel, events=_PhoneHandler(self))
         await self.sub.subscribe()
+        self._session = NoiseInitiatorSession(
+            self._static_private, self._daemon_static_public
+        )
+        ik1 = self._session.create_ik1()
+        await self.sub.publish(envelope_to_json(WireEnvelope(self._channel_id, KIND_IK1, ik1)))
 
     async def _handle(self, ctx: PublicationContext) -> None:
-        wire = message_from_json(ctx.pub.data)
-        plaintext = self._cipher.open(wire)
+        envelope = envelope_from_json(ctx.pub.data)
+        if envelope.kind == KIND_IK2:
+            try:
+                self._session.receive_ik2(envelope.payload)
+            except NoiseError:
+                pass
+            return
+        if envelope.kind != KIND_DATA:
+            return
+        try:
+            plaintext = self._session.decrypt(envelope.payload)
+        except NoiseError:
+            # Not ours (e.g. a half-open session that never completed the
+            # handshake); ignore without crashing the broker loop.
+            return
         request = json.loads(plaintext.decode("utf-8"))
         self.received.append(request)
         response = self._responder(request)
+        if asyncio.iscoroutine(response):
+            response = await response
         if response is None:
             return
         reply = json.dumps(response).encode("utf-8")
-        sealed = self._cipher.seal(self._channel_id, reply)
-        await self.sub.publish(message_to_json(sealed))
+        ciphertext = self._session.encrypt(reply)
+        await self.sub.publish(envelope_to_json(WireEnvelope(self._channel_id, KIND_DATA, ciphertext)))

@@ -6,9 +6,9 @@ Usage::
     python -m fido_daemon.harness make-credential
     python -m fido_daemon.harness all
 
-Requires ``FIDO2_SESSION_KEY_B64`` and ``FIDO2_RELAY_URL`` in the
-environment (same as the daemon itself).  Generates a temporary socket
-path and a random session key if not provided.
+Requires ``FIDO2_CHANNEL_ID``/``FIDO2_STATIC_KEY_PATH`` and ``FIDO2_RELAY_URL``
+in the environment (same as the daemon itself).  Generates a temporary socket
+path and a random daemon static key if not provided.
 """
 
 from __future__ import annotations
@@ -19,13 +19,14 @@ import base64
 import logging
 import os
 import secrets
-import signal
 import sys
 import tempfile
+from pathlib import Path
 
 from fido_daemon.cli import _run
 from fido_daemon.config import Config
 from fido_daemon.ctap2 import CMD_GET_ASSERTION, CMD_MAKE_CREDENTIAL
+from fido_daemon.noise import StaticKeyStore
 from fido_daemon.pairing import derive_channel_id
 from tests.fakes import FakeBroker
 from tests.harness import MockBrowser, MockPhone
@@ -38,7 +39,7 @@ CLIENT_DATA_HASH = b"\x11" * 32
 def _assertion_responder(request: dict) -> dict:
     auth_data = b"\x00" * 32 + b"\x05" + b"\x00\x00\x00\x00"
     return {
-        "version": 1,
+        "version": 3,
         "type": "assertionResult",
         "id": request["id"],
         "payload": {
@@ -60,7 +61,7 @@ def _make_credential_responder(request: dict) -> dict:
         }
     )
     return {
-        "version": 1,
+        "version": 3,
         "type": "makeCredentialResult",
         "id": request["id"],
         "payload": {
@@ -70,12 +71,6 @@ def _make_credential_responder(request: dict) -> dict:
 
 
 def _build_config() -> Config:
-    key_b64 = os.environ.get("FIDO2_SESSION_KEY_B64", "")
-    if not key_b64:
-        key = secrets.token_bytes(32)
-        key_b64 = base64.b64encode(key).decode()
-        logger.info("generated random session key (set FIDO2_SESSION_KEY_B64 to use a fixed key)")
-
     relay_url = os.environ.get(
         "FIDO2_RELAY_URL", "ws://localhost:8000/connection/websocket"
     )
@@ -86,6 +81,14 @@ def _build_config() -> Config:
         logger.info("generated random channel hex: %s", channel_hex)
     channel_id = derive_channel_id(channel_hex)
 
+    static_key_path = os.path.expanduser(
+        os.environ.get(
+            "FIDO2_STATIC_KEY_PATH",
+            os.path.join(tempfile.gettempdir(), f"fido-harness-{os.getpid()}-static.pem"),
+        )
+    )
+    StaticKeyStore.load_or_create(Path(static_key_path))
+
     socket_path = os.environ.get(
         "FIDO2_REMOTE_SOCKET",
         os.path.join(tempfile.gettempdir(), f"fido-harness-{os.getpid()}.sock"),
@@ -95,18 +98,17 @@ def _build_config() -> Config:
         socket_path=socket_path,
         relay_url=relay_url,
         channel_id=channel_id,
-        session_key_b64=key_b64,
+        static_key_path=static_key_path,
         relay_token=os.environ.get("FIDO2_RELAY_TOKEN", ""),
         request_timeout=float(os.environ.get("FIDO2_REQUEST_TIMEOUT", "5.0")),
+        uhid_enabled=False,
+        uhid_name="fido-daemon",
     )
 
 
 async def _run_scenario(
     config: Config, broker: FakeBroker, scenario: str
 ) -> bool:
-    phone = MockPhone(broker, config, _assertion_responder)
-    await phone.start()
-
     task = asyncio.create_task(_run(config, client_factory=broker.new_client))
 
     for _ in range(200):
@@ -118,6 +120,9 @@ async def _run_scenario(
         logger.error("socket did not appear at %s", config.socket_path)
         task.cancel()
         return False
+
+    phone = MockPhone(broker, config, _assertion_responder)
+    await phone.start()
 
     browser = MockBrowser(config.socket_path)
     ok = True

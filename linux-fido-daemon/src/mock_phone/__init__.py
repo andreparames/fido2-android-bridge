@@ -2,8 +2,9 @@
 
 This module acts as a stand-in for the Android app when testing the daemon
 end-to-end through a real Centrifugo broker.  It subscribes to
-``fidobridge.<channel_id>``, opens incoming sealed requests, signs them with
-a canned responder, and publishes the sealed response.
+``fidobridge.<channel_id>``, opens the Noise IK handshake as initiator,
+decrypts incoming requests, signs them with a canned responder, and publishes
+the encrypted response.
 """
 
 from __future__ import annotations
@@ -18,12 +19,14 @@ import sys
 import centrifuge
 import fido2.cbor as cbor
 
-from fido_daemon.crypto import (
-    AesGcmCipher,
-    SecretKey,
-    TagMismatchError,
-    message_from_json,
-    message_to_json,
+from fido_daemon.noise import (
+    KIND_DATA,
+    KIND_IK1,
+    KIND_IK2,
+    NoiseInitiatorSession,
+    WireEnvelope,
+    envelope_from_json,
+    envelope_to_json,
 )
 from fido_daemon.protocol import (
     TYPE_ASSERTION_RESULT,
@@ -31,7 +34,6 @@ from fido_daemon.protocol import (
     TYPE_ERROR,
     CTAP2_ERR_OPERATION_DENIED,
 )
-from fido_daemon.relay import RelayClient
 from harness_common.config import HarnessConfig
 
 logger = logging.getLogger(__name__)
@@ -41,7 +43,7 @@ def _assertion_responder(request: dict) -> dict:
     """Build a PROTOCOL.md §5.3 assertionResult."""
     auth_data = b"\x00" * 32 + b"\x05" + b"\x00\x00\x00\x00"
     return {
-        "version": 1,
+        "version": 3,
         "type": TYPE_ASSERTION_RESULT,
         "id": request["id"],
         "payload": {
@@ -62,7 +64,7 @@ def _make_credential_responder(request: dict) -> dict:
         }
     )
     return {
-        "version": 1,
+        "version": 3,
         "type": TYPE_MAKE_CREDENTIAL_RESULT,
         "id": request["id"],
         "payload": {
@@ -81,21 +83,49 @@ RESPONDERS = {
 }
 
 
-class MockPhone(RelayClient):
-    """Subscribes to the Centrifugo channel, decrypts incoming requests,
-    calls a responder, and publishes the sealed reply."""
+class _PhoneHandler(centrifuge.SubscriptionEventHandler):
+    def __init__(self, phone: "MockPhone") -> None:
+        self._phone = phone
+
+    async def on_publication(self, ctx: centrifuge.PublicationContext) -> None:
+        await self._phone._handle_publication(ctx)
+
+
+class MockPhone:
+    """Subscribes to the Centrifugo channel, opens the Noise IK handshake,
+    decrypts incoming requests, calls a responder, and publishes the reply."""
 
     def __init__(self, config: HarnessConfig) -> None:
-        cipher = AesGcmCipher(SecretKey(config.session_key_bytes))
-        super().__init__(
-            url=config.relay_url,
-            channel_id=config.channel_id,
-            cipher=cipher,
-            token=config.relay_token or "",
-        )
         self._config = config
+        self._channel_id = config.channel_id
+        self._channel = f"fidobridge.{config.channel_id}"
+        self._session = NoiseInitiatorSession(
+            config.phone_static_private(), config.daemon_static_public()
+        )
+        self._client: centrifuge.Client | None = None
+        self._sub: centrifuge.Subscription | None = None
         self.received: list[dict] = []
         self._seen_ids: set[str] = set()
+
+    async def _get_token(self) -> str:
+        return self._config.relay_token or ""
+
+    async def connect(self) -> None:
+        self._client = centrifuge.Client(
+            self._config.relay_url,
+            token=self._config.relay_token or "",
+            get_token=self._get_token,
+        )
+        await self._client.connect()
+        self._sub = self._client.new_subscription(
+            self._channel, events=_PhoneHandler(self)
+        )
+        await self._sub.subscribe()
+        ik1 = self._session.create_ik1()
+        await self._sub.publish(
+            envelope_to_json(WireEnvelope(self._channel_id, KIND_IK1, ik1))
+        )
+        logger.info("mock phone listening on %s", self._channel)
 
     async def _handle_publication(self, ctx: centrifuge.PublicationContext) -> None:
         raw = ctx.pub.data
@@ -104,16 +134,19 @@ class MockPhone(RelayClient):
         if isinstance(raw, dict):
             raw = json.dumps(raw)
         try:
-            wire = message_from_json(raw)
-            plaintext = self._cipher.open(wire)
-            request = json.loads(plaintext.decode("utf-8"))
-        except TagMismatchError:
-            logger.error("SECURITY ALERT: GCM tag verification failed; dropping message")
-            return
-        except Exception as e:
-            logger.warning("dropping malformed request: %s", e)
+            envelope = envelope_from_json(raw)
+        except ValueError as exc:
+            logger.warning("dropping malformed envelope: %s", exc)
             return
 
+        if envelope.kind == KIND_IK2:
+            self._session.receive_ik2(envelope.payload)
+            return
+        if envelope.kind != KIND_DATA:
+            return
+
+        plaintext = self._session.decrypt(envelope.payload)
+        request = json.loads(plaintext.decode("utf-8"))
         self.received.append(request)
         msg_type = request.get("type")
         msg_id = request.get("id")
@@ -121,14 +154,7 @@ class MockPhone(RelayClient):
 
         responder = RESPONDERS.get(msg_type)
         if responder is None:
-            logger.debug("ignoring non-request message type: %s", msg_type)
             return
-
-        # Skip our own echo (same ID but wire data matches what we published)
-        if self._pending_wire.get(msg_id) == raw:
-            logger.debug("skipping own echo (id=%s)", msg_id)
-            return
-        # Also skip if we've already seen this ID (belt-and-suspenders)
         if msg_id in self._seen_ids:
             logger.debug("skipping duplicate (id=%s)", msg_id)
             return
@@ -136,9 +162,13 @@ class MockPhone(RelayClient):
 
         response = responder(request)
         reply = json.dumps(response).encode("utf-8")
-        sealed = self._cipher.seal(self._config.channel_id, reply)
+        ciphertext = self._session.encrypt(reply)
         # Fire-and-forget: don't await publish to avoid blocking the event loop
-        asyncio.create_task(self._publish_response(message_to_json(sealed)))
+        asyncio.create_task(
+            self._publish_response(
+                envelope_to_json(WireEnvelope(self._channel_id, KIND_DATA, ciphertext))
+            )
+        )
         logger.info("sent %s (id=%s)", response["type"], response.get("id"))
 
     async def _publish_response(self, data: str) -> None:
@@ -147,6 +177,12 @@ class MockPhone(RelayClient):
             await self._sub.publish(data)
         except Exception as e:
             logger.warning("failed to publish response: %s", e)
+
+    async def close(self) -> None:
+        if self._client is not None:
+            await self._client.disconnect()
+            self._client = None
+            self._sub = None
 
 
 def main(argv: list[str] | None = None) -> int:

@@ -17,25 +17,29 @@ from fido_daemon.pairing_uri import (
 )
 
 CHANNEL_HEX = "0123456789abcdef0123456789abcdef"
-KEY = bytes(range(32))
-KEY_B64URL = base64.urlsafe_b64encode(KEY).decode().rstrip("=")
+STATIC_PUB = bytes(range(32))
+STATIC_PUB_B64URL = base64.urlsafe_b64encode(STATIC_PUB).decode().rstrip("=")
 
 
 def _pairing() -> Pairing:
-    return Pairing(session_key=KEY, channel_hex=CHANNEL_HEX)
+    return Pairing(static_public=STATIC_PUB, channel_hex=CHANNEL_HEX)
 
 
-def test_generate_produces_32byte_key_and_16byte_channel() -> None:
-    pairing = PairingGenerator.generate()
-    assert len(pairing.session_key) == 32
+def _cli_key_path(monkeypatch: pytest.MonkeyPatch, tmp_path) -> None:
+    monkeypatch.setenv("FIDO2_STATIC_KEY_PATH", str(tmp_path / "static_key.pem"))
+
+
+def test_generate_produces_32byte_pubkey_and_16byte_channel() -> None:
+    pairing = PairingGenerator.generate(STATIC_PUB)
+    assert len(pairing.static_public) == 32
     assert re.fullmatch(r"[0-9a-f]{32}", pairing.channel_hex)
 
 
-def test_generate_is_random() -> None:
-    first = PairingGenerator.generate()
-    second = PairingGenerator.generate()
-    assert first.session_key != second.session_key
+def test_generate_randomizes_channel_only() -> None:
+    first = PairingGenerator.generate(STATIC_PUB)
+    second = PairingGenerator.generate(STATIC_PUB)
     assert first.channel_hex != second.channel_hex
+    assert first.static_public == second.static_public == STATIC_PUB
 
 
 def test_format_pairing_uri_shape() -> None:
@@ -45,15 +49,16 @@ def test_format_pairing_uri_shape() -> None:
     assert parsed.netloc == "pair"
     params = dict(parse_qsl(parsed.query))
     assert params["channel"] == CHANNEL_HEX
-    assert "=" not in params["key"]
+    assert params["pubkey"] == STATIC_PUB_B64URL
+    assert "key" not in params
 
 
-def test_format_pairing_uri_key_decodes_to_32_bytes() -> None:
+def test_format_pairing_uri_pubkey_decodes_to_32_bytes() -> None:
     uri = format_pairing_uri(_pairing())
-    key_b64url = dict(parse_qsl(urlparse(uri).query))["key"]
-    assert re.fullmatch(r"[A-Za-z0-9_-]+", key_b64url)
-    decoded = base64.urlsafe_b64decode(key_b64url + "=" * (-len(key_b64url) % 4))
-    assert decoded == KEY
+    pub_b64url = dict(parse_qsl(urlparse(uri).query))["pubkey"]
+    assert re.fullmatch(r"[A-Za-z0-9_-]+", pub_b64url)
+    decoded = base64.urlsafe_b64decode(pub_b64url + "=" * (-len(pub_b64url) % 4))
+    assert decoded == STATIC_PUB
     assert len(decoded) == 32
 
 
@@ -64,72 +69,91 @@ def test_derive_channel_id_is_pinned() -> None:
 def test_parse_pairing_uri_roundtrip() -> None:
     parsed = parse_pairing_uri(format_pairing_uri(_pairing()))
     assert parsed.channel_hex == CHANNEL_HEX
-    assert parsed.session_key == KEY
-    assert parsed.version == 2
+    assert parsed.static_public == STATIC_PUB
+    assert parsed.version == 3
     assert parsed.channel_id == derive_channel_id(CHANNEL_HEX)
     assert parsed.relay_token is None
 
 
 def test_parse_rejects_wrong_scheme() -> None:
     with pytest.raises(ValueError):
-        parse_pairing_uri("https://pair?channel=" + CHANNEL_HEX + "&key=" + KEY_B64URL)
+        parse_pairing_uri("https://pair?channel=" + CHANNEL_HEX + "&pubkey=" + STATIC_PUB_B64URL)
 
 
 def test_parse_rejects_missing_params() -> None:
     with pytest.raises(ValueError):
         parse_pairing_uri("fidobridge://pair?channel=" + CHANNEL_HEX)
     with pytest.raises(ValueError):
-        parse_pairing_uri("fidobridge://pair?key=" + KEY_B64URL)
+        parse_pairing_uri("fidobridge://pair?pubkey=" + STATIC_PUB_B64URL)
 
 
 def test_parse_rejects_duplicate_params() -> None:
-    uri = "fidobridge://pair?channel=" + CHANNEL_HEX + "&channel=" + CHANNEL_HEX + "&key=" + KEY_B64URL
+    uri = (
+        "fidobridge://pair?channel="
+        + CHANNEL_HEX
+        + "&channel="
+        + CHANNEL_HEX
+        + "&pubkey="
+        + STATIC_PUB_B64URL
+    )
     with pytest.raises(ValueError):
         parse_pairing_uri(uri)
 
 
 def test_parse_rejects_unknown_params() -> None:
-    uri = "fidobridge://pair?channel=" + CHANNEL_HEX + "&key=" + KEY_B64URL + "&extra=1"
+    uri = "fidobridge://pair?channel=" + CHANNEL_HEX + "&pubkey=" + STATIC_PUB_B64URL + "&extra=1"
+    with pytest.raises(ValueError):
+        parse_pairing_uri(uri)
+
+
+def test_parse_rejects_legacy_key_param() -> None:
+    # v2 URIs carrying `key=` are not accepted in v3 (no v2 compat).
+    uri = "fidobridge://pair?channel=" + CHANNEL_HEX + "&key=" + STATIC_PUB_B64URL
     with pytest.raises(ValueError):
         parse_pairing_uri(uri)
 
 
 def test_parse_rejects_bad_channel() -> None:
     for bad in ("ABC", "0123456789ABCDEF0123456789ABCDEF", "g" * 32, "12345"):
-        uri = "fidobridge://pair?channel=" + bad + "&key=" + KEY_B64URL
+        uri = "fidobridge://pair?channel=" + bad + "&pubkey=" + STATIC_PUB_B64URL
         with pytest.raises(ValueError):
             parse_pairing_uri(uri)
 
 
-def test_parse_rejects_bad_key() -> None:
+def test_parse_rejects_bad_pubkey() -> None:
     for bad in ("abc", "abc=", "abc!", "a" * 50):
-        uri = "fidobridge://pair?channel=" + CHANNEL_HEX + "&key=" + bad
+        uri = "fidobridge://pair?channel=" + CHANNEL_HEX + "&pubkey=" + bad
         with pytest.raises(ValueError):
             parse_pairing_uri(uri)
 
 
 def test_parse_rejects_version_mismatch() -> None:
-    uri = "fidobridge://pair?channel=" + CHANNEL_HEX + "&key=" + KEY_B64URL + "&v=99"
+    uri = "fidobridge://pair?channel=" + CHANNEL_HEX + "&pubkey=" + STATIC_PUB_B64URL + "&v=99"
     with pytest.raises(ValueError):
         parse_pairing_uri(uri)
 
 
 def test_parse_accepts_default_version() -> None:
-    uri = "fidobridge://pair?channel=" + CHANNEL_HEX + "&key=" + KEY_B64URL
-    parsed = parse_pairing_uri(uri)
-    assert parsed.version == 2
+    uri = "fidobridge://pair?channel=" + CHANNEL_HEX + "&pubkey=" + STATIC_PUB_B64URL
+    assert parse_pairing_uri(uri).version == 3
 
 
-def test_pair_cli_prints_valid_uri(capsys: pytest.CaptureFixture) -> None:
+def test_pair_cli_prints_valid_uri(
+    monkeypatch: pytest.MonkeyPatch, tmp_path, capsys: pytest.CaptureFixture
+) -> None:
+    _cli_key_path(monkeypatch, tmp_path)
     assert main(["pair"]) == 0
     out = capsys.readouterr().out
     uri = out.splitlines()[0].strip()
     assert isinstance(parse_pairing_uri(uri), ParsedPairing)
+    assert "pubkey=" in uri
+    params = dict(parse_qsl(urlparse(uri).query))
+    assert "key" not in params
 
 
 def test_format_pairing_uri_includes_token() -> None:
     token = "eyJhbGciOiJIUzI1NiJ9.test.signature"
-    pairing = Pairing(session_key=KEY, channel_hex=CHANNEL_HEX, relay_token=token)
+    pairing = Pairing(static_public=STATIC_PUB, channel_hex=CHANNEL_HEX, relay_token=token)
     uri = format_pairing_uri(pairing)
     params = dict(parse_qsl(urlparse(uri).query))
     assert params["token"] == token
@@ -143,21 +167,23 @@ def test_format_pairing_uri_omits_token_when_none() -> None:
 
 def test_parse_pairing_uri_roundtrip_with_token() -> None:
     token = "eyJhbGciOiJIUzI1NiJ9.test.signature"
-    pairing = Pairing(session_key=KEY, channel_hex=CHANNEL_HEX, relay_token=token)
+    pairing = Pairing(static_public=STATIC_PUB, channel_hex=CHANNEL_HEX, relay_token=token)
     parsed = parse_pairing_uri(format_pairing_uri(pairing))
     assert parsed.relay_token == token
     assert parsed.channel_hex == CHANNEL_HEX
-    assert parsed.session_key == KEY
+    assert parsed.static_public == STATIC_PUB
 
 
 def test_parse_pairing_uri_token_optional() -> None:
-    uri = "fidobridge://pair?channel=" + CHANNEL_HEX + "&key=" + KEY_B64URL
-    parsed = parse_pairing_uri(uri)
-    assert parsed.relay_token is None
+    uri = "fidobridge://pair?channel=" + CHANNEL_HEX + "&pubkey=" + STATIC_PUB_B64URL
+    assert parse_pairing_uri(uri).relay_token is None
 
 
 def test_parse_pairing_uri_rejects_empty_token() -> None:
-    uri = "fidobridge://pair?channel=" + CHANNEL_HEX + "&key=" + KEY_B64URL + "&token="
-    parsed = parse_pairing_uri(uri)
-    # Empty token is treated as absent (no token).
-    assert parsed.relay_token is None
+    uri = "fidobridge://pair?channel=" + CHANNEL_HEX + "&pubkey=" + STATIC_PUB_B64URL + "&token="
+    assert parse_pairing_uri(uri).relay_token is None
+
+
+def test_pairing_rejects_wrong_pubkey_length() -> None:
+    with pytest.raises(ValueError):
+        Pairing(static_public=b"short", channel_hex=CHANNEL_HEX)

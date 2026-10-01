@@ -14,7 +14,6 @@ import pytest
 
 from fido_daemon.cli import build_request_handler
 from fido_daemon.config import Config
-from fido_daemon.crypto import AesGcmCipher, SecretKey
 from fido_daemon.ctap2 import CMD_GET_ASSERTION, CMD_GET_INFO
 from fido_daemon.ctaphid import (
     BROADCAST_CID,
@@ -25,17 +24,19 @@ from fido_daemon.ctaphid import (
     fragment,
     parse_report,
 )
+from fido_daemon.noise import StaticKeyStore
 from fido_daemon.relay import RelayClient
 from fido_daemon.uhid_device import (
     UhidDevice,
     parse_event,
     uhid_output_event,
 )
-from tests.fakes import CHANNEL_ID, RELAY_URL, StubPhone
+from tests.fakes import CHANNEL_ID, RELAY_URL, NoisePhonePeer
 from tests.test_uhid_device import _exchange, _read_event, uhid_output_event
 
-KEY = bytes(range(32))
-SESSION_KEY_B64 = base64.b64encode(KEY).decode()
+DAEMON_PRIVATE = bytes(range(32))
+PHONE_PRIVATE = bytes(range(32, 64))
+DAEMON_PUBLIC = StaticKeyStore.public_key(DAEMON_PRIVATE)
 CLIENT_DATA_HASH = b"\x11" * 32
 
 
@@ -64,7 +65,7 @@ async def _read_response(peer: socket.socket, timeout: float = 2.0) -> bytes:
 def _assertion_responder(request: dict) -> dict:
     auth_data = b"\x00" * 32 + b"\x05" + b"\x00\x00\x00\x00"
     return {
-        "version": 1,
+        "version": 3,
         "type": "assertionResult",
         "id": request["id"],
         "payload": {
@@ -75,27 +76,35 @@ def _assertion_responder(request: dict) -> dict:
     }
 
 
-@pytest.mark.asyncio
-async def test_e2e_uhid_get_assertion(broker) -> None:
-    config = Config(
+def _config(tmp_path) -> Config:
+    key_path = tmp_path / "static_key.pem"
+    StaticKeyStore.save(key_path, DAEMON_PRIVATE)
+    return Config(
         socket_path="/tmp/irrelevant.sock",
         relay_url=RELAY_URL,
         channel_id=CHANNEL_ID,
-        session_key_b64=SESSION_KEY_B64,
+        static_key_path=str(key_path),
         relay_token="",
         request_timeout=5.0,
         uhid_enabled=True,
         uhid_name="test-key",
     )
 
-    cipher = AesGcmCipher(SecretKey(KEY))
-    phone = StubPhone(broker, CHANNEL_ID, cipher, _assertion_responder)
-    await phone.start()
+
+@pytest.mark.asyncio
+async def test_e2e_uhid_get_assertion(broker, tmp_path) -> None:
+    config = _config(tmp_path)
 
     relay = RelayClient(
-        RELAY_URL, CHANNEL_ID, cipher, token="", client_factory=broker.new_client
+        RELAY_URL, CHANNEL_ID, DAEMON_PRIVATE, token="", client_factory=broker.new_client
     )
     await relay.connect()
+
+    phone = NoisePhonePeer(
+        broker, CHANNEL_ID, DAEMON_PUBLIC, _assertion_responder, static_private=PHONE_PRIVATE
+    )
+    await phone.start()
+
     handle = build_request_handler(relay, config)
 
     left, right = socket.socketpair()
@@ -140,22 +149,13 @@ async def test_e2e_uhid_get_assertion(broker) -> None:
 
 
 @pytest.mark.asyncio
-async def test_e2e_uhid_get_info_served_locally(broker) -> None:
+async def test_e2e_uhid_get_info_served_locally(broker, tmp_path) -> None:
     """authenticatorGetInfo must be answered locally (browsers require it during
     discovery) without touching the relay."""
-    config = Config(
-        socket_path="/tmp/irrelevant.sock",
-        relay_url=RELAY_URL,
-        channel_id=CHANNEL_ID,
-        session_key_b64=SESSION_KEY_B64,
-        relay_token="",
-        request_timeout=5.0,
-        uhid_enabled=True,
-        uhid_name="test-key",
-    )
+    config = _config(tmp_path)
 
     relay = RelayClient(
-        RELAY_URL, CHANNEL_ID, AesGcmCipher(SecretKey(KEY)), token="", client_factory=broker.new_client
+        RELAY_URL, CHANNEL_ID, DAEMON_PRIVATE, token="", client_factory=broker.new_client
     )
     await relay.connect()
     handle = build_request_handler(relay, config)

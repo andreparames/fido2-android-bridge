@@ -12,6 +12,7 @@ dependencies = [
     "fido2>=1.1",
     "cryptography>=42",
     "centrifuge-python>=0.6",
+    "noiseprotocol>=0.3",
     "segno>=1.5",
     "tomlkit>=0.11",
 ]

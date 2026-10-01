@@ -1,8 +1,12 @@
-"""Pairing: generate the session key + channel id and derive the wire channel id.
+"""Pairing: generate the channel id and derive the wire channel id.
 
 Per PROTOCOL.md §2/§3: the raw 128-bit channel id travels only inside the
 pairing URI as 32 lowercase hex chars; the value used on the wire (and for
 routing) is the derived digest `lowercase hex(SHA-256(channel_hex_utf8)[:16])`.
+
+The pairing URI carries the daemon's static X25519 public key (PROTOCOL.md
+§2.4) instead of a symmetric session key; session keys are derived per
+connection by the Noise handshake.
 """
 
 from __future__ import annotations
@@ -11,32 +15,32 @@ import hashlib
 import secrets
 from dataclasses import dataclass
 
+from fido_daemon.noise import STATIC_KEY_BYTES
 from fido_daemon.protocol import PROTOCOL_VERSION
 
 PAIRING_SCHEME = "fidobridge://pair"
 
-KEY_BYTES = 32
 CHANNEL_BYTES = 16
 
 
 @dataclass(frozen=True)
 class Pairing:
-    session_key: bytes
+    static_public: bytes
     channel_hex: str
     relay_token: str | None = None
 
     def __post_init__(self) -> None:
-        if len(self.session_key) != KEY_BYTES:
-            raise ValueError("session key must be 32 bytes")
+        if len(self.static_public) != STATIC_KEY_BYTES:
+            raise ValueError("static public key must be 32 bytes")
         if not _is_lower_hex(self.channel_hex, CHANNEL_BYTES):
             raise ValueError("channel must be 16 bytes as 32 lowercase hex chars")
 
 
 class PairingGenerator:
     @staticmethod
-    def generate() -> Pairing:
+    def generate(static_public: bytes) -> Pairing:
         return Pairing(
-            session_key=secrets.token_bytes(KEY_BYTES),
+            static_public=static_public,
             channel_hex=secrets.token_hex(CHANNEL_BYTES),
         )
 

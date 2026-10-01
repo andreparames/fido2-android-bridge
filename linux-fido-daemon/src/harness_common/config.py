@@ -1,16 +1,18 @@
 """Shared configuration for integration harness tests.
 
 Reads from environment variables (same names as the daemon) and provides
-helpers to generate random keys for local development.
+helpers to load/generate the daemon and phone static identity keys for local
+development.
 """
 
 from __future__ import annotations
 
-import base64
 import os
 import secrets
 from dataclasses import dataclass
+from pathlib import Path
 
+from fido_daemon.noise import StaticKeyStore
 from fido_daemon.pairing import derive_channel_id
 
 
@@ -23,7 +25,7 @@ class HarnessConfig:
     """
 
     channel_id: str
-    session_key_b64: str
+    static_key_path: str
     relay_url: str
     relay_token: str = ""
     request_timeout: float = 10.0
@@ -41,22 +43,19 @@ class HarnessConfig:
 
         channel_id = derive_channel_id(channel_hex)
 
-        session_key_b64 = os.environ.get("FIDO2_SESSION_KEY_B64", "")
-        if not session_key_b64:
-            key = secrets.token_bytes(32)
-            session_key_b64 = base64.b64encode(key).decode()
+        static_key_path = os.path.expanduser(
+            os.environ.get(
+                "FIDO2_STATIC_KEY_PATH", "~/.config/fido-daemon/static_key.pem"
+            )
+        )
 
         return cls(
             channel_id=channel_id,
-            session_key_b64=session_key_b64,
+            static_key_path=static_key_path,
             relay_url=relay_url,
             relay_token=os.environ.get("FIDO2_RELAY_TOKEN", ""),
             request_timeout=float(os.environ.get("FIDO2_REQUEST_TIMEOUT", "10.0")),
         )
-
-    @property
-    def session_key_bytes(self) -> bytes:
-        return base64.b64decode(self.session_key_b64)
 
     @property
     def channel_hex(self) -> str:
@@ -67,3 +66,19 @@ class HarnessConfig:
         returns the channel_id itself (which is also 32 lowercase hex).
         """
         return self.channel_id
+
+    def daemon_static_private(self) -> bytes:
+        """Load (creating if needed) the daemon's static identity key."""
+        return StaticKeyStore.load_or_create(Path(self.static_key_path))
+
+    def daemon_static_public(self) -> bytes:
+        return StaticKeyStore.public_key(self.daemon_static_private())
+
+    def phone_static_private(self) -> bytes:
+        """Phone's static identity key, from env or generated per run."""
+        env = os.environ.get("FIDO2_PHONE_STATIC_PRIVATE_B64", "")
+        if env:
+            import base64
+
+            return base64.b64decode(env)
+        return StaticKeyStore.generate()

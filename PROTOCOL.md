@@ -1,26 +1,26 @@
-# PROTOCOL.md — Daemon ↔ Android Bridge Protocol (v1)
+# PROTOCOL.md — Daemon ↔ Android Bridge Protocol (v3)
 
 This document is the single source of truth for the communication formats
 between the **Linux daemon** (`linux-fido-daemon`) and the **Android client**
 (`android-fido-client`). It covers only the two interactions those peers have
 with each other:
 
-1. **Pairing** — one-time session-key exchange (daemon → phone).
-2. **Request/Response relay** — sealed CTAP2-style messages over the
+1. **Pairing** — one-time static-key exchange (daemon → phone).
+2. **Request/Response relay** — Noise-protected CTAP2-style messages over the
    WebSocket relay (bidirectional).
 
 Out of scope: the local Unix socket, CTAP2 CBOR decoding, and any
 daemon-internal detail. See `ANDROID_PLAN.md` and `DAEMON_PLAN.md` for those.
 
 Security posture (from `agents.md`): the relay is **untrusted**; every payload
-is AES-256-GCM sealed before touching the network; private keys never leave the
-phone's TEE/StrongBox.
+is protected by the **Noise Protocol Framework** before touching the network;
+private keys never leave the phone's TEE/StrongBox.
 
 ---
 
 ## 1. Versioning
 
-The protocol is versioned as a whole (`PROTOCOL_VERSION = 2`). Both peers must
+The protocol is versioned as a whole (`PROTOCOL_VERSION = 3`). Both peers must
 agree on the version or refuse to communicate. The version travels in the
 plaintext header (Section 4) and is also embedded in the pairing URI
 (optional, `v` parameter).
@@ -28,9 +28,10 @@ plaintext header (Section 4) and is also embedded in the pairing URI
 Schema constants are frozen at the emitted version; any breaking change bumps
 the version rather than mutating a published field.
 
-Version 2 adds the optional `token` parameter to the pairing URI, carrying a
-Centrifugo connection JWT so the relay token can rotate without rebuilding
-clients.
+**v3 replaces v2 entirely.** The static AES-256-GCM envelope
+(`key=<BASE64_AES_KEY>`, `{nonce, ciphertext, tag}`) and the LRU replay cache
+are removed. Both peers must be updated in lock-step; v2 peers are refused with
+`VERSION_MISMATCH` (0x7F). v2 compatibility is not maintained.
 
 ---
 
@@ -39,15 +40,20 @@ clients.
 Generated once by the daemon (`fido-daemon pair`), displayed as a QR code or
 terminal string, scanned/pasted into the Android app.
 
+The URI carries the daemon's **static X25519 public key** (out-of-band, so the
+relay never sees it). It carries **no symmetric key material**: session keys
+are derived per-connection by the Noise handshake, giving perfect forward
+secrecy.
+
 ### 2.1 ABNF
 
 ```abnf
 pairing-uri = "fidobridge://pair" "?" pair-params
-pair-params = "channel=" channel-id "&" "key=" b64-key ["&" "token=" token] ["&" "v=" version]
+pair-params = "channel=" channel-id "&" "pubkey=" b64-static-key ["&" "token=" token] ["&" "v=" version]
 channel-id  = 32 LCHEXDIG      ; 16 bytes, 128-bit channel identifier
-b64-key     = 43 BASE64URL     ; 32 bytes of key material, base64url, no padding
+b64-static-key = 43 BASE64URL  ; 32-byte X25519 static public key, base64url, no padding
 token       = 1*( ALPHA / DIGIT / "-" / "_" / "." ) ; Centrifugo connection JWT, compact serialization
-version     = "1" / "2"
+version     = "3"
 LCHEXDIG    = %x30-39 / %x61-66 ; lowercase hex digit: 0-9 a-f
 ```
 
@@ -59,25 +65,48 @@ padding**, per the "no URL-safe vs standard mixing" rule in both plans.
 | Parameter | Encoding | Length (bytes) | Purpose |
 |-----------|----------|----------------|---------|
 | `channel` | hex (lowercase) | 16 | Channel identifier |
-| `key`     | base64url, unpadded | 32 | AES-256 session key `K_session` |
+| `pubkey`  | base64url, unpadded | 32 | Daemon static X25519 public key `s_daemon_pub` |
 | `token`   | JWT compact serialization | variable | Optional Centrifugo connection token |
-| `v`       | decimal string | – | Protocol version (optional, default `1`) |
+| `v`       | decimal string | – | Protocol version (optional, default `3`) |
 
 ### 2.3 Validation rules
 
-- Missing `channel` or `key` → reject.
-- `key` must decode to exactly 32 bytes.
+- Missing `channel` or `pubkey` → reject.
+- `pubkey` must decode to exactly 32 bytes.
 - `channel` must be exactly 32 **lowercase** hex chars (`[0-9a-f]{32}`); uppercase
   hex is rejected, per the `channel_id` derivation in §3.2.
 - `token` is optional; if present, must be a non-empty string (a Centrifugo
   connection JWT signed with the relay's `hmac_secret_key`).
-- If `v` is present and not equal to `PROTOCOL_VERSION` (`2`) → reject with
+- If `v` is present and not equal to `PROTOCOL_VERSION` (`3`) → reject with
   `VERSION_MISMATCH` (0x7F), mirroring the version check in §4.1. Absent `v`
-  defaults to `1`.
+  defaults to `3`.
 - Unknown/duplicate parameters → reject (fail-safe, no silent nulls).
 
-The phone stores `K_session` in `EncryptedSharedPreferences`. The daemon keeps
-`K_session` in memory only.
+### 2.4 Static keys
+
+- The daemon generates a long-term X25519 keypair on first `pair` and persists
+  the 32-byte private scalar to a file with mode `0600`. Its public key travels
+  in the pairing URI.
+- The phone generates its own long-term X25519 keypair at install time and
+  stores it, plus the daemon's public key, in `EncryptedSharedPreferences`.
+- Static keys are used **only** to authenticate the Noise handshake. Every
+  WebSocket session derives fresh ephemeral keys, so static-key compromise does
+  not compromise past or future session traffic.
+- **Phone pinning (trust-on-first-use):** during the first handshake the daemon
+  learns the phone's static public key and pins it (persisted to its config
+  file as `phone_public_key`). Every later handshake must present the same key
+  or it is rejected as a security alert — so an attacker who learns only the
+  channel id cannot impersonate the phone. An explicit override
+  (`FIDO2_PHONE_PUBLIC_KEY`, or the same config value) takes precedence over
+  the learned key.
+- **Resetting the pin (pair a different phone):** re-pairing requires a fresh
+  pairing URI (new `channel`/`pubkey`) **and** clearing the old pin. Run
+  `fido-daemon pair -c <config>` to generate the new URI, then
+  `fido-daemon unpair -c <config>` to clear the stored `phone_public_key`
+  (`--confirm` skips the confirmation prompt for scripts); the new phone's key
+  is learned and pinned on its first handshake. (Alternatively, delete the
+  `phone_public_key` line from the config file, or unset
+  `FIDO2_PHONE_PUBLIC_KEY`.)
 
 ---
 
@@ -89,9 +118,8 @@ object. The relay only sees this envelope.
 ```json
 {
   "channel_id": "HASHED_CHANNEL_ID_STRING",
-  "nonce": "BASE64_12BYTE_GCM_NONCE",
-  "ciphertext": "BASE64_AES_256_GCM_PAYLOAD",
-  "tag": "BASE64_16BYTE_AUTH_TAG"
+  "kind": "ik1",
+  "payload": "BASE64_NOISE_MESSAGE"
 }
 ```
 
@@ -100,30 +128,25 @@ object. The relay only sees this envelope.
 ```json
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://fidobridge.dev/schema/wire-message/v1.schema.json",
-  "title": "WireMessage",
+  "$id": "https://fidobridge.dev/schema/wire-message/v3.schema.json",
+  "title": "WireEnvelope",
   "type": "object",
   "additionalProperties": false,
-  "required": ["channel_id", "nonce", "ciphertext", "tag"],
+  "required": ["channel_id", "kind", "payload"],
   "properties": {
     "channel_id": {
       "type": "string",
       "description": "Channel identifier. NOT the raw 128-bit id from the URI: it is a stable hash/digest of it so the raw id never appears on the wire (see 3.2).",
       "pattern": "^[0-9a-f]{32}$"
     },
-    "nonce": {
+    "kind": {
       "type": "string",
-      "description": "12-byte AES-GCM nonce, base64 (standard) encoded, unpadded — always exactly 16 chars.",
-      "pattern": "^[A-Za-z0-9+/]{16}$"
+      "enum": ["ik1", "ik2", "data"],
+      "description": "ik1: phone->daemon handshake message 1. ik2: daemon->phone handshake message 2. data: Noise transport ciphertext."
     },
-    "ciphertext": {
+    "payload": {
       "type": "string",
-      "description": "Encrypted plaintext message (Section 4), base64 encoded."
-    },
-    "tag": {
-      "type": "string",
-      "description": "16-byte AES-GCM authentication tag, base64 encoded, unpadded — always exactly 22 chars.",
-      "pattern": "^[A-Za-z0-9+/]{22}$"
+      "description": "Raw Noise handshake message or transport ciphertext (ciphertext || 16-byte tag), base64 (standard) encoded, unpadded."
     }
   }
 }
@@ -133,8 +156,6 @@ object. The relay only sees this envelope.
 
 - **Base64:** standard alphabet everywhere on the wire; base64url only in the
   pairing URI. Centralized in one helper per peer — no mixing.
-- **Nonce:** fresh, cryptographically secure 12 bytes per message; never
-  reused.
 - **Channel id:** the raw 128-bit id must not appear in plaintext on the
   relay. Both peers derive it identically at pairing time and freeze it:
   `channel_id = lowercase hex( SHA-256( channel_hex_utf8 )[0:16] )` — i.e. the
@@ -142,25 +163,34 @@ object. The relay only sees this envelope.
   the URI, encoded as 32 lowercase hex chars. It is used for both the
   `channel_id` envelope field and WebSocket routing. Derivation is pinned;
   do not substitute another hash/encoding.
-- **Tag failure:** GCM authentication failure aborts the message, flags the
-  connection, and logs a security alert. The connection may be dropped.
-- **Replay protection:** GCM provides integrity but not freshness. Both peers
-  reject any message whose plaintext `id` was already seen within the last
-  N (e.g. 512) processed messages (small LRU) as a replay → drop + `error`
-  `operationDenied` without user interaction. This bounds replay risk to the
-  LRU window; the 30 s request timeout additionally bounds staleness.
+- **Handshake routing:** the initiator (phone) publishes only `ik1`; the
+  responder (daemon) publishes only `ik2`. Each peer ignores publications whose
+  `kind` is its own (which is how each peer discards its own relay echo).
+  After the handshake, both peers publish `data`.
+- **Replay protection:** the Noise transport maintains two 64-bit monotonic
+  sequence counters per session — one for transmission, one for reception —
+  that start at `0` and increment with every message. Inbound `data` frames
+  are decrypted under the current receive counter; a replayed or reordered
+  frame therefore fails the GCM authentication tag (its ciphertext was produced
+  under a different counter) and is dropped as a **security alert** before any
+  processing. Because ephemeral keys are regenerated for every session, frames
+  captured from a previous session cannot be replayed into a new one. No LRU
+  replay cache is required or used.
+- **Auth failure:** any Noise authentication failure (handshake or transport)
+  aborts the message, flags the connection, and logs a security alert. The
+  connection may be dropped.
 
 ---
 
-## 4. Plaintext Message (inside `ciphertext`)
+## 4. Plaintext Message (inside `data`)
 
-The decrypted `ciphertext` is itself a JSON object carrying a typed
+The decrypted `data` payload is itself a JSON object carrying a typed
 request/response plus a correlation id, so both peers can multiplex
 multiple in-flight operations on one WebSocket connection.
 
 ```json
 {
-  "version": 1,
+  "version": 3,
   "type": "getAssertion",
   "id": "018f8b32-...-uuid",
   "payload": { }
@@ -171,7 +201,7 @@ multiple in-flight operations on one WebSocket connection.
 
 | Field     | Type   | Description |
 |-----------|--------|-------------|
-| `version` | int    | `PROTOCOL_VERSION` (currently `2`). Mismatch → abort with `VERSION_MISMATCH`. |
+| `version` | int    | `PROTOCOL_VERSION` (currently `3`). Mismatch → abort with `VERSION_MISMATCH`. |
 | `type`    | string | One of the message types in Section 5. |
 | `id`      | string | UUID correlation id. The response to a request echoes the same `id`. |
 | `payload` | object | Typed body per `type` (Sections 5.1–5.4). |
@@ -181,13 +211,13 @@ multiple in-flight operations on one WebSocket connection.
 ```json
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://fidobridge.dev/schema/message/v1.schema.json",
+  "$id": "https://fidobridge.dev/schema/message/v3.schema.json",
   "title": "Message",
   "type": "object",
   "additionalProperties": false,
   "required": ["version", "type", "id", "payload"],
   "properties": {
-    "version": { "const": 2 },
+    "version": { "const": 3 },
     "type": {
       "enum": ["getAssertion", "makeCredential",
                "assertionResult", "makeCredentialResult",
@@ -210,7 +240,7 @@ All byte-string fields are encoded base64 (standard alphabet) in JSON.
 
 ```json
 {
-  "version": 1,
+  "version": 3,
   "type": "getAssertion",
   "id": "<uuid>",
   "payload": {
@@ -242,7 +272,7 @@ implicit first-only pick across multiple credentials.
 
 ```json
 {
-  "version": 1,
+  "version": 3,
   "type": "makeCredential",
   "id": "<uuid>",
   "payload": {
@@ -267,7 +297,7 @@ implicit first-only pick across multiple credentials.
 
 ```json
 {
-  "version": 1,
+  "version": 3,
   "type": "assertionResult",
   "id": "<uuid>",
   "payload": {
@@ -295,7 +325,7 @@ implicit first-only pick across multiple credentials.
 
 ```json
 {
-  "version": 1,
+  "version": 3,
   "type": "makeCredentialResult",
   "id": "<uuid>",
   "payload": {
@@ -321,7 +351,7 @@ implicit first-only pick across multiple credentials.
 
 ```json
 {
-  "version": 1,
+  "version": 3,
   "type": "error",
   "id": "<uuid>",
   "payload": {
@@ -340,7 +370,7 @@ client with the standard error:
 | 0x26 | `CTAP2_ERR_UNSUPPORTED_ALGORITHM` | `pubKeyCredParams` without a supported algorithm |
 | 0x27 | `CTAP2_ERR_OPERATION_DENIED`  | rpId mismatch, unknown credential, biometric fail/cancel/timeout, exclude match |
 | 0x2C | `CTAP2_ERR_INVALID_OPTION`    | Unsupported `option` value |
-| 0x7F | `VERSION_MISMATCH`            | `version != 2` (implementation-specific, non-CTAP2) |
+| 0x7F | `VERSION_MISMATCH`            | `version != 3` (implementation-specific, non-CTAP2) |
 
 Fail-safe: any local failure on the phone (biometric denial, tag mismatch,
 origin mismatch) maps to `operationDenied` and aborts immediately.
@@ -348,7 +378,7 @@ origin mismatch) maps to `operationDenied` and aborts immediately.
 ### 5.6 `ping` — either direction (optional)
 
 ```json
-{ "version": 1, "type": "ping", "id": "<uuid>", "payload": { "ts": 1699999999999 } }
+{ "version": 3, "type": "ping", "id": "<uuid>", "payload": { "ts": 1699999999999 } }
 ```
 
 Echoed back as a `ping` with the same `id`; used for liveness/timeout probes.
@@ -360,31 +390,44 @@ Echoed back as a `ping` with the same `id`; used for liveness/timeout probes.
 ```
  Local CTAP2 client            Daemon              Relay              Phone
       │                          │                  │                  │
+      │                          │   [handshake]    │  ik1 (phone→daemon)
+      │                          │◀─────────────────│──────────────────│
+      │                          │                  │  ik2 (daemon→phone)
+      │                          │──────────────────│──────────────────▶
+      │                          │  [split → transport, PFS]
+      │                          │                  │                  │
       │  getAssertion CBOR       │                  │                  │
       │─────────────────────────▶│                  │                  │
       │                          │ [parse CTAP2]    │                  │
-      │                          │ [seal getAssertion]                 │
+      │                          │ [encrypt data]   │                  │
       │                          │──────────────────▶                  │
-      │                          │   WireMessage    │                  │
-      │                          │                  │─────────────────▶│
-      │                          │                  │   [open + verify tag]
+      │                          │   WireEnvelope    │                  │
+      │                          │     kind=data     │─────────────────▶│
+      │                          │                  │   [decrypt, verify tag]
       │                          │                  │   [BiometricPrompt(rpId)]
       │                          │                  │   [sign in TEE]
-      │                          │                  │   [seal assertionResult]
+      │                          │                  │   [encrypt data]
       │                          │                  │◀─────────────────│
-      │                          │   WireMessage    │                  │
+      │                          │   WireEnvelope    │                  │
       │                          │◀─────────────────│                  │
-      │  [open + reply]          │                  │                  │
+      │  [decrypt + reply]       │                  │                  │
       │◀─────────────────────────│                  │                  │
 ```
 
-- Correlation: the response `id` equals the request `id`.
-- Timeout: daemon aborts a request after 30 s (`FIDO2_REQUEST_TIMEOUT`) if no
-  valid response arrives → returns timeout error to its socket client.
-- Reconnect: on connection drop either peer reconnects with exponential
-  backoff + jitter; in-flight requests are failed and the client retries.
-- Replay: a request is dropped (and answered with `operationDenied`) if its
-  `id` matches one already processed in the LRU window (see §3.2).
+- **Handshake:** on every (re)connect the phone initiates a fresh
+  `Noise_IK_25519_AESGCM_SHA256` handshake with prologue `"FIDO2_BRIDGE_V2"`:
+  it publishes `ik1`, the daemon replies with `ik2`, both call `split()`.
+  Ephemeral keys are generated per session and discarded after the handshake.
+- **Correlation:** the response `id` equals the request `id`.
+- **Timeout:** daemon aborts a request after 30 s (`FIDO2_REQUEST_TIMEOUT`) if no
+  valid response arrives → returns timeout error to its socket client. Requests
+  issued before the handshake completes wait for it, bounded by the same timeout.
+- **Reconnect:** on connection drop either peer reconnects with exponential
+  backoff + jitter; a new handshake runs; in-flight requests are failed and the
+  client retries.
+- **Replay:** prevented by the Noise transport sequence counters (§3.2). A
+  replayed/reordered frame fails authentication and is dropped as a security
+  alert without user interaction.
 
 ---
 
@@ -395,13 +438,17 @@ Echoed back as a `ping` with the same `id`; used for liveness/timeout probes.
   unknown keys rejected.
   - Android: `kotlinx.serialization` decodes the shape but does **not** enforce
     length/pattern constraints, so add explicit decoded-length checks after
-    decode: `nonce` = 12 bytes, `tag` = 16 bytes, `key` = 32 bytes,
+    decode: `pubkey` = 32 bytes, `channel` = 32 lowercase hex,
     `clientDataHash` = 32 bytes, and re-verify Base64 strictly.
   - Daemon: `jsonschema` (or equivalent) validates the full schema including
     the `pattern`/`const` constraints above.
+- **Noise failures:** any `ik1`/`ik2`/`data` frame that fails Noise
+  authentication (handshake error, `InvalidTag`, replay) is treated as a
+  security alert, logged, and dropped. The connection may be dropped.
 - **Cross-peer tests:** daemon tests emit fixtures that the Android processor
-  tests consume byte-for-byte (`allowCredentials` filtering, COSE layout,
-  authenticator-data layout) so both sides stay in lock-step with this spec.
+  tests consume byte-for-byte (`ik1`/`ik2` message sizes, envelope schema,
+  pairing-URI parsing, authenticator-data layout) so both sides stay in
+  lock-step with this spec.
 - **Freeze rule:** schema constants live in one place per peer (e.g.
   `protocol.py` / `Protocol.kt`) and are versioned; both plans already require
   this — `PROTOCOL.md` is the reference both implementations mirror.

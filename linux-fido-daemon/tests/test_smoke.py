@@ -1,97 +1,60 @@
-import base64
 import json
 import re
 
-import pytest
-
-from fido_daemon.crypto import (
-    AesGcmCipher,
-    SecretKey,
-    TagMismatchError,
-    message_from_json,
-    message_to_json,
+from fido_daemon.crypto import b64decode, b64encode
+from fido_daemon.noise import (
+    NoiseInitiatorSession,
+    NoiseResponderSession,
+    StaticKeyStore,
+    WireEnvelope,
+    envelope_from_json,
+    envelope_to_json,
 )
 
-NONCE_PATTERN = r"^[A-Za-z0-9+/]{16}$"  # 12 bytes, unpadded
-TAG_PATTERN = r"^[A-Za-z0-9+/]{22}$"  # 16 bytes, unpadded
-
-
-def _key() -> SecretKey:
-    return SecretKey(bytes(range(32)))
+CHANNEL_ID = "0123456789abcdef0123456789abcdef"
+CHANNEL_ID_PATTERN = r"^[0-9a-f]{32}$"
+DAEMON_PRIVATE = bytes(range(32))
+PHONE_PRIVATE = bytes(range(32, 64))
 
 
 def test_smoke() -> None:
     assert True
 
 
-def test_seal_open_roundtrip() -> None:
-    cipher = AesGcmCipher(_key())
-    message = cipher.seal("0123456789abcdef0123456789abcdef", b"hello")
-    assert len(message.nonce) == 12
-    assert len(message.tag) == 16
-    assert cipher.open(message) == b"hello"
+def test_ik1_is_96_bytes_and_ik2_is_48_bytes() -> None:
+    """Cross-peer fixture: message sizes are pinned (PROTOCOL.md §7)."""
+    daemon = NoiseResponderSession(DAEMON_PRIVATE)
+    phone = NoiseInitiatorSession(PHONE_PRIVATE, StaticKeyStore.public_key(DAEMON_PRIVATE))
+    ik1 = phone.create_ik1()
+    ik2 = daemon.receive_ik1(ik1)
+    assert len(ik1) == 96
+    assert len(ik2) == 48
 
 
-def test_unique_nonce_per_message() -> None:
-    cipher = AesGcmCipher(_key())
-    first = cipher.seal("0123456789abcdef0123456789abcdef", b"hello")
-    second = cipher.seal("0123456789abcdef0123456789abcdef", b"hello")
-    assert first.nonce != second.nonce
+def test_envelope_schema_patterns() -> None:
+    envelope = WireEnvelope(CHANNEL_ID, "data", b"\x00\x01")
+    data = json.loads(envelope_to_json(envelope))
+    assert re.fullmatch(CHANNEL_ID_PATTERN, data["channel_id"])
+    assert data["kind"] in ("ik1", "ik2", "data")
+    assert "=" not in data["payload"]
+    decoded = b64decode(data["payload"])
+    assert envelope_from_json(
+        envelope_to_json(WireEnvelope(CHANNEL_ID, data["kind"], decoded))
+    ) == envelope
 
 
-def test_tamper_raises_tag_mismatch() -> None:
-    cipher = AesGcmCipher(_key())
-    message = cipher.seal("0123456789abcdef0123456789abcdef", b"hello")
-    tampered = message.__class__(
-        message.channel_id, message.nonce, b"evil", message.tag
-    )
-    with pytest.raises(TagMismatchError):
-        cipher.open(tampered)
+def test_data_payload_is_authenticated_ciphertext() -> None:
+    daemon = NoiseResponderSession(DAEMON_PRIVATE)
+    phone = NoiseInitiatorSession(PHONE_PRIVATE, StaticKeyStore.public_key(DAEMON_PRIVATE))
+    ik1 = phone.create_ik1()
+    ik2 = daemon.receive_ik1(ik1)
+    phone.receive_ik2(ik2)
+
+    ct = daemon.encrypt(b"secret payload")
+    assert b"secret payload" not in ct
+    assert phone.decrypt(ct) == b"secret payload"
 
 
-def test_wire_json_roundtrip() -> None:
-    cipher = AesGcmCipher(_key())
-    message = cipher.seal("0123456789abcdef0123456789abcdef", b"payload")
-    encoded = message_to_json(message)
-    decoded = message_from_json(encoded)
-    assert decoded == message
-
-
-def test_wire_json_schema() -> None:
-    cipher = AesGcmCipher(_key())
-    data = json.loads(message_to_json(cipher.seal("0123456789abcdef0123456789abcdef", b"x")))
-    assert set(data) == {"channel_id", "nonce", "ciphertext", "tag"}
-    for field in ("nonce", "ciphertext", "tag"):
-        value = data[field]
-        decoded = base64.b64decode(value + "=" * (-len(value) % 4))
-        assert decoded  # valid base64, decodes to bytes
-
-
-def test_wire_json_nonce_tag_match_schema_patterns() -> None:
-    cipher = AesGcmCipher(_key())
-    data = json.loads(message_to_json(cipher.seal("0123456789abcdef0123456789abcdef", b"x")))
-    assert re.fullmatch(NONCE_PATTERN, data["nonce"])
-    assert re.fullmatch(TAG_PATTERN, data["tag"])
-    assert "=" not in data["nonce"]
-    assert "=" not in data["tag"]
-    assert "=" not in data["ciphertext"]
-
-
-def test_wire_json_rejects_padded_base64() -> None:
-    cipher = AesGcmCipher(_key())
-    message = cipher.seal("0123456789abcdef0123456789abcdef", b"x")
-    data = json.loads(message_to_json(message))
-    padded = data.copy()
-    padded["tag"] = padded["tag"] + "="
-    with pytest.raises(ValueError):
-        message_from_json(json.dumps(padded))
-
-
-def test_wire_json_rejects_bad_lengths() -> None:
-    cipher = AesGcmCipher(_key())
-    message = cipher.seal("0123456789abcdef0123456789abcdef", b"x")
-    data = json.loads(message_to_json(message))
-    short = data.copy()
-    short["nonce"] = base64.b64encode(b"\x00" * 4).decode().rstrip("=")
-    with pytest.raises(ValueError):
-        message_from_json(json.dumps(short))
+def test_base64_helpers_are_unpadded() -> None:
+    assert "=" not in b64encode(b"payload")
+    assert b64decode(b64encode(b"payload")) == b"payload"

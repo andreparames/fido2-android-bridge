@@ -1,12 +1,13 @@
 """Pairing URI formatter/parser per PROTOCOL.md §2.
 
 ABNF:
-    fidobridge://pair?channel=<32_lowercase_hex>&key=<base64url_32byte>[&token=<jwt>][&v=2]
+    fidobridge://pair?channel=<32_lowercase_hex>&pubkey=<base64url_32byte>[&token=<jwt>][&v=3]
 
-`key` is base64url, unpadded; `channel` is 32 lowercase hex chars; `token` is
-the optional Centrifugo connection JWT; `v` is the optional protocol version
-(default 1, current 2). Rejects missing/duplicate/unknown params, non-hex
-channel, wrong key length, and version mismatch.
+`pubkey` is the daemon's static X25519 public key (base64url, unpadded);
+`channel` is 32 lowercase hex chars; `token` is the optional Centrifugo
+connection JWT; `v` is the optional protocol version (default 3). Rejects
+missing/duplicate/unknown params, non-hex channel, wrong pubkey length, the
+legacy v2 `key` param, and version mismatch.
 """
 
 from __future__ import annotations
@@ -17,8 +18,8 @@ import re
 from dataclasses import dataclass
 from urllib.parse import parse_qsl, urlparse
 
+from fido_daemon.noise import STATIC_KEY_BYTES
 from fido_daemon.pairing import (
-    KEY_BYTES,
     PAIRING_SCHEME,
     PROTOCOL_VERSION,
     Pairing,
@@ -26,13 +27,13 @@ from fido_daemon.pairing import (
 )
 
 _CHANNEL_PATTERN = re.compile(r"^[0-9a-f]{32}$")
-_ALLOWED_PARAMS = frozenset({"channel", "key", "token", "v"})
+_ALLOWED_PARAMS = frozenset({"channel", "pubkey", "token", "v"})
 
 
 @dataclass(frozen=True)
 class ParsedPairing:
     channel_hex: str
-    session_key: bytes
+    static_public: bytes
     version: int
     relay_token: str | None = None
 
@@ -47,18 +48,21 @@ def _b64url_encode(data: bytes) -> str:
 
 def _b64url_decode(value: str) -> bytes:
     if not value or "=" in value or len(value) % 4 == 1:
-        raise ValueError("base64url key must be canonical unpadded")
+        raise ValueError("base64url pubkey must be canonical unpadded")
     if not re.fullmatch(r"[A-Za-z0-9_-]+", value):
-        raise ValueError("invalid base64url key")
+        raise ValueError("invalid base64url pubkey")
     padded = value + "=" * (-len(value) % 4)
     try:
         return base64.b64decode(padded, altchars=b"-_", validate=True)
     except (ValueError, binascii.Error) as exc:
-        raise ValueError("invalid base64url key") from exc
+        raise ValueError("invalid base64url pubkey") from exc
 
 
 def format_pairing_uri(pairing: Pairing) -> str:
-    uri = f"{PAIRING_SCHEME}?channel={pairing.channel_hex}&key={_b64url_encode(pairing.session_key)}"
+    uri = (
+        f"{PAIRING_SCHEME}?channel={pairing.channel_hex}"
+        f"&pubkey={_b64url_encode(pairing.static_public)}"
+    )
     if pairing.relay_token:
         uri += f"&token={pairing.relay_token}"
     return uri
@@ -81,16 +85,16 @@ def parse_pairing_uri(uri: str) -> ParsedPairing:
 
     if "channel" not in params:
         raise ValueError("missing channel parameter")
-    if "key" not in params:
-        raise ValueError("missing key parameter")
+    if "pubkey" not in params:
+        raise ValueError("missing pubkey parameter")
 
     channel_hex = params["channel"]
     if not _CHANNEL_PATTERN.fullmatch(channel_hex):
         raise ValueError("channel must be exactly 32 lowercase hex chars")
 
-    session_key = _b64url_decode(params["key"])
-    if len(session_key) != KEY_BYTES:
-        raise ValueError("key must decode to exactly 32 bytes")
+    static_public = _b64url_decode(params["pubkey"])
+    if len(static_public) != STATIC_KEY_BYTES:
+        raise ValueError("pubkey must decode to exactly 32 bytes")
 
     version = PROTOCOL_VERSION
     if "v" in params:
@@ -105,7 +109,7 @@ def parse_pairing_uri(uri: str) -> ParsedPairing:
 
     return ParsedPairing(
         channel_hex=channel_hex,
-        session_key=session_key,
+        static_public=static_public,
         version=version,
         relay_token=relay_token,
     )

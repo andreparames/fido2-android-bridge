@@ -17,7 +17,7 @@ import logging
 import sys
 import uuid
 
-from fido_daemon.crypto import AesGcmCipher, SecretKey
+from fido_daemon.noise import StaticKeyStore
 from fido_daemon.protocol import (
     TYPE_ASSERTION_RESULT,
     TYPE_MAKE_CREDENTIAL_RESULT,
@@ -112,11 +112,10 @@ class MockDaemon(RelayClient):
     """Extends RelayClient with test-specific request building and validation."""
 
     def __init__(self, config: HarnessConfig) -> None:
-        cipher = AesGcmCipher(SecretKey(config.session_key_bytes))
         super().__init__(
             url=config.relay_url,
             channel_id=config.channel_id,
-            cipher=cipher,
+            static_private=config.daemon_static_private(),
             token=config.relay_token or "",
         )
         self._config = config
