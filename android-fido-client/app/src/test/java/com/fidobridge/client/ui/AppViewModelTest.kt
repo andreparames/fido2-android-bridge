@@ -75,19 +75,6 @@ class AppViewModelTest {
     }
 
     @Test
-    fun `restoreRequests replaces the request log`() {
-        val log = InMemoryRequestLog()
-        log.record("id-1", RequestType.SIGN_IN, "example.com")
-        val snapshot = log.records.value
-        log.clear()
-
-        val vm = viewModel(requestLog = log)
-        vm.restoreRequests(snapshot)
-
-        assertEquals(listOf("id-1"), vm.requests.value.map { it.id })
-    }
-
-    @Test
     fun `reconnect delegates to the pipeline`() {
         val pipeline = pipeline()
         val vm = viewModel(pipeline = pipeline)

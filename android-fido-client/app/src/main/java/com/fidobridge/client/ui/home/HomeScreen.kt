@@ -32,10 +32,6 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Scaffold
-import androidx.compose.material3.SnackbarDuration
-import androidx.compose.material3.SnackbarHost
-import androidx.compose.material3.SnackbarHostState
-import androidx.compose.material3.SnackbarResult
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -43,7 +39,6 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -62,7 +57,6 @@ import com.fidobridge.client.ui.model.RequestOutcome
 import com.fidobridge.client.ui.model.RequestRecord
 import com.fidobridge.client.ui.theme.SemanticColors
 import com.fidobridge.client.ui.theme.semanticColors
-import kotlinx.coroutines.launch
 
 @Composable
 fun HomeScreen(
@@ -71,14 +65,10 @@ fun HomeScreen(
 ) {
     val requests by viewModel.requests.collectAsStateWithLifecycle()
     val bridgeState by viewModel.bridgeState.collectAsStateWithLifecycle()
-    val snackbarHostState = remember { SnackbarHostState() }
-    val scope = rememberCoroutineScope()
     val colors = semanticColors()
     var showResetDialog by remember { mutableStateOf(false) }
 
-    Scaffold(
-        snackbarHost = { SnackbarHost(snackbarHostState) }
-    ) { innerPadding ->
+    Scaffold { innerPadding ->
         Box(
             modifier = Modifier
                 .fillMaxSize()
@@ -105,20 +95,7 @@ fun HomeScreen(
                 RequestListHeader(
                     requests = requests,
                     colors = colors,
-                    onClear = {
-                        val snapshot = requests
-                        viewModel.clearLog()
-                        scope.launch {
-                            val result = snackbarHostState.showSnackbar(
-                                message = "Request history cleared",
-                                actionLabel = "Undo",
-                                duration = SnackbarDuration.Short
-                            )
-                            if (result == SnackbarResult.ActionPerformed) {
-                                viewModel.restoreRequests(snapshot)
-                            }
-                        }
-                    }
+                    onClear = { viewModel.clearLog() }
                 )
 
                 if (requests.isEmpty()) {

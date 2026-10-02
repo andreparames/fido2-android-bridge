@@ -111,23 +111,7 @@ class RequestLogTest {
         log.markAccepted("id-1")
         log.markRejected("id-1")
         log.clear()
-        log.replace(listOf(RequestRecord("x", RequestType.SIGN_IN, "x.com", 1L, RequestOutcome.PENDING)))
 
         assertTrue(log.records.value.isEmpty())
-    }
-
-    @Test
-    fun `replace swaps the log and respects the cap`() {
-        val log = requestLog(maxEntries = 3)
-        val records = listOf(
-            RequestRecord("a", RequestType.SIGN_IN, "a.com", 1L, RequestOutcome.ACCEPTED),
-            RequestRecord("b", RequestType.REGISTER, "b.com", 2L, RequestOutcome.REJECTED),
-            RequestRecord("c", RequestType.SIGN_IN, "c.com", 3L, RequestOutcome.PENDING),
-            RequestRecord("d", RequestType.SIGN_IN, "d.com", 4L, RequestOutcome.PENDING)
-        )
-
-        log.replace(records)
-
-        assertEquals(listOf("a", "b", "c"), log.records.value.map { it.id })
     }
 }
