@@ -43,6 +43,8 @@ class EncryptedIdentityStore(context: Context) : IdentityStore {
 
     override fun loadRelayToken(): String? = prefs.getString(RELAY_TOKEN_FIELD, null)
 
+    override fun clear(): Boolean = prefs.edit().clear().commit()
+
     private fun decode(value: String): ByteArray? = try {
         Base64.decodeStandard(value)
     } catch (e: Exception) {

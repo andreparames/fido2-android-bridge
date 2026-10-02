@@ -1,6 +1,9 @@
 package com.fidobridge.client.ctap
 
 import com.fidobridge.client.protocol.Protocol
+import com.fidobridge.client.ui.model.InMemoryRequestLog
+import com.fidobridge.client.ui.model.RequestOutcome
+import com.fidobridge.client.ui.model.RequestType
 import com.fidobridge.client.util.Base64
 import com.upokecenter.cbor.CBORObject
 import kotlinx.serialization.json.Json
@@ -9,6 +12,7 @@ import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 import org.junit.Assert.assertArrayEquals
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class Ctap2ProcessorTest {
@@ -210,6 +214,107 @@ class Ctap2ProcessorTest {
         assertEquals(0, store.credentials.size)
     }
 
+    @Test
+    fun `successful getAssertion is recorded as accepted sign-in`() {
+        val store = FakeCredentialStore()
+        val keyGen = FakeKeyGenerator()
+        val log = InMemoryRequestLog()
+        val processor = Ctap2Processor(store, keyGen, FakeSigner(), log)
+        val generated = keyGen.generate()
+        store.add(StoredCredential("example.com", generated.alias, generated.credentialId, generated.publicKey))
+
+        processSync(
+            processor,
+            request("getAssertion", "req-accept", """{"clientDataHash":"$clientDataHashB64","rpId":"example.com"}""")
+        )
+
+        val record = log.records.value.single()
+        assertEquals("req-accept", record.id)
+        assertEquals(RequestType.SIGN_IN, record.type)
+        assertEquals("example.com", record.rpId)
+        assertEquals(RequestOutcome.ACCEPTED, record.outcome)
+    }
+
+    @Test
+    fun `getAssertion with denied signer is recorded as rejected`() {
+        val store = FakeCredentialStore()
+        val keyGen = FakeKeyGenerator()
+        val signer = FakeSigner()
+        signer.fail = true
+        val log = InMemoryRequestLog()
+        val processor = Ctap2Processor(store, keyGen, signer, log)
+        val generated = keyGen.generate()
+        store.add(StoredCredential("example.com", generated.alias, generated.credentialId, generated.publicKey))
+
+        processSync(
+            processor,
+            request("getAssertion", "req-deny", """{"clientDataHash":"$clientDataHashB64","rpId":"example.com"}""")
+        )
+
+        assertEquals(RequestOutcome.REJECTED, log.records.value.single().outcome)
+    }
+
+    @Test
+    fun `getAssertion with no matching credential is recorded as rejected`() {
+        val log = InMemoryRequestLog()
+        val processor = Ctap2Processor(FakeCredentialStore(), FakeKeyGenerator(), FakeSigner(), log)
+
+        processSync(
+            processor,
+            request("getAssertion", "req-none", """{"clientDataHash":"$clientDataHashB64","rpId":"nobody.com"}""")
+        )
+
+        assertEquals(RequestOutcome.REJECTED, log.records.value.single().outcome)
+    }
+
+    @Test
+    fun `successful makeCredential is recorded as accepted register`() {
+        val log = InMemoryRequestLog()
+        val processor = Ctap2Processor(FakeCredentialStore(), FakeKeyGenerator(), FakeSigner(), log)
+        val userId = Base64.encodeStandard("user-1".toByteArray())
+
+        processSync(
+            processor,
+            request(
+                "makeCredential", "req-reg",
+                """{"clientDataHash":"$clientDataHashB64","rpId":"example.com","user":{"id":"$userId","name":"alice","displayName":"Alice"}}"""
+            )
+        )
+
+        val record = log.records.value.single()
+        assertEquals(RequestType.REGISTER, record.type)
+        assertEquals(RequestOutcome.ACCEPTED, record.outcome)
+    }
+
+    @Test
+    fun `dummy rp probe is recorded as browser check`() {
+        val log = InMemoryRequestLog()
+        val processor = Ctap2Processor(FakeCredentialStore(), FakeKeyGenerator(), FakeSigner(), log)
+        val userId = Base64.encodeStandard("dummy".toByteArray())
+
+        processSync(
+            processor,
+            request(
+                "makeCredential", "req-probe",
+                """{"clientDataHash":"$clientDataHashB64","rpId":".dummy","user":{"id":"$userId","name":"dummy","displayName":"dummy"}}"""
+            )
+        )
+
+        val record = log.records.value.single()
+        assertEquals(RequestType.BROWSER_CHECK, record.type)
+        assertEquals(RequestOutcome.ACCEPTED, record.outcome)
+    }
+
+    @Test
+    fun `ping is not recorded in the request log`() {
+        val log = InMemoryRequestLog()
+        val processor = Ctap2Processor(FakeCredentialStore(), FakeKeyGenerator(), FakeSigner(), log)
+
+        processSync(processor, request("ping", "req-ping", """{}"""))
+
+        assertTrue(log.records.value.isEmpty())
+    }
+
     private class FakeCredentialStore : CredentialStore {
         val credentials = mutableListOf<StoredCredential>()
 
@@ -220,6 +325,11 @@ class Ctap2ProcessorTest {
 
         override fun add(credential: StoredCredential) {
             credentials.add(credential)
+        }
+
+        override fun clear(): Boolean {
+            credentials.clear()
+            return true
         }
     }
 

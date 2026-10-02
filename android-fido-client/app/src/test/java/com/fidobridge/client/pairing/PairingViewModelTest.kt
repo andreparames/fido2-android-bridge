@@ -9,6 +9,7 @@ import kotlinx.coroutines.test.resetMain
 import kotlinx.coroutines.test.setMain
 import org.junit.After
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertTrue
 import org.junit.Before
@@ -36,6 +37,14 @@ class PairingViewModelTest {
     private fun viewModel(store: FakeIdentityStore = FakeIdentityStore(), dispatcher: PairingUriDispatcher = PairingUriDispatcher()): PairingViewModel =
         PairingViewModel(PairingRepository(store), dispatcher)
 
+    private fun awaitTerminalState(vm: PairingViewModel) {
+        val deadline = System.currentTimeMillis() + 5_000
+        while (vm.uiState.value is PairingUiState.Pairing) {
+            if (System.currentTimeMillis() > deadline) throw AssertionError("pairing did not reach a terminal state")
+            Thread.sleep(5)
+        }
+    }
+
     @Test
     fun `initial state is scanning`() {
         val vm = viewModel()
@@ -49,6 +58,7 @@ class PairingViewModelTest {
         val vm = viewModel(store)
 
         vm.onQrResult(validUri())
+        awaitTerminalState(vm)
 
         assertEquals(PairingUiState.Paired, vm.uiState.value)
         assertNotNull(store.loadDaemonStaticPublic())
@@ -60,6 +70,7 @@ class PairingViewModelTest {
         val vm = viewModel()
 
         vm.onQrResult("fidobridge://pair?channel=zz&pubkey=bad")
+        awaitTerminalState(vm)
 
         assertTrue(vm.uiState.value is PairingUiState.Error)
     }
@@ -70,6 +81,7 @@ class PairingViewModelTest {
         val vm = viewModel(store)
 
         vm.onManualSubmit(validUri())
+        awaitTerminalState(vm)
 
         assertEquals(PairingUiState.Paired, vm.uiState.value)
         assertNotNull(store.loadDaemonStaticPublic())
@@ -82,6 +94,7 @@ class PairingViewModelTest {
         dispatcher.submit(validUri())
 
         val vm = viewModel(store, dispatcher)
+        awaitTerminalState(vm)
 
         assertEquals(PairingUiState.Paired, vm.uiState.value)
         assertNotNull(store.loadDaemonStaticPublic())
@@ -94,8 +107,35 @@ class PairingViewModelTest {
         val vm = viewModel(store, dispatcher)
 
         dispatcher.submit(validUri())
+        awaitTerminalState(vm)
 
         assertEquals(PairingUiState.Paired, vm.uiState.value)
         assertNotNull(store.loadDaemonStaticPublic())
+    }
+
+    @Test
+    fun `valid uri passes validation`() {
+        val vm = viewModel()
+
+        assertTrue(vm.validateUri(validUri()))
+    }
+
+    @Test
+    fun `invalid uri fails validation`() {
+        val vm = viewModel()
+
+        assertFalse(vm.validateUri("not-a-uri"))
+    }
+
+    @Test
+    fun `error state clears back to scanning`() {
+        val vm = viewModel()
+        vm.onQrResult("fidobridge://pair?channel=zz&pubkey=bad")
+        awaitTerminalState(vm)
+        assertTrue(vm.uiState.value is PairingUiState.Error)
+
+        vm.clearError()
+
+        assertEquals(PairingUiState.Scanning, vm.uiState.value)
     }
 }

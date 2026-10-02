@@ -33,6 +33,11 @@ class FakeCredentialStore : CredentialStore {
     override fun add(credential: StoredCredential) {
         credentials.add(credential)
     }
+
+    override fun clear(): Boolean {
+        credentials.clear()
+        return true
+    }
 }
 
 class FakeKeyGenerator : KeyGenerator {

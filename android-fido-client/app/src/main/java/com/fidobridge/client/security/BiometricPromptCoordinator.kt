@@ -1,6 +1,7 @@
 package com.fidobridge.client.security
 
 import androidx.biometric.BiometricPrompt
+import com.fidobridge.client.notifications.RequestNotifier
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.receiveAsFlow
@@ -18,7 +19,9 @@ class SigningRequest(
 }
 
 @Singleton
-class BiometricPromptCoordinator @Inject constructor() {
+class BiometricPromptCoordinator @Inject constructor(
+    private val requestNotifier: RequestNotifier
+) {
 
     private val channel = Channel<SigningRequest>(Channel.BUFFERED)
     val requests: Flow<SigningRequest> = channel.receiveAsFlow()
@@ -29,10 +32,12 @@ class BiometricPromptCoordinator @Inject constructor() {
         subtitle: String,
         onResult: (Result<BiometricPrompt.CryptoObject?>) -> Unit
     ) {
+        requestNotifier.notifySigningRequest(subtitle)
         channel.trySend(SigningRequest(crypto, title, subtitle, onResult))
     }
 
     fun requeue(request: SigningRequest) {
+        requestNotifier.notifySigningRequest(request.subtitle)
         request.claimed = false
         channel.trySend(request)
     }

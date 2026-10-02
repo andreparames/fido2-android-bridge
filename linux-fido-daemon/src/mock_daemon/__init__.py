@@ -19,6 +19,7 @@ import uuid
 
 from fido_daemon.noise import StaticKeyStore
 from fido_daemon.protocol import (
+    CTAP2_ERR_OPERATION_DENIED,
     TYPE_ASSERTION_RESULT,
     TYPE_MAKE_CREDENTIAL_RESULT,
     TYPE_ERROR,
@@ -160,13 +161,23 @@ class MockDaemon(RelayClient):
         raise last_error
 
 
-async def _run_scenario(
-    daemon: MockDaemon, scenario: str, retries: int = 0
+async def _run_get_assertion(
+    daemon: MockDaemon, retries: int = 0, count: int = 1, delay: float = 0.0
 ) -> bool:
-    """Run a single test scenario. Returns True on success."""
-    ok = True
+    """Send ``count`` getAssertion requests; return whether all outcomes are valid.
 
-    if scenario in ("get-assertion", "all"):
+    An ``error`` response carrying ``CTAP2_ERR_OPERATION_DENIED`` counts as an
+    expected rejection only when ``count > 1``. Other errors, mismatched IDs,
+    invalid results, and exceptions during response handling mark the run as
+    failed without stopping later requests. ``retries`` allows re-publishing
+    on timeout; positive ``delay`` pauses between requests in seconds.
+    Zero requests succeed; a negative count fails without sending requests.
+    Task cancellation propagates instead of becoming a failed outcome.
+    """
+    accepted = 0
+    rejected = 0
+    ok = True
+    for index in range(count):
         request_id = str(uuid.uuid4())
         request = _build_get_assertion_request(request_id)
         logger.info("scenario: get-assertion (id=%s)", request_id)
@@ -178,11 +189,14 @@ async def _run_scenario(
             if response.get("id") != request_id:
                 logger.error("id mismatch: sent %s, got %s", request_id, response.get("id"))
                 ok = False
-
-            if response.get("type") == TYPE_ERROR:
+            elif response.get("type") == TYPE_ERROR:
                 code = response.get("payload", {}).get("code")
-                logger.error("received error response: code=0x%02x", code)
-                ok = False
+                if count > 1 and code == CTAP2_ERR_OPERATION_DENIED:
+                    rejected += 1
+                    logger.info("get-assertion: request rejected (operation denied)")
+                else:
+                    logger.error("received error response: code=0x%02x", code)
+                    ok = False
             elif response.get("type") != TYPE_ASSERTION_RESULT:
                 logger.error("unexpected response type: %s", response.get("type"))
                 ok = False
@@ -193,7 +207,8 @@ async def _run_scenario(
                         logger.error("validation error: %s", e)
                     ok = False
                 else:
-                    logger.info("get-assertion: OK")
+                    accepted += 1
+                    logger.info("get-assertion: accepted (%d/%d)", accepted, count)
         except asyncio.TimeoutError:
             logger.error("get-assertion: TIMEOUT after %.1fs", daemon._config.request_timeout)
             ok = False
@@ -201,45 +216,97 @@ async def _run_scenario(
             logger.error("get-assertion: FAILED (%s)", e)
             ok = False
 
-    if scenario in ("make-credential", "all"):
-        request_id = str(uuid.uuid4())
-        request = _build_make_credential_request(request_id)
-        logger.info("scenario: make-credential (id=%s)", request_id)
+        if index < count - 1 and delay > 0:
+            logger.info("get-assertion: waiting %.1fs before next request", delay)
+            await asyncio.sleep(delay)
 
-        try:
-            response = await daemon.send_and_receive(request, retries=retries)
-            logger.info("response type=%s id=%s", response.get("type"), response.get("id"))
+    success = ok and accepted + rejected == count
+    if success:
+        logger.info("get-assertion: OK (%d accepted, %d rejected)", accepted, rejected)
+    else:
+        logger.error("get-assertion: FAILED (%d accepted, %d rejected)", accepted, rejected)
+    return success
 
-            if response.get("id") != request_id:
-                logger.error("id mismatch: sent %s, got %s", request_id, response.get("id"))
-                ok = False
 
-            if response.get("type") == TYPE_ERROR:
-                code = response.get("payload", {}).get("code")
-                logger.error("received error response: code=0x%02x", code)
-                ok = False
-            elif response.get("type") != TYPE_MAKE_CREDENTIAL_RESULT:
-                logger.error("unexpected response type: %s", response.get("type"))
+async def _run_make_credential(daemon: MockDaemon, retries: int = 0) -> bool:
+    """Send one makeCredential request and return whether its response validates.
+
+    ``retries`` allows re-publishing on timeout. Mismatched IDs, error responses,
+    invalid results, and exceptions during sending or response handling return
+    False, including exhausted timeouts. Task cancellation propagates.
+    """
+    ok = True
+    request_id = str(uuid.uuid4())
+    request = _build_make_credential_request(request_id)
+    logger.info("scenario: make-credential (id=%s)", request_id)
+
+    try:
+        response = await daemon.send_and_receive(request, retries=retries)
+        logger.info("response type=%s id=%s", response.get("type"), response.get("id"))
+
+        if response.get("id") != request_id:
+            logger.error("id mismatch: sent %s, got %s", request_id, response.get("id"))
+            ok = False
+        elif response.get("type") == TYPE_ERROR:
+            code = response.get("payload", {}).get("code")
+            logger.error("received error response: code=0x%02x", code)
+            ok = False
+        elif response.get("type") != TYPE_MAKE_CREDENTIAL_RESULT:
+            logger.error("unexpected response type: %s", response.get("type"))
+            ok = False
+        else:
+            errors = _validate_make_credential_result(response.get("payload", {}))
+            if errors:
+                for e in errors:
+                    logger.error("validation error: %s", e)
                 ok = False
             else:
-                errors = _validate_make_credential_result(response.get("payload", {}))
-                if errors:
-                    for e in errors:
-                        logger.error("validation error: %s", e)
-                    ok = False
-                else:
-                    logger.info("make-credential: OK")
-        except asyncio.TimeoutError:
-            logger.error("make-credential: TIMEOUT after %.1fs", daemon._config.request_timeout)
-            ok = False
-        except Exception as e:
-            logger.error("make-credential: FAILED (%s)", e)
-            ok = False
+                logger.info("make-credential: OK")
+    except asyncio.TimeoutError:
+        logger.error("make-credential: TIMEOUT after %.1fs", daemon._config.request_timeout)
+        ok = False
+    except Exception as e:
+        logger.error("make-credential: FAILED (%s)", e)
+        ok = False
+
+    return ok
+
+
+async def _run_scenario(
+    daemon: MockDaemon,
+    scenario: str,
+    retries: int = 0,
+    count: int = 1,
+    delay: float = 0.0,
+) -> bool:
+    """Run get-assertion, make-credential, or both; return whether all checks pass.
+
+    ``count`` and ``delay`` (seconds) apply only to get-assertion; ``retries``
+    allows re-publishing each request on timeout. ``all`` runs make-credential
+    even if get-assertion fails. An unknown scenario sends nothing and returns
+    True. Connection management is left to the caller.
+    """
+    ok = True
+
+    if scenario in ("get-assertion", "all"):
+        ok = (
+            await _run_get_assertion(daemon, retries=retries, count=count, delay=delay)
+            and ok
+        )
+
+    if scenario in ("make-credential", "all"):
+        ok = await _run_make_credential(daemon, retries=retries) and ok
 
     return ok
 
 
 def main(argv: list[str] | None = None) -> int:
+    """Run mock-daemon CLI scenarios; return 0 for valid outcomes, otherwise 1.
+
+    ``argv=None`` uses process arguments. Parsing can raise SystemExit;
+    configuration, connection, and cleanup errors propagate. Request/response
+    errors caught by the scenarios become a failure status.
+    """
     parser = argparse.ArgumentParser(
         prog="mock-daemon",
         description="Mock daemon: publishes synthetic CTAP2 requests to test the Android app",
@@ -262,6 +329,18 @@ def main(argv: list[str] | None = None) -> int:
         default=3,
         help="re-publish each request on timeout until a response arrives (default: 3)",
     )
+    parser.add_argument(
+        "--count",
+        type=int,
+        default=1,
+        help="number of getAssertion requests to send (default: 1)",
+    )
+    parser.add_argument(
+        "--delay",
+        type=float,
+        default=0.0,
+        help="seconds to pause between getAssertion requests (default: 0)",
+    )
     args = parser.parse_args(argv)
 
     logging.basicConfig(
@@ -278,10 +357,20 @@ def main(argv: list[str] | None = None) -> int:
     logger.info("token: %s", "set" if config.relay_token else "anonymous")
 
     async def _run() -> bool:
+        """Connect, run the selected scenarios, and close the daemon even on failure.
+
+        Return the scenario result; connection and cleanup errors propagate.
+        """
         daemon = MockDaemon(config)
         try:
             await daemon.connect()
-            return await _run_scenario(daemon, args.scenario, retries=args.retries)
+            return await _run_scenario(
+                daemon,
+                args.scenario,
+                retries=args.retries,
+                count=args.count,
+                delay=args.delay,
+            )
         finally:
             await daemon.close()
 

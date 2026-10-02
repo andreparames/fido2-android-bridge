@@ -24,6 +24,7 @@ interface CredentialStore {
     fun findForRpId(rpId: String): List<StoredCredential>
     fun findByCredentialId(rpId: String, credentialId: ByteArray): StoredCredential?
     fun add(credential: StoredCredential)
+    fun clear(): Boolean
 }
 
 fun interface Signer {

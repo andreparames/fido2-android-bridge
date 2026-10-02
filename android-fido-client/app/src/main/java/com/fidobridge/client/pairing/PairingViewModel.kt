@@ -4,10 +4,12 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import dagger.hilt.android.lifecycle.HiltViewModel
 import javax.inject.Inject
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 @HiltViewModel
 class PairingViewModel @Inject constructor(
@@ -33,12 +35,25 @@ class PairingViewModel @Inject constructor(
 
     fun onManualSubmit(uri: String) = submitUri(uri)
 
+    fun validateUri(uri: String): Boolean = repository.parseUri(uri).isSuccess
+
+    fun clearError() {
+        if (_uiState.value is PairingUiState.Error) {
+            _uiState.value = PairingUiState.Scanning
+        }
+    }
+
     private fun submitUri(uri: String) {
-        repository.parseUri(uri)
-            .onSuccess { info -> repository.pair(info) }
-            .fold(
-                onSuccess = { _uiState.value = PairingUiState.Paired },
-                onFailure = { e -> _uiState.value = PairingUiState.Error(e.message ?: "Pairing failed") }
+        _uiState.value = PairingUiState.Pairing
+        viewModelScope.launch {
+            val result = withContext(Dispatchers.IO) {
+                repository.parseUri(uri)
+                    .onSuccess { info -> repository.pair(info) }
+            }
+            _uiState.value = result.fold(
+                onSuccess = { PairingUiState.Paired },
+                onFailure = { e -> PairingUiState.Error(e.message ?: "Pairing failed") }
             )
+        }
     }
 }

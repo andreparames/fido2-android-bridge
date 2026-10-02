@@ -22,6 +22,7 @@ dev = [
     "pytest>=8",
     "pytest-asyncio>=0.23",
     "ruff>=0.9",
+    "uiautomator2>=3",
 ]
 
 [tool.ruff]
@@ -36,15 +37,17 @@ select = ["E4", "E7", "E9", "C4", "N", "B"]
 fido-daemon = "fido_daemon.cli:main"
 mock-daemon = "mock_daemon:main"
 mock-phone = "mock_phone:main"
+emulator-e2e = "emulator_harness.main:main"
 
 [tool.setuptools.package-data]
 mock_daemon = ["py.typed"]
 mock_phone = ["py.typed"]
 harness_common = ["py.typed"]
+emulator_harness = ["py.typed"]
 
 [tool.setuptools.packages.find]
 where = ["src"]
-include = ["fido_daemon*", "harness_common*", "mock_daemon*", "mock_phone*"]
+include = ["fido_daemon*", "harness_common*", "mock_daemon*", "mock_phone*", "emulator_harness*"]
 
 [tool.pytest.ini_options]
 asyncio_mode = "auto"

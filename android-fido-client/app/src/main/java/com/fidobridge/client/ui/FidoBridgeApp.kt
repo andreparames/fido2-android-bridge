@@ -1,18 +1,19 @@
 package com.fidobridge.client.ui
 
 import android.content.Intent
-import androidx.compose.foundation.layout.padding
-import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Text
-import androidx.compose.material3.Scaffold
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
-import androidx.compose.ui.Modifier
+import androidx.compose.runtime.getValue
 import androidx.compose.ui.platform.LocalContext
 import androidx.hilt.navigation.compose.hiltViewModel
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
 import com.fidobridge.client.networking.FidoBridgeService
+import com.fidobridge.client.ui.home.HomeScreen
 import com.fidobridge.client.ui.pairing.PairingScreen
 import com.fidobridge.client.ui.theme.FidoBridgeTheme
 
@@ -27,6 +28,7 @@ fun FidoBridgeApp() {
         val appViewModel: AppViewModel = hiltViewModel()
         val navController = rememberNavController()
         val startDestination = if (appViewModel.isPaired) Routes.HOME else Routes.PAIRING
+        val userMessage by appViewModel.userMessage.collectAsStateWithLifecycle()
 
         NavHost(navController = navController, startDestination = startDestination) {
             composable(Routes.PAIRING) {
@@ -41,18 +43,30 @@ fun FidoBridgeApp() {
                 )
             }
             composable(Routes.HOME) {
-                HomeScreen()
+                val context = LocalContext.current
+                HomeScreen(
+                    viewModel = appViewModel,
+                    onResetConfirmed = {
+                        context.stopService(Intent(context, FidoBridgeService::class.java))
+                        navController.navigate(Routes.PAIRING) {
+                            popUpTo(Routes.HOME) { inclusive = true }
+                        }
+                    }
+                )
             }
         }
-    }
-}
 
-@Composable
-private fun HomeScreen() {
-    Scaffold { innerPadding ->
-        Text(
-            text = "FIDO Bridge",
-            modifier = Modifier.padding(innerPadding)
-        )
+        userMessage?.let { message ->
+            AlertDialog(
+                onDismissRequest = { appViewModel.dismissUserMessage() },
+                title = { Text("FIDO Bridge error") },
+                text = { Text(message) },
+                confirmButton = {
+                    TextButton(onClick = { appViewModel.dismissUserMessage() }) {
+                        Text("OK")
+                    }
+                }
+            )
+        }
     }
 }

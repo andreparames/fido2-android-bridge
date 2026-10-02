@@ -10,6 +10,9 @@ import com.fidobridge.client.ctap.PersistentCredentialStore
 import com.fidobridge.client.networking.CentrifugoTransport
 import com.fidobridge.client.networking.DiagnosticLogSink
 import com.fidobridge.client.networking.RelayTransport
+import com.fidobridge.client.notifications.ForegroundStateProvider
+import com.fidobridge.client.notifications.ProcessForegroundStateProvider
+import com.fidobridge.client.pairing.AppResetManager
 import com.fidobridge.client.pairing.EncryptedIdentityStore
 import com.fidobridge.client.pairing.IdentityStore
 import com.fidobridge.client.pairing.PairingRepository
@@ -19,6 +22,8 @@ import com.fidobridge.client.security.BiometricSignerAdapter
 import com.fidobridge.client.security.CoordinatorBiometricAuthenticator
 import com.fidobridge.client.security.KeystoreKeyGenerator
 import com.fidobridge.client.security.KeystoreManager
+import com.fidobridge.client.ui.model.InMemoryRequestLog
+import com.fidobridge.client.ui.model.RequestLog
 import dagger.Module
 import dagger.Provides
 import dagger.hilt.InstallIn
@@ -68,11 +73,29 @@ object DataModule {
 
     @Provides
     @Singleton
+    fun provideAppResetManager(
+        identityStore: IdentityStore,
+        credentialStore: CredentialStore,
+        keystoreManager: KeystoreManager,
+        requestLog: RequestLog
+    ): AppResetManager = AppResetManager(identityStore, credentialStore, keystoreManager, requestLog)
+
+    @Provides
+    @Singleton
+    fun provideRequestLog(): RequestLog = InMemoryRequestLog()
+
+    @Provides
+    @Singleton
+    fun provideForegroundStateProvider(): ForegroundStateProvider = ProcessForegroundStateProvider()
+
+    @Provides
+    @Singleton
     fun provideCtap2Processor(
         credentialStore: CredentialStore,
         keyGenerator: KeyGenerator,
-        signer: com.fidobridge.client.ctap.Signer
-    ): Ctap2Processor = Ctap2Processor(credentialStore, keyGenerator, signer)
+        signer: com.fidobridge.client.ctap.Signer,
+        requestLog: RequestLog
+    ): Ctap2Processor = Ctap2Processor(credentialStore, keyGenerator, signer, requestLog)
 
     @Provides
     @Singleton

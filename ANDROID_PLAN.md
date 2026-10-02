@@ -415,6 +415,11 @@ Centrifugo relay path from the Android side.
 > - device screen must stay on during the prompt (`svc power stayon true`).
 > Remaining device-only DoD (`isInsideSecureHardware`, `UserNotAuthenticatedException`)
 > still needs a physical device.
+>
+> **Now automated:** this flow is driven end-to-end by the `emulator_harness`
+> orchestrator (`linux-fido-daemon/src/emulator_harness/`) using `uiautomator2`,
+> with assertions on the UI and `mock_daemon`'s validation logs. Runbook +
+> implementation: [`EMULATOR_E2E_TESTING.md`](EMULATOR_E2E_TESTING.md).
 
 **Objective:** run the actual debug APK on a headless Android emulator (KVM)
 against the live Centrifugo + host `mock-daemon`, exercising the full loop:
@@ -488,6 +493,56 @@ for i in $(seq 1 60); do adb emu finger touch 1; sleep 1; done
 - Replay-on-retry: use `--timeout 20` + continuous touch loop so the first
   request is answered before any retry.
 - Empty credential store: make-credential before get-assertion.
+
+---
+
+## 13. Connection Visibility + Reconnect — verify the bridge is live while the app is open
+
+> Background (real incident, Sep 28): the app was open but the relay pipeline was
+> silently disconnected. The daemon relayed Google's probes and timed out after
+> 30 s each (`relay request timed out`), and login failed with "No available
+> adapters". Nothing in the UI exposed `BridgePipeline.state`, so the dead
+> connection was invisible until reopening the app re-established it.
+
+**Objective:** surface the bridge/relay connection state on the Home screen and
+let the user re-establish a dead connection without a full app restart, so a
+WebAuthn login is never attempted against a down relay.
+
+### Steps
+
+A. **Expose pipeline state to the UI**
+   - `AppViewModel` exposes `BridgePipeline.state` (or a thin holder wrapping
+     it), so `HomeScreen` renders a status banner:
+     - `Connected` → green "Bridge connected"
+     - `Connecting` → amber "Connecting…"
+     - `Disconnected` → red "Bridge disconnected — check the relay"
+     - `SecurityAlert` → red "Security alert: integrity failure"
+     - `Error(reason)` → red with the reason.
+   - Keep the existing `DiagnosticLogSink` relay-state lines as the remote
+     diagnostics companion.
+
+B. **Reconnect affordance**
+   - `BridgePipeline.start()` currently no-ops once `client != null`; a dropped
+     WebSocket leaves a dead client in place and reopening the app does not
+     reconnect. Add `BridgePipeline.reconnect()` that cancels the old jobs,
+     closes the dead client, and re-runs `start()`.
+   - `HomeScreen` shows a "Reconnect" action only when the state is not
+     `Connected`.
+
+C. **TDD**
+   - `BridgePipelineTest`: `reconnect` re-establishes after `Disconnected`
+     (transport reconnects, state returns to `Connected`, a second inbound
+     request is processed).
+- `AppViewModel`/Home composable test: `BridgeState` maps to the banner;
+      the reconnect action is only offered when the state is not `Connected`.
+
+### Verification checklist
+- [ ] Open the app → Home shows **Connected** within a couple of seconds.
+- [ ] While the app is open, drop the relay (airplane mode / stop the relay) →
+      banner flips to **Disconnected** without restarting the app.
+- [ ] Tap **Reconnect** → banner returns to **Connected**.
+- [ ] With the banner **Connected**, Google login completes (no "No available
+      adapters"); the daemon log shows no `relay request timed out`.
 
 ---
 

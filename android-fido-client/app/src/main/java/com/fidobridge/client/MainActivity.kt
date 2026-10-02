@@ -1,7 +1,6 @@
 package com.fidobridge.client
 
 import android.Manifest
-import android.app.AlertDialog
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.os.Build
@@ -21,7 +20,9 @@ import com.fidobridge.client.pairing.PairingRepository
 import com.fidobridge.client.pairing.PairingUriDispatcher
 import com.fidobridge.client.security.BiometricPromptCoordinator
 import com.fidobridge.client.security.OperationDeniedException
+import com.fidobridge.client.security.isUserCancelErrorCode
 import com.fidobridge.client.ui.FidoBridgeApp
+import com.fidobridge.client.ui.UserMessageBus
 import dagger.hilt.android.AndroidEntryPoint
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.suspendCancellableCoroutine
@@ -50,17 +51,16 @@ class MainActivity : FragmentActivity() {
     @Inject
     lateinit var logSink: DiagnosticLogSink
 
-    private val notificationPermissionLauncher =
-        registerForActivityResult(ActivityResultContracts.RequestPermission()) { }
+    @Inject
+    lateinit var userMessageBus: UserMessageBus
 
-    private val cameraPermissionLauncher =
+    private val notificationPermissionLauncher =
         registerForActivityResult(ActivityResultContracts.RequestPermission()) { }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         logSink.log("MainActivity#$instanceId onCreate saved=${savedInstanceState != null}")
         enableEdgeToEdge()
-        requestCameraPermissionIfNeeded()
         requestNotificationPermissionIfNeeded()
         handlePairingIntent(intent)
         setContent { FidoBridgeApp() }
@@ -108,14 +108,6 @@ class MainActivity : FragmentActivity() {
         super.onDestroy()
     }
 
-    private fun requestCameraPermissionIfNeeded() {
-        if (ContextCompat.checkSelfPermission(this, Manifest.permission.CAMERA) !=
-            PackageManager.PERMISSION_GRANTED
-        ) {
-            cameraPermissionLauncher.launch(Manifest.permission.CAMERA)
-        }
-    }
-
     private fun requestNotificationPermissionIfNeeded() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
             ContextCompat.checkSelfPermission(this, Manifest.permission.POST_NOTIFICATIONS) !=
@@ -125,6 +117,11 @@ class MainActivity : FragmentActivity() {
         }
     }
 
+    /**
+     * Collects unclaimed signing requests in the activity lifecycle and presents biometric prompts.
+     * Delivers success or an [OperationDeniedException] failure through each request's callback.
+     * Requeues the request if collection is canceled; cancellation codes suppress the error dialog.
+     */
     private fun collectSigningRequests() {
         val executor = ContextCompat.getMainExecutor(this)
         lifecycleScope.launch {
@@ -145,11 +142,14 @@ class MainActivity : FragmentActivity() {
                                     cont.resume(Result.success(result.cryptoObject))
                                 }
 
+                                /** Rejects the request, posting a user message only for non-cancellation errors. */
                                 override fun onAuthenticationError(errorCode: Int, errString: CharSequence) {
                                     val msg = "biometric error $errorCode: $errString"
                                     Log.w(TAG, msg)
                                     logSink.log(msg)
-                                    showBiometricError(msg)
+                                    if (!isUserCancelErrorCode(errorCode)) {
+                                        userMessageBus.post(msg)
+                                    }
                                     cont.resume(Result.failure(OperationDeniedException(errString.toString())))
                                 }
 
@@ -185,18 +185,10 @@ class MainActivity : FragmentActivity() {
                     val detail = "${e::class.simpleName}: ${e.message}"
                     Log.e(TAG, "biometric prompt failed: $detail state=${lifecycle.currentState}")
                     logSink.log("prompt failed: $detail state=${lifecycle.currentState}")
-                    showBiometricError("prompt failed: $detail\nactivity state: ${lifecycle.currentState}")
+                    userMessageBus.post("prompt failed: $detail\nactivity state: ${lifecycle.currentState}")
                     request.onResult(Result.failure(OperationDeniedException(e.message ?: "biometric prompt failed")))
                 }
             }
         }
-    }
-
-    private fun showBiometricError(message: String) {
-        AlertDialog.Builder(this)
-            .setTitle("FIDO Bridge error")
-            .setMessage(message)
-            .setPositiveButton("OK", null)
-            .show()
     }
 }
