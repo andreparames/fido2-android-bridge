@@ -95,12 +95,30 @@ jobs:
     needs: [daemon-static, daemon-unit, android-static, android-unit]
     if: github.ref == 'refs/heads/master' || github.event_name == 'workflow_dispatch'
     timeout-minutes: 30
+    env:
+      # Must match android-fido-client/debug.keystore (androiddebugkey).
+      # Fails the build if the stable debug key is rotated or CI regresses
+      # to the ephemeral runner keystore.
+      EXPECTED_APK_SIGNER_SHA256: "d1df9ef0eefd2802ab1724991774d8471c71d62bb5802ba2fc14cffb3b95be87"
     steps:
       - uses: actions/checkout@v4
       - uses: ./.github/actions/setup-android
       - name: Assemble debug APK
         working-directory: android-fido-client
         run: ./gradlew assembleDebug
+      - name: Verify debug APK signing certificate
+        run: |
+          set -euo pipefail
+          APK="android-fido-client/app/build/outputs/apk/debug/app-debug.apk"
+          APKSIGNER="${ANDROID_HOME}/build-tools/34.0.0/apksigner"
+          ACTUAL="$("${APKSIGNER}" verify --print-certs "${APK}" \
+            | awk -F': ' '/certificate SHA-256 digest/ {print tolower($NF); exit}')"
+          echo "Signer SHA-256: ${ACTUAL}"
+          echo "Expected SHA-256: ${EXPECTED_APK_SIGNER_SHA256}"
+          if [ "${ACTUAL}" != "${EXPECTED_APK_SIGNER_SHA256}" ]; then
+            echo "::error::APK signer does not match the committed debug keystore"
+            exit 1
+          fi
       - uses: actions/upload-artifact@v4
         with:
           name: android-apk
