@@ -112,7 +112,8 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--keep-running",
         action="store_true",
-        help="leave the emulator and mock_daemon running after the run",
+        help="leave the app and (if the harness launched it) the emulator "
+        "running after the run; mock_daemon is always stopped per request step",
     )
     parser.add_argument(
         "--static-key-path",
@@ -159,10 +160,11 @@ def build_plan(args: argparse.Namespace) -> list[tuple[str, dict]]:
     if args.scenario == "all":
         steps: list[tuple[str, dict]] = [
             ("make-credential", {"count": 1, "reject": set()}),
-            ("clear", {}),
             ("get-assertion", {"count": 1, "reject": set()}),
             ("multi", {"count": args.count, "reject": _parse_reject_indices(args.reject_indices, args.count)}),
         ]
+        if not args.skip_clear:
+            steps.insert(1, ("clear", {}))
         if not args.skip_reset:
             steps.append(("reset", {}))
         return steps

@@ -236,8 +236,9 @@ Env overrides: `FIDO2_RELAY_URL`, `FIDO2_STATIC_KEY_PATH`, `ANDROID_HOME`
     (`adb emu screenrecord screenshot`), which grabs the raw framebuffer on
     the host and therefore sees FLAG_SECURE surfaces that `screencap` renders
     black (e.g. the `BiometricPrompt`).
-14. **Cleanup**: `d.app_stop(...)`, kill `mock_daemon` (unless
-    `--keep-running`).
+14. **Cleanup**: the orchestrator stops `mock_daemon` after every request
+    step; `--keep-running` only skips `d.app_stop(...)` and the emulator
+    shutdown (when the harness launched it).
 
 ### A.5 Assertions (authoritative elements from `UI_TESTER_GUIDE.md` §4)
 
@@ -334,6 +335,7 @@ high (~5 GB SDK, slow emulator boot, atx-agent install); gate it on
 
 ```bash
 adb shell am force-stop com.fidobridge.client
-# mock_daemon subprocess is killed by the orchestrator unless --keep-running
+# mock_daemon subprocess is stopped by the orchestrator after every request step;
+# --keep-running only skips app-stop and emulator shutdown
 # Centrifugo is stopped by the operator (as in INTEGRATION_TESTING.md)
 ```
