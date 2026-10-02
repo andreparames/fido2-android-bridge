@@ -327,8 +327,9 @@ class Ctap2ProcessorTest {
             credentials.add(credential)
         }
 
-        override fun clear() {
+        override fun clear(): Boolean {
             credentials.clear()
+            return true
         }
     }
 

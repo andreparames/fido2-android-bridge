@@ -83,7 +83,7 @@ class RelayClientTest {
     }
 
     @Test
-    fun `tag failure drops message and raises security alert`() = runBlocking {
+    fun `tag failure drops message and raises a noise authentication alert`() = runBlocking {
         val transport = FakeRelayTransport()
         val client = relayClient(transport)
         val daemon = peer(transport)
@@ -97,7 +97,7 @@ class RelayClientTest {
         )
 
         val alert = withTimeout(5000) { client.securityAlerts.first() }
-        assertNotNull(alert)
+        assertEquals(RelayClient.SecurityAlert.NOISE_AUTHENTICATION_FAILURE, alert)
         val inbound = withTimeoutOrNull(1000) { client.inbound.first() }
         assertNull(inbound)
     }
@@ -121,11 +121,14 @@ class RelayClientTest {
         transport.simulatePublication(
             MessageCodec.encode(WireEnvelope(channelId, Protocol.KIND_DATA, ciphertext)).toByteArray()
         )
-        assertNotNull(withTimeout(5000) { client.securityAlerts.first() })
+        assertEquals(
+            RelayClient.SecurityAlert.NOISE_AUTHENTICATION_FAILURE,
+            withTimeout(5000) { client.securityAlerts.first() }
+        )
     }
 
     @Test
-    fun `channel_id mismatch raises security alert`() = runBlocking {
+    fun `channel_id mismatch raises an other security alert`() = runBlocking {
         val transport = FakeRelayTransport()
         val client = relayClient(transport)
         client.connect()
@@ -134,7 +137,27 @@ class RelayClientTest {
             MessageCodec.encode(WireEnvelope("b".repeat(32), Protocol.KIND_DATA, ByteArray(0))).toByteArray()
         )
 
-        assertNotNull(withTimeout(5000) { client.securityAlerts.first() })
+        assertEquals(
+            RelayClient.SecurityAlert.OTHER,
+            withTimeout(5000) { client.securityAlerts.first() }
+        )
+    }
+
+    @Test
+    fun `publish failure raises an other security alert`() = runBlocking {
+        val transport = FakeRelayTransport()
+        transport.publishFails = true
+        val client = relayClient(transport)
+        val daemon = peer(transport)
+        client.connect()
+        daemon.completeHandshake()
+
+        client.send(envelope("ping", "id-1"))
+
+        assertEquals(
+            RelayClient.SecurityAlert.OTHER,
+            withTimeout(5000) { client.securityAlerts.first() }
+        )
     }
 
     @Test

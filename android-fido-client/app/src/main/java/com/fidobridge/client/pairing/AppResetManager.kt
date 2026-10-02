@@ -1,5 +1,6 @@
 package com.fidobridge.client.pairing
 
+import android.util.Log
 import com.fidobridge.client.ctap.CredentialStore
 import com.fidobridge.client.security.KeystoreManager
 import com.fidobridge.client.ui.model.RequestLog
@@ -15,10 +16,26 @@ class AppResetManager(
     private val requestLog: RequestLog
 ) {
 
-    fun reset() {
-        keystoreManager.deleteAllSigningKeys()
-        identityStore.clear()
-        credentialStore.clear()
+    /**
+     * Clears every store even if an earlier step fails, so a partial failure
+     * does not leave half of the state behind. Returns false when any step did
+     * not complete durably (keystore deletion or a failed preference commit).
+     */
+    fun reset(): Boolean {
+        val keysDeleted = try {
+            keystoreManager.deleteAllSigningKeys()
+            true
+        } catch (e: Exception) {
+            Log.w(TAG, "keystore cleanup failed: ${e.message}")
+            false
+        }
+        val identityCleared = identityStore.clear()
+        val credentialsCleared = credentialStore.clear()
         requestLog.clear()
+        return keysDeleted && identityCleared && credentialsCleared
+    }
+
+    companion object {
+        private const val TAG = "FidoBridge"
     }
 }

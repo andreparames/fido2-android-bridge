@@ -16,6 +16,7 @@ class IntegrityFailureTracker(
     private val failures = ArrayDeque<Long>()
 
     /** Records a failure and returns true when the windowed threshold is crossed. */
+    @Synchronized
     fun record(): Boolean {
         val t = now()
         prune(t)
@@ -23,6 +24,7 @@ class IntegrityFailureTracker(
         return failures.size >= threshold
     }
 
+    @Synchronized
     fun reset() {
         failures.clear()
     }

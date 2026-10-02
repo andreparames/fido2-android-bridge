@@ -40,6 +40,10 @@ class RelayClient(
 
     enum class ConnectionState { DISCONNECTED, CONNECTING, CONNECTED }
 
+    /** Categories of relay problems; only [NOISE_AUTHENTICATION_FAILURE] counts
+     * as an integrity failure for the approval-pause threshold. */
+    enum class SecurityAlert { NOISE_AUTHENTICATION_FAILURE, OTHER }
+
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
 
     private val inboundChannel = Channel<ByteArray>(Channel.BUFFERED)
@@ -48,8 +52,8 @@ class RelayClient(
     private val _state = MutableStateFlow(ConnectionState.DISCONNECTED)
     val state: StateFlow<ConnectionState> = _state.asStateFlow()
 
-    private val alertChannel = Channel<Unit>(Channel.BUFFERED)
-    val securityAlerts: Flow<Unit> = alertChannel.receiveAsFlow()
+    private val alertChannel = Channel<SecurityAlert>(Channel.BUFFERED)
+    val securityAlerts: Flow<SecurityAlert> = alertChannel.receiveAsFlow()
 
     private val disconnectChannel = Channel<Unit>(Channel.BUFFERED)
     val disconnections: Flow<Unit> = disconnectChannel.receiveAsFlow()
@@ -115,7 +119,7 @@ class RelayClient(
             noise.encrypt(payload)
         } catch (e: Exception) {
             Log.w(TAG, "send failed to encrypt: ${e.message}")
-            alertChannel.trySend(Unit)
+            alertChannel.trySend(SecurityAlert.OTHER)
             return false
         }
         val encoded = MessageCodec.encode(WireEnvelope(channelId, Protocol.KIND_DATA, ciphertext)).toByteArray()
@@ -126,7 +130,7 @@ class RelayClient(
         }
         if (!id.isNullOrBlank()) sentWireById[id] = encoded.decodeToString()
         transport.publish(encoded) { error ->
-            if (error != null) alertChannel.trySend(Unit)
+            if (error != null) alertChannel.trySend(SecurityAlert.OTHER)
         }
         return true
     }
@@ -151,13 +155,13 @@ class RelayClient(
             MessageCodec.decode(data.decodeToString())
         } catch (e: Exception) {
             Log.w(TAG, "publication dropped: bad wire (${e.message})")
-            alertChannel.trySend(Unit)
+            alertChannel.trySend(SecurityAlert.OTHER)
             return
         }
 
         if (envelope.channelId != channelId) {
             Log.w(TAG, "publication dropped: channel mismatch")
-            alertChannel.trySend(Unit)
+            alertChannel.trySend(SecurityAlert.OTHER)
             return
         }
 
@@ -176,7 +180,7 @@ class RelayClient(
                     Log.d(TAG, "handshake complete")
                 } catch (e: NoiseSession.AuthenticationException) {
                     Log.w(TAG, "publication dropped: ik2 authentication failed")
-                    alertChannel.trySend(Unit)
+                    alertChannel.trySend(SecurityAlert.NOISE_AUTHENTICATION_FAILURE)
                 }
             }
 
@@ -196,7 +200,7 @@ class RelayClient(
             noise.decrypt(envelope.payload)
         } catch (e: NoiseSession.AuthenticationException) {
             Log.w(TAG, "publication dropped: Noise authentication failed")
-            alertChannel.trySend(Unit)
+            alertChannel.trySend(SecurityAlert.NOISE_AUTHENTICATION_FAILURE)
             return
         }
 
@@ -204,7 +208,7 @@ class RelayClient(
             json.decodeFromString(PlaintextEnvelope.serializer(), plaintext.decodeToString())
         } catch (e: Exception) {
             Log.w(TAG, "publication dropped: bad envelope (${e.message})")
-            alertChannel.trySend(Unit)
+            alertChannel.trySend(SecurityAlert.OTHER)
             return
         }
 

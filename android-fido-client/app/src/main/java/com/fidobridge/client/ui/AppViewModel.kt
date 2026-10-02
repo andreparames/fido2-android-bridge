@@ -1,6 +1,7 @@
 package com.fidobridge.client.ui
 
 import androidx.lifecycle.ViewModel
+import androidx.lifecycle.viewModelScope
 import com.fidobridge.client.bridge.BridgePipeline
 import com.fidobridge.client.bridge.BridgeState
 import com.fidobridge.client.pairing.AppResetManager
@@ -9,7 +10,10 @@ import com.fidobridge.client.ui.model.RequestLog
 import com.fidobridge.client.ui.model.RequestRecord
 import dagger.hilt.android.lifecycle.HiltViewModel
 import javax.inject.Inject
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 @HiltViewModel
 class AppViewModel @Inject constructor(
@@ -38,8 +42,14 @@ class AppViewModel @Inject constructor(
 
     fun reconnect() = pipeline.reconnect()
 
-    fun reset() {
+    fun reset(onComplete: (Boolean) -> Unit) {
         pipeline.stop()
-        appResetManager.reset()
+        viewModelScope.launch {
+            val ok = withContext(Dispatchers.IO) { appResetManager.reset() }
+            if (!ok) {
+                userMessageBus.post("Reset incomplete — some data may remain. Try again.")
+            }
+            onComplete(ok)
+        }
     }
 }

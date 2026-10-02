@@ -238,6 +238,44 @@ class BridgePipelineTest {
         pipeline.stop()
     }
 
+    @Test
+    fun `publish failures do not raise the security alert`() = runBlocking {
+        val transport = FakeRelayTransport()
+        transport.publishFails = true
+        val pipeline = newPipeline(transport, pairedStore())
+        val daemon = TestRelayPeer(transport, channelId, daemonPrivate)
+
+        pipeline.start()
+        awaitConnected(pipeline)
+        daemon.completeHandshake()
+
+        repeat(3) { daemon.sendRequest(getAssertionEnvelope("req-pub-$it")) }
+
+        delay(200)
+        assertEquals(BridgeState.Connected, pipeline.state.value)
+        pipeline.stop()
+    }
+
+    @Test
+    fun `reconnect preserves an active security alert`() = runBlocking {
+        val transport = FakeRelayTransport()
+        val tracker = IntegrityFailureTracker(threshold = 1)
+        val pipeline = newPipeline(transport, pairedStore(), tracker)
+        val daemon = TestRelayPeer(transport, channelId, daemonPrivate)
+
+        pipeline.start()
+        awaitConnected(pipeline)
+        daemon.completeHandshake()
+        simulateTamper(transport, daemon, "req-preserve")
+        withTimeout(5000) { while (pipeline.state.value != BridgeState.SecurityAlert) delay(10) }
+
+        pipeline.reconnect()
+
+        delay(100)
+        assertEquals(BridgeState.SecurityAlert, pipeline.state.value)
+        pipeline.stop()
+    }
+
     private fun simulateTamper(transport: FakeRelayTransport, daemon: TestRelayPeer, id: String) {
         val ciphertext = daemon.encryptForPhone(getAssertionEnvelope(id))
         val tampered = ciphertext.copyOf().also { it[0] = (it[0] + 1).toByte() }
@@ -279,8 +317,9 @@ private class FakeCredentialStore : CredentialStore {
         credentials.add(credential)
     }
 
-    override fun clear() {
+    override fun clear(): Boolean {
         credentials.clear()
+        return true
     }
 }
 

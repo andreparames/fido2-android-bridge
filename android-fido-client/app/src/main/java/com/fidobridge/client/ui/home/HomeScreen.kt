@@ -150,8 +150,9 @@ fun HomeScreen(
                 TextButton(
                     onClick = {
                         showResetDialog = false
-                        viewModel.reset()
-                        onResetConfirmed()
+                        viewModel.reset { success ->
+                            if (success) onResetConfirmed()
+                        }
                     }
                 ) {
                     Text("Reset", color = MaterialTheme.colorScheme.error)

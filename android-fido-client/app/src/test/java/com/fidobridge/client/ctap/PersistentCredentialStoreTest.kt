@@ -9,6 +9,7 @@ import org.junit.Assert.assertArrayEquals
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
+import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class PersistentCredentialStoreTest {
@@ -82,12 +83,15 @@ class PersistentCredentialStoreTest {
     }
 
     @Test
-    fun `clear removes the persisted credentials key`() {
+    fun `clear removes the persisted credentials key and commits`() {
         val h = Harness()
         val store = h.store()
 
         store.add(credential)
-        store.clear()
+        every { h.editor.remove("credentials") } returns h.editor
+        every { h.editor.commit() } returns true
+
+        assertTrue(store.clear())
 
         verify { h.editor.remove("credentials") }
     }

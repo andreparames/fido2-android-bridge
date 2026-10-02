@@ -26,9 +26,7 @@ class PersistentCredentialStore(
     }
 
     @Synchronized
-    override fun clear() {
-        prefs.edit().remove(KEY).apply()
-    }
+    override fun clear(): Boolean = prefs.edit().remove(KEY).commit()
 
     private fun loadAll(): List<StoredCredential> {
         val raw = prefs.getString(KEY, null) ?: return emptyList()

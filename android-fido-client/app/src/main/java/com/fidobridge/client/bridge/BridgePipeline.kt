@@ -37,8 +37,24 @@ class BridgePipeline(
     private var disconnectJob: Job? = null
 
     fun start() {
+        startInternal(preserveSecurityAlert = false)
+    }
+
+    /**
+     * Tears the pipeline down and re-establishes the relay connection from
+     * scratch. Used to recover a dead connection without restarting the app.
+     */
+    fun reconnect() {
+        val preserveSecurityAlert = _state.value == BridgeState.SecurityAlert
+        stop()
+        startInternal(preserveSecurityAlert = preserveSecurityAlert)
+    }
+
+    private fun startInternal(preserveSecurityAlert: Boolean) {
         if (client != null) return
-        securityFailureTracker.reset()
+        if (!preserveSecurityAlert) {
+            securityFailureTracker.reset()
+        }
         val phonePrivate = identityStore.loadPhoneStaticPrivate()
         val daemonPublic = identityStore.loadDaemonStaticPublic()
         val channelId = identityStore.loadChannelId()
@@ -82,10 +98,12 @@ class BridgePipeline(
         }
 
         alertJob = scope.launch {
-            relay.securityAlerts.collect {
-                Log.w(TAG, "SECURITY ALERT: Noise integrity failure")
-                logSink?.log("SECURITY ALERT: Noise integrity failure")
-                if (securityFailureTracker.record()) {
+            relay.securityAlerts.collect { alert ->
+                Log.w(TAG, "SECURITY ALERT: $alert")
+                logSink?.log("SECURITY ALERT: $alert")
+                if (alert == RelayClient.SecurityAlert.NOISE_AUTHENTICATION_FAILURE &&
+                    securityFailureTracker.record()
+                ) {
                     Log.w(TAG, "integrity failure threshold reached; pausing approvals")
                     logSink?.log("integrity failure threshold reached; pausing approvals")
                     _state.value = BridgeState.SecurityAlert
@@ -103,6 +121,9 @@ class BridgePipeline(
         }
 
         Log.i(TAG, "pipeline connecting to ${Protocol.relayChannel(channelId)}")
+        if (preserveSecurityAlert) {
+            _state.value = BridgeState.SecurityAlert
+        }
         relay.connect()
     }
 
@@ -115,15 +136,6 @@ class BridgePipeline(
         client = null
         logSink?.stop()
         _state.value = BridgeState.Disconnected
-    }
-
-    /**
-     * Tears the pipeline down and re-establishes the relay connection from
-     * scratch. Used to recover a dead connection without restarting the app.
-     */
-    fun reconnect() {
-        stop()
-        start()
     }
 
     /**

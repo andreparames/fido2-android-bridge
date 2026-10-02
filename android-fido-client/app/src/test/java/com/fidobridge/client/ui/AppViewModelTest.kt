@@ -12,12 +12,20 @@ import com.fidobridge.client.ui.model.RequestType
 import io.mockk.every
 import io.mockk.mockk
 import io.mockk.verify
+import java.util.concurrent.CountDownLatch
+import java.util.concurrent.TimeUnit
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.test.UnconfinedTestDispatcher
+import kotlinx.coroutines.test.resetMain
+import kotlinx.coroutines.test.setMain
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
+@OptIn(ExperimentalCoroutinesApi::class)
 class AppViewModelTest {
 
     private fun pipeline(state: BridgeState = BridgeState.Disconnected) =
@@ -101,21 +109,33 @@ class AppViewModelTest {
 
     @Test
     fun `reset stops the pipeline and clears all state`() {
-        val log = InMemoryRequestLog()
-        log.record("id-1", RequestType.SIGN_IN, "example.com")
-        val pipeline = pipeline()
-        val appResetManager = AppResetManager(
-            FakeIdentityStore(),
-            FakeCredentialStore(),
-            mockk<KeystoreManager>(relaxed = true),
-            log
-        )
-        val vm = AppViewModel(PairingRepository(FakeIdentityStore()), log, pipeline, appResetManager, UserMessageBus())
+        Dispatchers.setMain(UnconfinedTestDispatcher())
+        try {
+            val log = InMemoryRequestLog()
+            log.record("id-1", RequestType.SIGN_IN, "example.com")
+            val pipeline = pipeline()
+            val appResetManager = AppResetManager(
+                FakeIdentityStore(),
+                FakeCredentialStore(),
+                mockk<KeystoreManager>(relaxed = true),
+                log
+            )
+            val vm = AppViewModel(PairingRepository(FakeIdentityStore()), log, pipeline, appResetManager, UserMessageBus())
+            val done = CountDownLatch(1)
+            var result: Boolean? = null
 
-        vm.reset()
+            vm.reset { success ->
+                result = success
+                done.countDown()
+            }
 
-        verify { pipeline.stop() }
-        assertTrue(vm.requests.value.isEmpty())
+            assertTrue(done.await(5, TimeUnit.SECONDS))
+            assertTrue(result == true)
+            verify { pipeline.stop() }
+            assertTrue(vm.requests.value.isEmpty())
+        } finally {
+            Dispatchers.resetMain()
+        }
     }
 
     @Test

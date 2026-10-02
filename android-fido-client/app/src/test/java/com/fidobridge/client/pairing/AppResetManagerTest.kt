@@ -1,5 +1,7 @@
 package com.fidobridge.client.pairing
 
+import com.fidobridge.client.ctap.CredentialStore
+import com.fidobridge.client.ctap.StoredCredential
 import com.fidobridge.client.harness.FakeCredentialStore
 import com.fidobridge.client.security.KeystoreManager
 import com.fidobridge.client.ui.model.InMemoryRequestLog
@@ -32,11 +34,37 @@ class AppResetManagerTest {
         assertTrue(identityStore.isPaired)
         assertTrue(requestLog.records.value.isNotEmpty())
 
-        manager.reset()
+        assertTrue(manager.reset())
 
         assertFalse(identityStore.isPaired)
         assertTrue(credentialStore.findForRpId("example.com").isEmpty())
         assertTrue(requestLog.records.value.isEmpty())
         verify { keystoreManager.deleteAllSigningKeys() }
+    }
+
+    @Test
+    fun `reset returns false when a store clear fails`() {
+        val identityStore = FakeIdentityStore(
+            storedPhonePrivate = ByteArray(32),
+            storedDaemonPublic = ByteArray(32),
+            storedChannelId = "a".repeat(32)
+        )
+        val manager = AppResetManager(
+            identityStore,
+            FailingCredentialStore(),
+            mockk<KeystoreManager>(relaxed = true),
+            InMemoryRequestLog()
+        )
+
+        assertFalse(manager.reset())
+
+        assertFalse(identityStore.isPaired)
+    }
+
+    private class FailingCredentialStore : CredentialStore {
+        override fun findForRpId(rpId: String) = emptyList<StoredCredential>()
+        override fun findByCredentialId(rpId: String, credentialId: ByteArray) = null
+        override fun add(credential: StoredCredential) = Unit
+        override fun clear() = false
     }
 }
