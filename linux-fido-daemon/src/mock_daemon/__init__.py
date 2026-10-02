@@ -172,6 +172,7 @@ async def _run_get_assertion(
     failed without stopping later requests. ``retries`` allows re-publishing
     on timeout; positive ``delay`` pauses between requests in seconds.
     Zero requests succeed; a negative count fails without sending requests.
+    Task cancellation propagates instead of becoming a failed outcome.
     """
     accepted = 0
     rejected = 0
@@ -232,7 +233,7 @@ async def _run_make_credential(daemon: MockDaemon, retries: int = 0) -> bool:
 
     ``retries`` allows re-publishing on timeout. Mismatched IDs, error responses,
     invalid results, and exceptions during sending or response handling return
-    False, including exhausted timeouts.
+    False, including exhausted timeouts. Task cancellation propagates.
     """
     ok = True
     request_id = str(uuid.uuid4())
