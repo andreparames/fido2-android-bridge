@@ -1,13 +1,16 @@
 package com.fidobridge.client.notifications
 
+import android.Manifest
 import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.app.PendingIntent
 import android.content.Context
 import android.content.Intent
+import android.content.pm.PackageManager
 import android.os.Build
 import androidx.core.app.NotificationCompat
 import androidx.core.app.NotificationManagerCompat
+import androidx.core.content.ContextCompat
 import com.fidobridge.client.MainActivity
 import com.fidobridge.client.R
 import dagger.hilt.android.qualifiers.ApplicationContext
@@ -28,6 +31,13 @@ class RequestNotifier @Inject constructor(
 
     fun notifySigningRequest(detail: String) {
         if (foregroundState.isForegrounded()) return
+        if (!notificationsAllowed()) return
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
+            ContextCompat.checkSelfPermission(context, Manifest.permission.POST_NOTIFICATIONS) !=
+            PackageManager.PERMISSION_GRANTED
+        ) {
+            return
+        }
         ensureChannel()
         val intent = Intent(context, MainActivity::class.java).apply {
             flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP
@@ -49,6 +59,9 @@ class RequestNotifier @Inject constructor(
             .build()
         NotificationManagerCompat.from(context).notify(NOTIFICATION_ID, notification)
     }
+
+    private fun notificationsAllowed(): Boolean =
+        NotificationManagerCompat.from(context).areNotificationsEnabled()
 
     private fun ensureChannel() {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) return
