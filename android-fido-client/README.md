@@ -163,6 +163,19 @@ pass insert fidobridge/relay-token   # or: pass show fidobridge/relay-token
 - **Warning:** an embedded token ships inside the APK and is extractable; fine for this
   dev phase, not for production.
 
+### Debug APK signing (stable CI/local key)
+
+Debug builds (local `assembleDebug` and the GitHub Actions `android-apk` artifact) are
+signed with the committed `android-fido-client/debug.keystore`
+(`androiddebugkey` / `android` — debug-only credentials).
+
+- CI verifies the APK signer SHA-256 (`d1df9ef0…`) before uploading the artifact.
+- Keep a **separate** release keystore out of git (GitHub secrets / local only) when
+  shipping real releases.
+- Devices that previously installed an APK signed with a *different* debug key need
+  **one uninstall** before the new stable-signed build can update in place
+  (`INSTALL_FAILED_UPDATE_INCOMPATIBLE`).
+
 ---
 
 ## Security invariants (from `agents.md`)

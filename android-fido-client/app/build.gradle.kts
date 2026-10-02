@@ -11,6 +11,19 @@ android {
     namespace = "com.fidobridge.client"
     compileSdk = 34
 
+    signingConfigs {
+        // Stable debug keystore shared by local builds and CI so every
+        // artifact has the same signature (INSTALL_FAILED_UPDATE_INCOMPATIBLE
+        // otherwise between GitHub Actions runs and local installs).
+        // Debug-only credentials (android/androiddebugkey); never for release.
+        getByName("debug") {
+            storeFile = file("../debug.keystore")
+            storePassword = "android"
+            keyAlias = "androiddebugkey"
+            keyPassword = "android"
+        }
+    }
+
     defaultConfig {
         applicationId = "com.fidobridge.client"
         minSdk = 26
@@ -31,6 +44,9 @@ android {
     }
 
     buildTypes {
+        debug {
+            signingConfig = signingConfigs.getByName("debug")
+        }
         release {
             isMinifyEnabled = false
             proguardFiles(
