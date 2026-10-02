@@ -10,6 +10,8 @@ import com.fidobridge.client.ctap.PersistentCredentialStore
 import com.fidobridge.client.networking.CentrifugoTransport
 import com.fidobridge.client.networking.DiagnosticLogSink
 import com.fidobridge.client.networking.RelayTransport
+import com.fidobridge.client.notifications.ForegroundStateProvider
+import com.fidobridge.client.notifications.ProcessForegroundStateProvider
 import com.fidobridge.client.pairing.AppResetManager
 import com.fidobridge.client.pairing.EncryptedIdentityStore
 import com.fidobridge.client.pairing.IdentityStore
@@ -81,6 +83,10 @@ object DataModule {
     @Provides
     @Singleton
     fun provideRequestLog(): RequestLog = InMemoryRequestLog()
+
+    @Provides
+    @Singleton
+    fun provideForegroundStateProvider(): ForegroundStateProvider = ProcessForegroundStateProvider()
 
     @Provides
     @Singleton

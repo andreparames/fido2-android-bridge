@@ -9,8 +9,15 @@ import android.content.pm.ServiceInfo
 import android.os.Build
 import android.os.IBinder
 import com.fidobridge.client.bridge.BridgePipeline
+import com.fidobridge.client.bridge.BridgeState
 import dagger.hilt.android.AndroidEntryPoint
 import javax.inject.Inject
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.cancel
+import kotlinx.coroutines.launch
 
 @AndroidEntryPoint
 class FidoBridgeService : Service() {
@@ -18,23 +25,39 @@ class FidoBridgeService : Service() {
     @Inject
     lateinit var pipeline: BridgePipeline
 
+    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
+    private var stateJob: Job? = null
+
     override fun onBind(intent: Intent?): IBinder? = null
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         createChannel()
-        val notification = buildNotification()
+        val notification = buildNotification(bridgeNotificationText(BridgeState.Connecting))
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
             startForeground(NOTIFICATION_ID, notification, ServiceInfo.FOREGROUND_SERVICE_TYPE_DATA_SYNC)
         } else {
             startForeground(NOTIFICATION_ID, notification)
         }
         pipeline.start()
+        observeBridgeState()
         return START_STICKY
     }
 
     override fun onDestroy() {
+        stateJob?.cancel()
+        scope.cancel()
         pipeline.stop()
         super.onDestroy()
+    }
+
+    private fun observeBridgeState() {
+        stateJob?.cancel()
+        stateJob = scope.launch {
+            pipeline.state.collect { state ->
+                getSystemService(NotificationManager::class.java)
+                    .notify(NOTIFICATION_ID, buildNotification(bridgeNotificationText(state)))
+            }
+        }
     }
 
     private fun createChannel() {
@@ -47,7 +70,7 @@ class FidoBridgeService : Service() {
         getSystemService(NotificationManager::class.java).createNotificationChannel(channel)
     }
 
-    private fun buildNotification(): Notification {
+    private fun buildNotification(contentText: String): Notification {
         val builder = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             Notification.Builder(this, CHANNEL_ID)
         } else {
@@ -56,7 +79,7 @@ class FidoBridgeService : Service() {
         }
         return builder
             .setContentTitle("FIDO Bridge")
-            .setContentText("Waiting for WebAuthn requests")
+            .setContentText(contentText)
             .setSmallIcon(android.R.drawable.ic_menu_view)
             .build()
     }
@@ -65,4 +88,12 @@ class FidoBridgeService : Service() {
         private const val CHANNEL_ID = "fidobridge_relay"
         private const val NOTIFICATION_ID = 1
     }
+}
+
+internal fun bridgeNotificationText(state: BridgeState): String = when (state) {
+    BridgeState.Connected -> "Waiting for WebAuthn requests"
+    BridgeState.Connecting -> "Connecting…"
+    BridgeState.Disconnected -> "Not connected"
+    BridgeState.SecurityAlert -> "Security alert — approvals paused"
+    is BridgeState.Error -> state.message
 }
