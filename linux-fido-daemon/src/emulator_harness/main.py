@@ -126,10 +126,24 @@ def build_parser() -> argparse.ArgumentParser:
     return parser
 
 
-def _parse_reject_indices(value: str) -> set[int]:
-    if not value.strip():
+def _parse_reject_indices(value: str, count: int) -> set[int]:
+    """Parse reject indices, validating them against ``count``.
+
+    Rejections are only meaningful for ``count > 1`` (a single request cannot
+    be both approved and rejected), and every index must fall in ``1..count``.
+    """
+    indices = {int(part) for part in value.split(",") if part.strip()}
+    if not indices:
         return set()
-    return {int(part) for part in value.split(",") if part.strip()}
+    if count < 2:
+        raise DeviceError(
+            f"--reject-indices {sorted(indices)} requires --count > 1 "
+            "(a single request cannot be both approved and rejected)"
+        )
+    out_of_range = {i for i in indices if i < 1 or i > count}
+    if out_of_range:
+        raise DeviceError(f"reject indices {sorted(out_of_range)} out of range 1..{count}")
+    return indices
 
 
 def build_plan(args: argparse.Namespace) -> list[tuple[str, dict]]:
@@ -139,13 +153,13 @@ def build_plan(args: argparse.Namespace) -> list[tuple[str, dict]]:
             ("make-credential", {"count": 1, "reject": set()}),
             ("clear", {}),
             ("get-assertion", {"count": 1, "reject": set()}),
-            ("multi", {"count": args.count, "reject": _parse_reject_indices(args.reject_indices)}),
+            ("multi", {"count": args.count, "reject": _parse_reject_indices(args.reject_indices, args.count)}),
         ]
         if not args.skip_reset:
             steps.append(("reset", {}))
         return steps
     if args.scenario == "multi":
-        return [("multi", {"count": args.count, "reject": _parse_reject_indices(args.reject_indices)})]
+        return [("multi", {"count": args.count, "reject": _parse_reject_indices(args.reject_indices, args.count)})]
     if args.scenario == "reset":
         return [("reset", {})]
     # single request scenarios (make-credential / get-assertion)
@@ -222,13 +236,17 @@ def _start_emulator(avd: str, log_path: str) -> subprocess.Popen:
 def _build_apk(android_dir: Path, relay_url: str) -> str:
     env = dict(os.environ)
     env["FIDO2_RELAY_URL"] = relay_url
-    proc = subprocess.run(
-        ["./gradlew", "assembleDebug"],
-        cwd=android_dir,
-        env=env,
-        capture_output=True,
-        text=True,
-    )
+    try:
+        proc = subprocess.run(
+            ["./gradlew", "assembleDebug"],
+            cwd=android_dir,
+            env=env,
+            capture_output=True,
+            text=True,
+            timeout=900,  # first build can be slow
+        )
+    except subprocess.TimeoutExpired as exc:
+        raise DeviceError("gradle assembleDebug timed out after 900s") from exc
     if proc.returncode != 0:
         raise DeviceError(
             f"gradle assembleDebug failed:\n{proc.stdout}\n{proc.stderr}"

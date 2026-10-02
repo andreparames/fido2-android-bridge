@@ -42,10 +42,10 @@ paired: the Home screen shows connection state and a recent-requests history.
   A lock screen must exist for `BiometricPrompt` (device-credential fallback).
 - Virtual fingerprint: `adb emu finger touch 1`. (Enrollment may be unconfirmed;
   if the fingerprint does not satisfy the prompt, use the PIN fallback path.)
-- Build & install:
+- Build & install (from the repo root):
   ```bash
-  ./gradlew assembleDebug
-  adb install -r app/build/outputs/apk/debug/app-debug.apk
+  (cd android-fido-client && ./gradlew assembleDebug)
+  adb install -r android-fido-client/app/build/outputs/apk/debug/app-debug.apk
   ```
 - **Pairing URI**: generate with the daemon CLI (prints `fidobridge://pair?...`):
   ```bash
@@ -146,7 +146,7 @@ for pairing; use `input text` only for short ASCII strings (spaces → `%s`).
 | Clear | TextButton | `Clear` (disabled when list empty) |
 | Row | Card (merged semantics) | content-desc = `Sign-in request from example.com, accepted, 2 minutes ago` (also `Register` / `Browser check`; outcome `rejected` / `pending`) |
 | Row visible text | Text | rpId (primary); secondary `Sign-in · 2 min ago` — or **`Waiting for your approval`** for the pending row (full rpId, no ellipsis) |
-| Outcome badge | Chip (icon+text, semantics) | `Accepted` / `Rejected` / `Pending` |
+| Outcome badge | Chip (merged into row semantics) | `Accepted` / `Rejected` / `Pending` — included in the row's full `content-desc`, **not** a separate node |
 | Empty state | Column | `No requests yet` / `When your computer asks to sign in, the request will appear here.` |
 
 **Actions & dialogs:**
@@ -184,9 +184,9 @@ adb shell uiautomator dump /sdcard/ui.xml && adb pull /sdcard/ui.xml
 
 ### F2 — Manual URI field + inline validation
 - Type a malformed URI → supporting text `Invalid pairing URI` appears and the
-  Pair button is enabled:
+  Pair button is enabled. Use a plain invalid value (no `&`/`?`/`=` — see §3):
   ```bash
-  adb shell input text 'fidobridge://pair?channel=zz'
+  adb shell input text 'not-a-uri'
   ```
   (Expect the `Invalid pairing URI` supporting text.)
 - Type a valid URI (from the daemon `pair` CLI) → no error text; `Pair` → the
@@ -234,7 +234,11 @@ adb shell am start -a android.intent.action.VIEW -d "$URI" com.fidobridge.client
   force-stop + relaunch the app still starts on PairingScreen (state wiped).
 
 ### F8 — Backgrounded heads-up notification
-1. Pair + be on Home so the service runs.
+1. Pair + be on Home so the service runs. Ensure POST_NOTIFICATIONS is granted
+   (grant it via
+   `adb shell pm grant com.fidobridge.client android.permission.POST_NOTIFICATIONS`,
+   or tap `Allow` on the first-launch dialog) — `RequestNotifier` skips the
+   notification when the permission is denied or still pending.
 2. Background the app: `adb shell input keyevent KEYCODE_HOME`.
 3. Trigger a sign-in request from the remote side.
 4. Assert an `Approve sign-in` / `Sign-in requested by <domain> — open FIDO

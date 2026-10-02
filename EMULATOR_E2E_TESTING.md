@@ -196,8 +196,9 @@ Env overrides: `FIDO2_RELAY_URL`, `FIDO2_STATIC_KEY_PATH`, `ANDROID_HOME`
    (`FIDO2_RELAY_URL=ws://10.0.2.2:9000/connection/websocket ./gradlew
    assembleDebug`); `adb install -r`. `--apk` skips the build.
 4. **Reset app state**: `d.app_clear("com.fidobridge.client")`, then
-   `pm grant android.permission.POST_NOTIFICATIONS` (the first-launch
-   notification dialog is racy to tap; a direct grant is deterministic).
+    `pm grant com.fidobridge.client android.permission.POST_NOTIFICATIONS` (the
+    first-launch notification dialog is racy to tap; a direct grant is
+    deterministic).
 5. **Start `mock_daemon`** with the shared material and the **host-side**
    relay URL (`--host-relay ws://localhost:9000/connection/websocket` — the
    `10.0.2.2` address only resolves *inside* the emulator; a host process
@@ -217,10 +218,9 @@ Env overrides: `FIDO2_RELAY_URL`, `FIDO2_STATIC_KEY_PATH`, `ANDROID_HOME`
    outcome lives in the merged row `content-desc` (`…, accepted, …`), **not**
    a standalone `Accepted` text node.
 9. **Reject** (only for configured indices): the systemui bottom-sheet prompt
-   has no Cancel button and ignores BACK — cancel it with a raw adb tap on
-   the scrim above the sheet. A user-cancel also pops a "FIDO Bridge error"
-   dialog (the app surfaces the biometric error); dismiss it with OK, then
-   assert the `…, rejected, …` row.
+    has no Cancel button and ignores BACK — cancel it with a raw adb tap on
+    the scrim above the sheet. A user-cancel rejects the request without
+    showing an app error dialog; then assert the `…, rejected, …` row.
 10. **Verify daemon side**: `mock_daemon` logs
     `get-assertion: OK (N accepted, M rejected)` and exits 0. Between
     requests `mock_daemon` pauses (`--delay`, default 8 s) so each prompt is
@@ -276,9 +276,9 @@ the emulator (software-backed); that stays device-only (Phase 12 note).
 - **Accepted/Rejected state is in the row content-desc**, not a standalone
   badge text node — assert with `descriptionContains("accepted"/"rejected")`.
 - **Cancelling the prompt** is a raw adb tap on the scrim above the sheet
-  (the systemui bottom-sheet prompt has no Cancel button and ignores BACK),
-  and it surfaces a "FIDO Bridge error" dialog that must be dismissed with
-  OK before the rejected row is visible.
+  (the systemui bottom-sheet prompt has no Cancel button and ignores BACK).
+  A user-cancel rejects the request without an app error dialog, so the
+  rejected row is visible immediately.
 - **POST_NOTIFICATIONS** is pre-granted via `pm grant` after `pm clear`
   (which revokes it) — tapping the system dialog races its animation.
 - **Screenshots of FLAG_SECURE surfaces** need the emulator console
@@ -289,8 +289,9 @@ the emulator (software-backed); that stays device-only (Phase 12 note).
   read its `.output`.
 - **One APK build per run** (`RELAY_URL` is baked) → document; `--apk` for
   reuse within a session.
-- **Flaky prompt dismiss / reject** → a `Rejected`-outcome scenario is not
-  part of `all` (only the approve path is automated today).
+- **Flaky prompt dismiss / reject** → rejection is covered inside `all` by the
+  `multi` flow (request #3 is rejected); a separate `Rejected`-only scenario
+  is not automated.
 
 ---
 

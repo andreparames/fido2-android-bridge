@@ -533,8 +533,8 @@ C. **TDD**
    - `BridgePipelineTest`: `reconnect` re-establishes after `Disconnected`
      (transport reconnects, state returns to `Connected`, a second inbound
      request is processed).
-   - `AppViewModel`/Home composable test: `BridgeState` maps to the banner;
-     the reconnect action is only offered when disconnected.
+- `AppViewModel`/Home composable test: `BridgeState` maps to the banner;
+      the reconnect action is only offered when the state is not `Connected`.
 
 ### Verification checklist
 - [ ] Open the app → Home shows **Connected** within a couple of seconds.

@@ -41,7 +41,12 @@ class Device:
 
     def adb(self, *args: str) -> str:
         """Run a raw adb command; return stdout without the trailing newline."""
-        proc = subprocess.run(self._adb + list(args), capture_output=True, text=True)
+        try:
+            proc = subprocess.run(
+                self._adb + list(args), capture_output=True, text=True, timeout=180
+            )
+        except subprocess.TimeoutExpired as exc:
+            raise DeviceError(f"adb {' '.join(args)} timed out") from exc
         if proc.returncode != 0:
             raise DeviceError(f"adb {' '.join(args)} failed: {proc.stderr.strip()}")
         return proc.stdout.rstrip("\n")

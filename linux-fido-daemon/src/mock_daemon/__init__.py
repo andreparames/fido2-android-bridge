@@ -218,8 +218,12 @@ async def _run_get_assertion(
             logger.info("get-assertion: waiting %.1fs before next request", delay)
             await asyncio.sleep(delay)
 
-    logger.info("get-assertion: OK (%d accepted, %d rejected)", accepted, rejected)
-    return ok and accepted + rejected == count
+    success = ok and accepted + rejected == count
+    if success:
+        logger.info("get-assertion: OK (%d accepted, %d rejected)", accepted, rejected)
+    else:
+        logger.error("get-assertion: FAILED (%d accepted, %d rejected)", accepted, rejected)
+    return success
 
 
 async def _run_make_credential(daemon: MockDaemon, retries: int = 0) -> bool:
