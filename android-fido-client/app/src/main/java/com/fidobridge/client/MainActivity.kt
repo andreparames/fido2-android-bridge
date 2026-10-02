@@ -20,6 +20,7 @@ import com.fidobridge.client.pairing.PairingRepository
 import com.fidobridge.client.pairing.PairingUriDispatcher
 import com.fidobridge.client.security.BiometricPromptCoordinator
 import com.fidobridge.client.security.OperationDeniedException
+import com.fidobridge.client.security.isUserCancelErrorCode
 import com.fidobridge.client.ui.FidoBridgeApp
 import com.fidobridge.client.ui.UserMessageBus
 import dagger.hilt.android.AndroidEntryPoint
@@ -140,7 +141,9 @@ class MainActivity : FragmentActivity() {
                                     val msg = "biometric error $errorCode: $errString"
                                     Log.w(TAG, msg)
                                     logSink.log(msg)
-                                    userMessageBus.post(msg)
+                                    if (!isUserCancelErrorCode(errorCode)) {
+                                        userMessageBus.post(msg)
+                                    }
                                     cont.resume(Result.failure(OperationDeniedException(errString.toString())))
                                 }
 
