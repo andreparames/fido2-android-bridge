@@ -42,6 +42,10 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.fidobridge.client.pairing.PairingUiState
 import com.fidobridge.client.pairing.PairingViewModel
 
+/**
+ * Shows QR and manual URI pairing controls within the system bars, including pairing errors.
+ * Calls [onPaired] when the observed state is [PairingUiState.Paired].
+ */
 @Composable
 fun PairingScreen(
     onPaired: () -> Unit,

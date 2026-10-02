@@ -3,9 +3,9 @@ package com.fidobridge.client.security
 import androidx.biometric.BiometricPrompt
 
 /**
- * Codes from [androidx.biometric.BiometricPrompt] that mean the user
- * deliberately dismissed the prompt rather than a genuine failure. These are a
- * decision (the request is rejected), not an error worth surfacing to the user.
+ * Returns whether [errorCode] is [BiometricPrompt.ERROR_CANCELED],
+ * [BiometricPrompt.ERROR_USER_CANCELED], or [BiometricPrompt.ERROR_NEGATIVE_BUTTON].
+ * These codes suppress the error dialog while still rejecting the request.
  */
 fun isUserCancelErrorCode(errorCode: Int): Boolean = when (errorCode) {
     BiometricPrompt.ERROR_CANCELED,

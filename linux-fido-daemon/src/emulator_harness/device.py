@@ -33,6 +33,11 @@ class DeviceError(RuntimeError):
 
 class Device:
     def __init__(self, serial: str | None = None, boot_timeout: float = 240.0) -> None:
+        """Wait for boot and connect UI automation to the selected adb device.
+
+        An empty or omitted serial selects ``emulator-5554``. ``boot_timeout``
+        is in seconds for each boot-wait phase; boot and connection errors propagate.
+        """
         self.serial = serial or "emulator-5554"
         self._adb = ["adb", "-s", self.serial]
         self.wait_booted(boot_timeout)
@@ -40,7 +45,11 @@ class Device:
         logger.info("uiautomator2 connected to %s", self.serial)
 
     def adb(self, *args: str) -> str:
-        """Run a raw adb command; return stdout without the trailing newline."""
+        """Run a raw adb command; return stdout without trailing newlines.
+
+        Raise DeviceError on a nonzero exit or after 180 seconds. Process-launch
+        errors, including FileNotFoundError when adb is missing, propagate.
+        """
         try:
             proc = subprocess.run(
                 self._adb + list(args), capture_output=True, text=True, timeout=180
@@ -52,6 +61,12 @@ class Device:
         return proc.stdout.rstrip("\n")
 
     def wait_booted(self, timeout: float = 240.0) -> None:
+        """Wait for adb connectivity, then Android's boot-completed flag.
+
+        ``timeout`` is in seconds and applies separately to both phases; each
+        boot-property query also has the adb command timeout. Raise DeviceError
+        on command failure or timeout; process-launch errors propagate.
+        """
         try:
             subprocess.run(
                 ["adb", "-s", self.serial, "wait-for-device"], check=True, timeout=timeout
@@ -79,7 +94,11 @@ class Device:
         self.unlock(pin)
 
     def unlock(self, pin: str = DEFAULT_PIN) -> None:
-        """Dismiss a secure keyguard by entering the lock PIN via its UI."""
+        """Attempt to dismiss a secure keyguard by entering the lock PIN via its UI.
+
+        Do nothing if the keyguard is not showing. A keyguard that remains
+        visible after the attempt does not itself raise an error.
+        """
         if "isKeyguardShowing=true" not in self.shell("dumpsys window"):
             logger.info("keyguard not showing; no unlock needed")
             return
@@ -104,14 +123,17 @@ class Device:
             logger.info("granted POST_NOTIFICATIONS")
 
     def shell(self, command: str) -> str:
+        """Run a device shell command and return its output without checking exit status."""
         result = self.d.shell(command)
         return getattr(result, "output", str(result))
 
     def install_apk(self, apk_path: str) -> None:
+        """Install or replace the app from a host APK path; propagate adb errors."""
         self.adb("install", "-r", apk_path)
         logger.info("installed %s", apk_path)
 
     def clear_app(self) -> None:
+        """Clear the app's data, including pairing state and runtime permissions."""
         self.d.app_clear(APP_PACKAGE)
 
     def grant_notification(self) -> None:
@@ -124,6 +146,7 @@ class Device:
         self.adb("shell", "pm", "grant", APP_PACKAGE, "android.permission.POST_NOTIFICATIONS")
 
     def launch_app(self) -> None:
+        """Launch the app without first stopping an existing instance."""
         self.d.app_start(APP_PACKAGE, stop=False)
 
     def relaunch_app(self) -> None:
@@ -134,20 +157,25 @@ class Device:
         time.sleep(1.0)
 
     def stop_app(self) -> None:
+        """Force-stop the app on the selected device."""
         self.d.app_stop(APP_PACKAGE)
 
     def pair(self, uri: str) -> None:
+        """Open the pairing deep link without waiting for pairing to complete."""
         # The URI carries `&`/`?`/`=`; pass it through the device shell
         # single-quoted so the shell does not split it (UI_TESTER_GUIDE.md §3).
         self.shell("am start -a android.intent.action.VIEW -d " + shlex.quote(uri))
 
     def touch_fingerprint(self) -> None:
+        """Simulate a touch from emulator fingerprint ID 1; propagate adb errors."""
         self.adb("emu", "finger", "touch", "1")
 
     def press_back(self) -> None:
+        """Send the Android Back action to the device."""
         self.d.press("back")
 
     def tap(self, x: int, y: int) -> None:
+        """Tap screen coordinates in pixels using adb; propagate adb errors."""
         self.adb("shell", "input", "tap", str(x), str(y))
 
     def approve_pin(self, pin: str = DEFAULT_PIN) -> None:
@@ -160,7 +188,11 @@ class Device:
         self.shell("input keyevent 66")
 
     def reset_app(self) -> None:
-        """Tap 'Reset app' in the danger zone and confirm; returns on the pairing screen."""
+        """Tap 'Reset app' in the danger zone and confirm; return on the pairing screen.
+
+        Raise DeviceError if a reset control or the resulting pairing screen
+        is missing. UI automation errors propagate.
+        """
         for _ in range(3):
             self.d.swipe(540, 1800, 540, 500, duration=0.2)
         reset = self.d(text="Reset app")
@@ -177,9 +209,10 @@ class Device:
             raise DeviceError("app did not return to the pairing screen after reset")
 
     def clear_requests(self) -> bool:
-        """Tap 'Clear' on Home; return True once the list is empty.
+        """Tap 'Clear' on Home if present; return whether the empty state appears.
 
         Clearing is immediate (the undo snackbar was removed upstream).
+        Return False if 'No requests yet' is absent after a 10-second wait.
         """
         clear = self.d(text="Clear")
         if clear.exists(timeout=5.0):
@@ -189,9 +222,14 @@ class Device:
     # --- selectors (elements per UI_TESTER_GUIDE.md §4) ---------------------
 
     def wait_text(self, text: str, timeout: float = 30.0) -> bool:
+        """Wait up to ``timeout`` seconds for exact text; return False on timeout."""
         return self.d(text=text).wait(timeout=timeout)
 
     def wait_desc_contains(self, desc: str, timeout: float = 30.0) -> bool:
+        """Wait up to ``timeout`` seconds for a content-description substring.
+
+        Return whether a matching element appeared before the timeout.
+        """
         return self.d(descriptionContains=desc).wait(timeout=timeout)
 
     # --- diagnostics ----------------------------------------------------------
@@ -206,5 +244,9 @@ class Device:
         self.adb("emu", "screenrecord", "screenshot", path)
 
     def dump_hierarchy(self, path: str) -> None:
+        """Write the UI hierarchy as UTF-8, replacing ``path`` on the host.
+
+        File I/O and UI automation errors propagate.
+        """
         with open(path, "w", encoding="utf-8") as fh:
             fh.write(self.d.dump_hierarchy())

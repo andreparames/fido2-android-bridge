@@ -25,7 +25,12 @@ class Material:
 
 
 def generate_material(static_key_path: str) -> Material:
-    """Create a fresh channel + daemon static key and the app's pairing URI."""
+    """Create a fresh channel + daemon static key and the app's pairing URI.
+
+    Overwrite ``static_key_path``, creating parent directories as needed and
+    setting the key file's permissions to 0600. Return the channel, key path,
+    and URI together; file I/O errors propagate.
+    """
     key_path = Path(static_key_path)
     private = StaticKeyStore.generate()
     StaticKeyStore.save(key_path, private)

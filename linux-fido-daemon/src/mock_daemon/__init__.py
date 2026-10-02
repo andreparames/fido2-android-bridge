@@ -164,13 +164,14 @@ class MockDaemon(RelayClient):
 async def _run_get_assertion(
     daemon: MockDaemon, retries: int = 0, count: int = 1, delay: float = 0.0
 ) -> bool:
-    """Send ``count`` getAssertion requests; track accepted vs rejected.
+    """Send ``count`` getAssertion requests; return whether all outcomes are valid.
 
-    A rejection is an ``error`` response carrying ``CTAP2_ERR_OPERATION_DENIED``
-    (the phone's biometric prompt was dismissed). Rejections are only expected
-    when ``count > 1`` (the emulator harness's multi-request flow); a single
-    request that comes back as an error still fails. ``delay`` pauses between
-    requests so the UI harness can see each prompt and act deterministically.
+    An ``error`` response carrying ``CTAP2_ERR_OPERATION_DENIED`` counts as an
+    expected rejection only when ``count > 1``. Other errors, mismatched IDs,
+    invalid results, and exceptions during response handling mark the run as
+    failed without stopping later requests. ``retries`` allows re-publishing
+    on timeout; positive ``delay`` pauses between requests in seconds.
+    Zero requests succeed; a negative count fails without sending requests.
     """
     accepted = 0
     rejected = 0
@@ -227,6 +228,12 @@ async def _run_get_assertion(
 
 
 async def _run_make_credential(daemon: MockDaemon, retries: int = 0) -> bool:
+    """Send one makeCredential request and return whether its response validates.
+
+    ``retries`` allows re-publishing on timeout. Mismatched IDs, error responses,
+    invalid results, and exceptions during sending or response handling return
+    False, including exhausted timeouts.
+    """
     ok = True
     request_id = str(uuid.uuid4())
     request = _build_make_credential_request(request_id)
@@ -271,7 +278,13 @@ async def _run_scenario(
     count: int = 1,
     delay: float = 0.0,
 ) -> bool:
-    """Run a single test scenario. Returns True on success."""
+    """Run get-assertion, make-credential, or both; return whether all checks pass.
+
+    ``count`` and ``delay`` (seconds) apply only to get-assertion; ``retries``
+    allows re-publishing each request on timeout. ``all`` runs make-credential
+    even if get-assertion fails. An unknown scenario sends nothing and returns
+    True. Connection management is left to the caller.
+    """
     ok = True
 
     if scenario in ("get-assertion", "all"):
@@ -287,6 +300,12 @@ async def _run_scenario(
 
 
 def main(argv: list[str] | None = None) -> int:
+    """Run mock-daemon CLI scenarios; return 0 for valid outcomes, otherwise 1.
+
+    ``argv=None`` uses process arguments. Parsing can raise SystemExit;
+    configuration, connection, and cleanup errors propagate. Request/response
+    errors caught by the scenarios become a failure status.
+    """
     parser = argparse.ArgumentParser(
         prog="mock-daemon",
         description="Mock daemon: publishes synthetic CTAP2 requests to test the Android app",
@@ -337,6 +356,10 @@ def main(argv: list[str] | None = None) -> int:
     logger.info("token: %s", "set" if config.relay_token else "anonymous")
 
     async def _run() -> bool:
+        """Connect, run the selected scenarios, and close the daemon even on failure.
+
+        Return the scenario result; connection and cleanup errors propagate.
+        """
         daemon = MockDaemon(config)
         try:
             await daemon.connect()

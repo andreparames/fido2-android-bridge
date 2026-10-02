@@ -45,6 +45,7 @@ RP_ID = "example.com"
 
 
 def build_parser() -> argparse.ArgumentParser:
+    """Return the emulator harness CLI parser without parsing arguments."""
     parser = argparse.ArgumentParser(prog="emulator-harness")
     parser.add_argument(
         "scenario",
@@ -127,10 +128,11 @@ def build_parser() -> argparse.ArgumentParser:
 
 
 def _parse_reject_indices(value: str, count: int) -> set[int]:
-    """Parse reject indices, validating them against ``count``.
+    """Parse comma-separated, 1-based request indices, ignoring empty fields.
 
-    Rejections are only meaningful for ``count > 1`` (a single request cannot
-    be both approved and rejected), and every index must fall in ``1..count``.
+    Return a set, including an empty set for blank input. Raise ValueError
+    for noninteger fields, or DeviceError for nonempty indices when ``count``
+    is less than two or an index falls outside ``1..count``.
     """
     indices = {int(part) for part in value.split(",") if part.strip()}
     if not indices:
@@ -147,7 +149,13 @@ def _parse_reject_indices(value: str, count: int) -> set[int]:
 
 
 def build_plan(args: argparse.Namespace) -> list[tuple[str, dict]]:
-    """Ordered list of ``(step, params)`` for the run."""
+    """Return ordered ``(step, params)`` pairs for the selected scenario.
+
+    Request parameters contain ``count`` and 1-based ``reject`` indices.
+    The ``all`` plan always includes clearing requests and omits the final
+    reset only when ``skip_reset`` is set. Invalid rejection indices propagate
+    ValueError or DeviceError from ``_parse_reject_indices``.
+    """
     if args.scenario == "all":
         steps: list[tuple[str, dict]] = [
             ("make-credential", {"count": 1, "reject": set()}),
@@ -167,6 +175,10 @@ def build_plan(args: argparse.Namespace) -> list[tuple[str, dict]]:
 
 
 def _repo_root() -> Path:
+    """Return FIDO2_REPO_ROOT unchecked, or find an ancestor with both app directories.
+
+    Raise DeviceError if neither an override nor a matching ancestor exists.
+    """
     override = os.environ.get("FIDO2_REPO_ROOT")
     if override:
         return Path(override)
@@ -179,6 +191,7 @@ def _repo_root() -> Path:
 
 
 def _read_log(path: str) -> str:
+    """Read a log, returning an empty string on OSError; decoding errors propagate."""
     try:
         return Path(path).read_text()
     except OSError:
@@ -186,6 +199,11 @@ def _read_log(path: str) -> str:
 
 
 def _wait_for_log(log_path: str, needle: str, timeout: float) -> bool:
+    """Poll for a log substring for ``timeout`` seconds; return False on expiry.
+
+    Unreadable or missing files are treated as empty; decoding errors propagate.
+    A nonpositive timeout returns False without reading the log.
+    """
     deadline = time.time() + timeout
     while time.time() < deadline:
         if needle in _read_log(log_path):
@@ -195,6 +213,7 @@ def _wait_for_log(log_path: str, needle: str, timeout: float) -> bool:
 
 
 def _find_emulator() -> str:
+    """Find the emulator in configured or default SDK roots, falling back to PATH."""
     candidates = [
         os.environ.get("ANDROID_HOME"),
         os.environ.get("ANDROID_SDK_ROOT"),
@@ -210,6 +229,11 @@ def _find_emulator() -> str:
 
 
 def _start_emulator(avd: str, log_path: str) -> subprocess.Popen:
+    """Start a headless AVD and return its process without waiting for boot.
+
+    Replace ``log_path`` with combined process output. Raise DeviceError if
+    the emulator executable is missing; other launch and file errors propagate.
+    """
     cmd = [
         _find_emulator(),
         "-avd",
@@ -234,6 +258,11 @@ def _start_emulator(avd: str, log_path: str) -> subprocess.Popen:
 
 
 def _build_apk(android_dir: Path, relay_url: str) -> str:
+    """Build the debug APK with ``relay_url`` baked in and return its path.
+
+    Raise DeviceError on a failed build, a 900-second timeout, or a missing
+    APK. Process-launch errors, including a missing Gradle wrapper, propagate.
+    """
     env = dict(os.environ)
     env["FIDO2_RELAY_URL"] = relay_url
     try:
@@ -270,6 +299,10 @@ def _snapshot(device: Device, log_dir: str, name: str) -> None:
 
 
 def _hierarchy(device: Device, log_dir: str, tag: str) -> str:
+    """Save a failure hierarchy and return its first 4,000 characters.
+
+    Return ``"(hierarchy unavailable)"`` if capture, writing, or reading fails.
+    """
     path = os.path.join(log_dir, f"{tag}-fail.xml")
     try:
         device.dump_hierarchy(path)
@@ -279,6 +312,13 @@ def _hierarchy(device: Device, log_dir: str, tag: str) -> str:
 
 
 def _await_request(device: Device, log_dir: str, tag: str, timeout: float) -> None:
+    """Wait for the biometric prompt or, failing that, a pending request row.
+
+    ``timeout`` is in seconds and applies separately to each wait. A visible
+    prompt must also show the expected RP ID within 10 seconds. Raise
+    DeviceError if either that check or both request waits fail; device errors
+    propagate. Save a best-effort screenshot when the prompt is visible.
+    """
     if device.wait_text(PROMPT_TITLE, timeout=timeout):
         if not device.wait_text(RP_ID, timeout=10.0):
             raise DeviceError(
@@ -298,6 +338,11 @@ def _await_request(device: Device, log_dir: str, tag: str, timeout: float) -> No
 
 
 def _approve(device: Device, log_dir: str, tag: str) -> None:
+    """Try fingerprint approval, then PIN fallback, until an accepted row is visible.
+
+    Raise DeviceError if no accepted row appears after fallback; device errors
+    propagate. Save a best-effort screenshot on success.
+    """
     # The outcome lives in the merged row content-desc (e.g. "Sign-in request
     # from example.com, accepted, just now"), not a standalone "Accepted" text
     # node (UI_TESTER_GUIDE.md §4.2). The fingerprint sensor may not be ready
@@ -326,6 +371,12 @@ def _approve(device: Device, log_dir: str, tag: str) -> None:
 
 
 def _finish(proc: subprocess.Popen, log_path: str, ok_line: str, timeout: float) -> None:
+    """Wait up to ``timeout`` seconds for daemon exit and validate its log.
+
+    Raise DeviceError on timeout, a nonzero exit, a SECURITY ALERT, or a missing
+    ``ok_line`` substring. Log decoding errors propagate. Leave the process
+    running on timeout for the caller to clean up.
+    """
     deadline = time.time() + timeout
     while time.time() < deadline:
         rc = proc.poll()
@@ -345,13 +396,11 @@ def _finish(proc: subprocess.Popen, log_path: str, ok_line: str, timeout: float)
 
 
 def _reject(device: Device, log_dir: str, tag: str) -> None:
-    """Dismiss the BiometricPrompt -> CTAP2 operation-denied -> Rejected row.
+    """Dismiss the biometric prompt and wait for a rejected request row.
 
-    The systemui bottom-sheet prompt has no Cancel button; cancel it by
-    tapping the scrim above the sheet (raw adb tap) and/or BACK, retrying
-    until the prompt is gone. A user-cancel also posts a "FIDO Bridge error"
-    dialog (the app surfaces the biometric error), which must be dismissed
-    with OK before the rejected row is visible.
+    Try tapping outside the sheet and pressing Back up to four times, then
+    dismiss an OK dialog if present. Raise DeviceError if no rejected row
+    appears; device errors propagate. Save a best-effort screenshot on success.
     """
     for _ in range(4):
         if not device.d(text=PROMPT_TITLE).exists(timeout=1.0):
@@ -386,6 +435,17 @@ def _run_request_step(
     log_dir: str,
     first: bool,
 ) -> None:
+    """Run a mock daemon against the app and check UI outcomes and daemon results.
+
+    ``first`` pairs using ``material``; later steps restart the app. ``reject``
+    contains 1-based request indices; other requests are approved. ``timeout``
+    is in seconds for request waits and daemon completion, and is truncated
+    to whole seconds for each daemon request attempt. Write artifacts to
+    ``log_dir`` and kill a still-running daemon when leaving the step.
+
+    Failed UI or daemon checks raise DeviceError; file, process-launch, and
+    device errors propagate.
+    """
     scenario = "get-assertion" if kind in ("multi", "get-assertion") else kind
     log_path = os.path.join(log_dir, f"{kind}.log")
     env = dict(os.environ)
@@ -446,6 +506,10 @@ def _run_request_step(
 
 
 def _clear_step(device: Device, log_dir: str) -> None:
+    """Clear request history and save a best-effort screenshot.
+
+    Raise DeviceError if the empty state is absent; device errors propagate.
+    """
     if not device.clear_requests():
         raise DeviceError(
             f"clear: list not empty; hierarchy:\n{_hierarchy(device, log_dir, 'clear')}"
@@ -455,6 +519,12 @@ def _clear_step(device: Device, log_dir: str) -> None:
 
 
 def _reset_step(device: Device, args: argparse.Namespace, log_dir: str) -> None:
+    """Reset the app, pair with fresh material, and verify the Home screen.
+
+    Pair first if Home is absent. Overwrite ``args.static_key_path`` when
+    creating material and save best-effort screenshots in ``log_dir``.
+    Raise DeviceError on failed UI checks; key-file and device errors propagate.
+    """
     if not device.d(text="Recent requests").exists(timeout=5.0):
         material = generate_material(args.static_key_path)
         device.pair(material.pairing_uri)
@@ -478,6 +548,13 @@ def _reset_step(device: Device, args: argparse.Namespace, log_dir: str) -> None:
 
 
 def _run(args: argparse.Namespace) -> int:
+    """Prepare the device, install and clear the app, and return 0 after all steps pass.
+
+    Create artifacts and fresh pairing material, overwriting the static key
+    file. Stop the app and terminate an emulator launched here on exit unless
+    ``keep_running`` is set. Mock daemons are cleaned up by each request step.
+    Setup, scenario, and cleanup errors propagate to the caller.
+    """
     log_dir = args.log_dir or tempfile.mkdtemp(prefix="emulator-e2e-")
     Path(log_dir).mkdir(parents=True, exist_ok=True)
     logger.info("artifacts in %s", log_dir)
@@ -527,6 +604,11 @@ def _run(args: argparse.Namespace) -> int:
 
 
 def main(argv: list[str] | None = None) -> int:
+    """Run the emulator harness CLI; return 0 on success or 1 on a run exception.
+
+    ``argv=None`` uses process arguments. Argument parsing can raise SystemExit
+    for help or invalid usage before run errors are converted to status 1.
+    """
     args = build_parser().parse_args(argv)
     logging.basicConfig(
         level=logging.DEBUG if args.verbose else logging.INFO,

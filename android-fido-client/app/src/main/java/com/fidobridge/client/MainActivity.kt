@@ -117,6 +117,11 @@ class MainActivity : FragmentActivity() {
         }
     }
 
+    /**
+     * Collects unclaimed signing requests in the activity lifecycle and presents biometric prompts.
+     * Delivers success or an [OperationDeniedException] failure through each request's callback.
+     * Requeues the request if collection is canceled; cancellation codes suppress the error dialog.
+     */
     private fun collectSigningRequests() {
         val executor = ContextCompat.getMainExecutor(this)
         lifecycleScope.launch {
@@ -137,6 +142,7 @@ class MainActivity : FragmentActivity() {
                                     cont.resume(Result.success(result.cryptoObject))
                                 }
 
+                                /** Rejects the request, posting a user message only for non-cancellation errors. */
                                 override fun onAuthenticationError(errorCode: Int, errString: CharSequence) {
                                     val msg = "biometric error $errorCode: $errString"
                                     Log.w(TAG, msg)
