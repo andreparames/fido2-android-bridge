@@ -270,6 +270,7 @@ class BridgePipelineTest {
         withTimeout(5000) { while (pipeline.state.value != BridgeState.SecurityAlert) delay(10) }
 
         pipeline.reconnect()
+        assertEquals(BridgeState.SecurityAlert, pipeline.state.value)
 
         delay(100)
         assertEquals(BridgeState.SecurityAlert, pipeline.state.value)

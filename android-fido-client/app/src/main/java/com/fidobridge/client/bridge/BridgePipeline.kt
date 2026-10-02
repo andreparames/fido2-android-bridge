@@ -63,6 +63,9 @@ class BridgePipeline(
         if (phonePrivate == null) return fail("not paired: missing phone static key")
         if (daemonPublic == null) return fail("not paired: missing daemon static key")
         if (channelId == null) return fail("not paired: missing channel")
+        if (preserveSecurityAlert) {
+            _state.value = BridgeState.SecurityAlert
+        }
         logSink?.start(channelId, relayUrl, relayToken)
         logSink?.log("pipeline.start channel=$channelId")
 
@@ -121,9 +124,6 @@ class BridgePipeline(
         }
 
         Log.i(TAG, "pipeline connecting to ${Protocol.relayChannel(channelId)}")
-        if (preserveSecurityAlert) {
-            _state.value = BridgeState.SecurityAlert
-        }
         relay.connect()
     }
 
