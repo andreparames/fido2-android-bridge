@@ -55,9 +55,9 @@ device**.
   - `CentrifugoTransport` — wraps the official `io.github.centrifugal:centrifuge-java`
     SDK; subscribes to `fidobridge.<channel_id>`; connection JWT attached on connect and
     re-attached on reconnect via `setToken`/`setTokenGetter`; never logs the token.
-  - `RelayClient` — the E2EE layer over a thin `RelayTransport` abstraction: seal-before-
-    publish, open-on-receive, GCM tag-failure abort → security alert, `channel_id` check,
-    replay drop (LRU, N=512) with `error`/`operationDenied` reply, and a `disconnections`
+  - `RelayClient` — the E2EE layer over a thin `RelayTransport` abstraction: Noise
+    `ik1/ik2` handshake (initiator) + transport, `kind=ik1|ik2|data` wire envelopes,
+    replay rejected by the Noise per-direction nonce counters, and a `disconnections`
     flow used to abort in-flight requests on disconnect.
   - `FidoBridgeService` — foreground service skeleton (`DATA_SYNC`); relay lifecycle
     wiring is deferred to integration (see "Next steps").
@@ -79,21 +79,32 @@ device**.
 
 ### Integration harness (Phase 11)
 
-The relay round-trip **is** validated on the host JVM — no emulator needed. Run:
+The relay round-trip **is** validated on the host JVM — no emulator needed. The
+phone side is the real app code (`CentrifugoTransport` + `RelayClient` initiator +
+`Ctap2Processor`) run as a JVM unit test; the daemon side is the real Python relay
+(`mock_daemon` responder). See [`INTEGRATION_TESTING.md`](../INTEGRATION_TESTING.md)
+for the full procedure (Centrifugo setup, pairing material, ordering, timeouts).
+
+Minimal run against a local Centrifugo:
 
 ```bash
-# 1. Write /tmp/fido2_harness.properties:
-#    enabled=true / channel_id=<32-hex> / session_key_b64=<b64> / relay_url=wss://gary.andreparames.com:8000/connection/websocket
-# 2. In one terminal (daemon-peer, publishes synthetic CTAP2 requests):
-FIDO2_CHANNEL_ID=<same> FIDO2_SESSION_KEY_B64=<same> \
-  python -m mock_daemon all --timeout 5 --retries 30
-# 3. In another:
-./gradlew testDebugUnitTest --tests 'com.fidobridge.client.harness.IntegrationHarnessTest'
+# 1. Start Centrifugo with anonymous connect + channel permissions
+#    (client.allow_anonymous_connect_without_token + allow_subscribe/publish_for_anonymous).
+
+# 2. One terminal — daemon peer (Noise responder; must start first and wait):
+FIDO2_CHANNEL_ID=<32-hex> FIDO2_STATIC_KEY_PATH=<daemon-static-key.pem> \
+FIDO2_RELAY_URL=ws://localhost:9000/connection/websocket \
+FIDO2_REQUEST_TIMEOUT=180 \
+  python -m mock_daemon all --timeout 180
+
+# 3. Other terminal — phone (Noise initiator):
+FIDO2_HARNESS=1 FIDO2_CHANNEL_ID=<same-32-hex> \
+FIDO2_DAEMON_PUBLIC_B64=<daemon public key, standard base64> \
+FIDO2_RELAY_URL=ws://localhost:9000/connection/websocket \
+  ./gradlew testDebugUnitTest --tests 'com.fidobridge.client.harness.IntegrationHarnessTest'
 ```
 
-Both `get-assertion` and `make-credential` pass end-to-end through a live Centrifugo
-(`CentrifugoTransport` JSON-vs-object payload handling, `onConnected`-subscribe, and
-Python `relay.py` dict tolerance were fixed to make this work).
+Both `get-assertion` and `make-credential` pass end-to-end through a live Centrifugo.
 
 ---
 
