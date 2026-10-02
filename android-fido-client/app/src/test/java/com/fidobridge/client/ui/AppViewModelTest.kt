@@ -14,6 +14,7 @@ import io.mockk.mockk
 import io.mockk.verify
 import kotlinx.coroutines.flow.MutableStateFlow
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -27,12 +28,14 @@ class AppViewModelTest {
     private fun viewModel(
         requestLog: InMemoryRequestLog = InMemoryRequestLog(),
         pipeline: BridgePipeline = pipeline(),
-        appResetManager: AppResetManager = mockk(relaxed = true)
+        appResetManager: AppResetManager = mockk(relaxed = true),
+        userMessageBus: UserMessageBus = UserMessageBus()
     ): AppViewModel = AppViewModel(
         PairingRepository(FakeIdentityStore()),
         requestLog,
         pipeline,
-        appResetManager
+        appResetManager,
+        userMessageBus
     )
 
     @Test
@@ -107,11 +110,22 @@ class AppViewModelTest {
             mockk<KeystoreManager>(relaxed = true),
             log
         )
-        val vm = AppViewModel(PairingRepository(FakeIdentityStore()), log, pipeline, appResetManager)
+        val vm = AppViewModel(PairingRepository(FakeIdentityStore()), log, pipeline, appResetManager, UserMessageBus())
 
         vm.reset()
 
         verify { pipeline.stop() }
         assertTrue(vm.requests.value.isEmpty())
+    }
+
+    @Test
+    fun `user message is exposed and dismissible`() {
+        val bus = UserMessageBus()
+        val vm = viewModel(userMessageBus = bus)
+        bus.post("boom")
+
+        assertEquals("boom", vm.userMessage.value)
+        vm.dismissUserMessage()
+        assertNull(vm.userMessage.value)
     }
 }

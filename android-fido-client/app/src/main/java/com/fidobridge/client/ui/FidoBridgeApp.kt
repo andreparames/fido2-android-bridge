@@ -1,9 +1,14 @@
 package com.fidobridge.client.ui
 
 import android.content.Intent
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
 import androidx.compose.ui.platform.LocalContext
 import androidx.hilt.navigation.compose.hiltViewModel
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
@@ -23,6 +28,7 @@ fun FidoBridgeApp() {
         val appViewModel: AppViewModel = hiltViewModel()
         val navController = rememberNavController()
         val startDestination = if (appViewModel.isPaired) Routes.HOME else Routes.PAIRING
+        val userMessage by appViewModel.userMessage.collectAsStateWithLifecycle()
 
         NavHost(navController = navController, startDestination = startDestination) {
             composable(Routes.PAIRING) {
@@ -48,6 +54,19 @@ fun FidoBridgeApp() {
                     }
                 )
             }
+        }
+
+        userMessage?.let { message ->
+            AlertDialog(
+                onDismissRequest = { appViewModel.dismissUserMessage() },
+                title = { Text("FIDO Bridge error") },
+                text = { Text(message) },
+                confirmButton = {
+                    TextButton(onClick = { appViewModel.dismissUserMessage() }) {
+                        Text("OK")
+                    }
+                }
+            )
         }
     }
 }

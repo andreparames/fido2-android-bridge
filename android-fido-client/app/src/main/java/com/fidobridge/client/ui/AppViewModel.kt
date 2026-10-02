@@ -16,7 +16,8 @@ class AppViewModel @Inject constructor(
     private val pairingRepository: PairingRepository,
     private val requestLog: RequestLog,
     private val pipeline: BridgePipeline,
-    private val appResetManager: AppResetManager
+    private val appResetManager: AppResetManager,
+    private val userMessageBus: UserMessageBus
 ) : ViewModel() {
 
     val isPaired: Boolean = pairingRepository.isPaired
@@ -24,6 +25,10 @@ class AppViewModel @Inject constructor(
     val requests: StateFlow<List<RequestRecord>> = requestLog.records
 
     val bridgeState: StateFlow<BridgeState> = pipeline.state
+
+    val userMessage: StateFlow<String?> = userMessageBus.message
+
+    fun dismissUserMessage() = userMessageBus.clear()
 
     fun clearLog() = requestLog.clear()
 

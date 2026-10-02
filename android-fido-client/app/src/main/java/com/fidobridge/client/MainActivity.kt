@@ -1,7 +1,6 @@
 package com.fidobridge.client
 
 import android.Manifest
-import android.app.AlertDialog
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.os.Build
@@ -22,6 +21,7 @@ import com.fidobridge.client.pairing.PairingUriDispatcher
 import com.fidobridge.client.security.BiometricPromptCoordinator
 import com.fidobridge.client.security.OperationDeniedException
 import com.fidobridge.client.ui.FidoBridgeApp
+import com.fidobridge.client.ui.UserMessageBus
 import dagger.hilt.android.AndroidEntryPoint
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.suspendCancellableCoroutine
@@ -49,6 +49,9 @@ class MainActivity : FragmentActivity() {
 
     @Inject
     lateinit var logSink: DiagnosticLogSink
+
+    @Inject
+    lateinit var userMessageBus: UserMessageBus
 
     private val notificationPermissionLauncher =
         registerForActivityResult(ActivityResultContracts.RequestPermission()) { }
@@ -137,7 +140,7 @@ class MainActivity : FragmentActivity() {
                                     val msg = "biometric error $errorCode: $errString"
                                     Log.w(TAG, msg)
                                     logSink.log(msg)
-                                    showBiometricError(msg)
+                                    userMessageBus.post(msg)
                                     cont.resume(Result.failure(OperationDeniedException(errString.toString())))
                                 }
 
@@ -173,18 +176,10 @@ class MainActivity : FragmentActivity() {
                     val detail = "${e::class.simpleName}: ${e.message}"
                     Log.e(TAG, "biometric prompt failed: $detail state=${lifecycle.currentState}")
                     logSink.log("prompt failed: $detail state=${lifecycle.currentState}")
-                    showBiometricError("prompt failed: $detail\nactivity state: ${lifecycle.currentState}")
+                    userMessageBus.post("prompt failed: $detail\nactivity state: ${lifecycle.currentState}")
                     request.onResult(Result.failure(OperationDeniedException(e.message ?: "biometric prompt failed")))
                 }
             }
         }
-    }
-
-    private fun showBiometricError(message: String) {
-        AlertDialog.Builder(this)
-            .setTitle("FIDO Bridge error")
-            .setMessage(message)
-            .setPositiveButton("OK", null)
-            .show()
     }
 }
