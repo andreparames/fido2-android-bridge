@@ -28,9 +28,11 @@ passed both `get-assertion` and `make-credential`.
   validates the responses.
 - **Centrifugo** is a real broker; both peers use real WebSocket clients.
 
-There is a second, manual flavor — the **emulator E2E** that installs the real
-APK and exercises a real `BiometricPrompt` via a virtual fingerprint
-(`ANDROID_PLAN.md` §12, `EMULATOR_ENV.md`). This doc covers the JVM harness that
+There is a second, now-**automated** flavor — the **emulator E2E** that
+installs the real APK and exercises a real `BiometricPrompt` via a virtual
+fingerprint, driven by UI automation (`uiautomator2`). See
+[`EMULATOR_E2E_TESTING.md`](EMULATOR_E2E_TESTING.md) (orchestrator runbook +
+implementation) and `ANDROID_PLAN.md` §12. This doc covers the JVM harness that
 CI runs.
 
 ## Prerequisites
@@ -170,8 +172,9 @@ FIDO2_HARNESS_TIMEOUT=200 \
 - Daemon-side unit harness (in-memory broker, no Centrifugo):
   `linux-fido-daemon/tests/harness/` + `tests/harness/README.md`; run with
   `FIDO2_HARNESS=1 .venv/bin/pytest tests/test_harness.py`.
-- Emulator E2E (real APK + real `BiometricPrompt`): `ANDROID_PLAN.md` §12,
-  `EMULATOR_ENV.md`.
+- Emulator E2E (real APK + real `BiometricPrompt`, automated via `uiautomator2`):
+  [`EMULATOR_E2E_TESTING.md`](EMULATOR_E2E_TESTING.md) + the `emulator_harness`
+  Python module (`linux-fido-daemon/src/emulator_harness/`).
 - CI: the GitHub Actions workflow runs the 4 static/unit jobs on PRs, and on
   `main` adds the package build then this integration job.
 

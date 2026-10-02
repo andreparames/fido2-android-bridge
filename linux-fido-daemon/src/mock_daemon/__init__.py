@@ -19,6 +19,7 @@ import uuid
 
 from fido_daemon.noise import StaticKeyStore
 from fido_daemon.protocol import (
+    CTAP2_ERR_OPERATION_DENIED,
     TYPE_ASSERTION_RESULT,
     TYPE_MAKE_CREDENTIAL_RESULT,
     TYPE_ERROR,
@@ -160,13 +161,21 @@ class MockDaemon(RelayClient):
         raise last_error
 
 
-async def _run_scenario(
-    daemon: MockDaemon, scenario: str, retries: int = 0
+async def _run_get_assertion(
+    daemon: MockDaemon, retries: int = 0, count: int = 1, delay: float = 0.0
 ) -> bool:
-    """Run a single test scenario. Returns True on success."""
-    ok = True
+    """Send ``count`` getAssertion requests; track accepted vs rejected.
 
-    if scenario in ("get-assertion", "all"):
+    A rejection is an ``error`` response carrying ``CTAP2_ERR_OPERATION_DENIED``
+    (the phone's biometric prompt was dismissed). Rejections are only expected
+    when ``count > 1`` (the emulator harness's multi-request flow); a single
+    request that comes back as an error still fails. ``delay`` pauses between
+    requests so the UI harness can see each prompt and act deterministically.
+    """
+    accepted = 0
+    rejected = 0
+    ok = True
+    for index in range(count):
         request_id = str(uuid.uuid4())
         request = _build_get_assertion_request(request_id)
         logger.info("scenario: get-assertion (id=%s)", request_id)
@@ -178,11 +187,14 @@ async def _run_scenario(
             if response.get("id") != request_id:
                 logger.error("id mismatch: sent %s, got %s", request_id, response.get("id"))
                 ok = False
-
-            if response.get("type") == TYPE_ERROR:
+            elif response.get("type") == TYPE_ERROR:
                 code = response.get("payload", {}).get("code")
-                logger.error("received error response: code=0x%02x", code)
-                ok = False
+                if count > 1 and code == CTAP2_ERR_OPERATION_DENIED:
+                    rejected += 1
+                    logger.info("get-assertion: request rejected (operation denied)")
+                else:
+                    logger.error("received error response: code=0x%02x", code)
+                    ok = False
             elif response.get("type") != TYPE_ASSERTION_RESULT:
                 logger.error("unexpected response type: %s", response.get("type"))
                 ok = False
@@ -193,7 +205,8 @@ async def _run_scenario(
                         logger.error("validation error: %s", e)
                     ok = False
                 else:
-                    logger.info("get-assertion: OK")
+                    accepted += 1
+                    logger.info("get-assertion: accepted (%d/%d)", accepted, count)
         except asyncio.TimeoutError:
             logger.error("get-assertion: TIMEOUT after %.1fs", daemon._config.request_timeout)
             ok = False
@@ -201,40 +214,70 @@ async def _run_scenario(
             logger.error("get-assertion: FAILED (%s)", e)
             ok = False
 
-    if scenario in ("make-credential", "all"):
-        request_id = str(uuid.uuid4())
-        request = _build_make_credential_request(request_id)
-        logger.info("scenario: make-credential (id=%s)", request_id)
+        if index < count - 1 and delay > 0:
+            logger.info("get-assertion: waiting %.1fs before next request", delay)
+            await asyncio.sleep(delay)
 
-        try:
-            response = await daemon.send_and_receive(request, retries=retries)
-            logger.info("response type=%s id=%s", response.get("type"), response.get("id"))
+    logger.info("get-assertion: OK (%d accepted, %d rejected)", accepted, rejected)
+    return ok and accepted + rejected == count
 
-            if response.get("id") != request_id:
-                logger.error("id mismatch: sent %s, got %s", request_id, response.get("id"))
-                ok = False
 
-            if response.get("type") == TYPE_ERROR:
-                code = response.get("payload", {}).get("code")
-                logger.error("received error response: code=0x%02x", code)
-                ok = False
-            elif response.get("type") != TYPE_MAKE_CREDENTIAL_RESULT:
-                logger.error("unexpected response type: %s", response.get("type"))
+async def _run_make_credential(daemon: MockDaemon, retries: int = 0) -> bool:
+    ok = True
+    request_id = str(uuid.uuid4())
+    request = _build_make_credential_request(request_id)
+    logger.info("scenario: make-credential (id=%s)", request_id)
+
+    try:
+        response = await daemon.send_and_receive(request, retries=retries)
+        logger.info("response type=%s id=%s", response.get("type"), response.get("id"))
+
+        if response.get("id") != request_id:
+            logger.error("id mismatch: sent %s, got %s", request_id, response.get("id"))
+            ok = False
+        elif response.get("type") == TYPE_ERROR:
+            code = response.get("payload", {}).get("code")
+            logger.error("received error response: code=0x%02x", code)
+            ok = False
+        elif response.get("type") != TYPE_MAKE_CREDENTIAL_RESULT:
+            logger.error("unexpected response type: %s", response.get("type"))
+            ok = False
+        else:
+            errors = _validate_make_credential_result(response.get("payload", {}))
+            if errors:
+                for e in errors:
+                    logger.error("validation error: %s", e)
                 ok = False
             else:
-                errors = _validate_make_credential_result(response.get("payload", {}))
-                if errors:
-                    for e in errors:
-                        logger.error("validation error: %s", e)
-                    ok = False
-                else:
-                    logger.info("make-credential: OK")
-        except asyncio.TimeoutError:
-            logger.error("make-credential: TIMEOUT after %.1fs", daemon._config.request_timeout)
-            ok = False
-        except Exception as e:
-            logger.error("make-credential: FAILED (%s)", e)
-            ok = False
+                logger.info("make-credential: OK")
+    except asyncio.TimeoutError:
+        logger.error("make-credential: TIMEOUT after %.1fs", daemon._config.request_timeout)
+        ok = False
+    except Exception as e:
+        logger.error("make-credential: FAILED (%s)", e)
+        ok = False
+
+    return ok
+
+
+async def _run_scenario(
+    daemon: MockDaemon,
+    scenario: str,
+    retries: int = 0,
+    count: int = 1,
+    delay: float = 0.0,
+) -> bool:
+    """Run a single test scenario. Returns True on success."""
+    ok = True
+
+    if scenario in ("get-assertion", "all"):
+        ok = (
+            await _run_get_assertion(daemon, retries=retries, count=count, delay=delay)
+            and ok
+        )
+
+    if scenario in ("make-credential", "all"):
+        ok = await _run_make_credential(daemon, retries=retries) and ok
 
     return ok
 
@@ -262,6 +305,18 @@ def main(argv: list[str] | None = None) -> int:
         default=3,
         help="re-publish each request on timeout until a response arrives (default: 3)",
     )
+    parser.add_argument(
+        "--count",
+        type=int,
+        default=1,
+        help="number of getAssertion requests to send (default: 1)",
+    )
+    parser.add_argument(
+        "--delay",
+        type=float,
+        default=0.0,
+        help="seconds to pause between getAssertion requests (default: 0)",
+    )
     args = parser.parse_args(argv)
 
     logging.basicConfig(
@@ -281,7 +336,13 @@ def main(argv: list[str] | None = None) -> int:
         daemon = MockDaemon(config)
         try:
             await daemon.connect()
-            return await _run_scenario(daemon, args.scenario, retries=args.retries)
+            return await _run_scenario(
+                daemon,
+                args.scenario,
+                retries=args.retries,
+                count=args.count,
+                delay=args.delay,
+            )
         finally:
             await daemon.close()
 
