@@ -4,10 +4,12 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import dagger.hilt.android.lifecycle.HiltViewModel
 import javax.inject.Inject
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 @HiltViewModel
 class PairingViewModel @Inject constructor(
@@ -43,11 +45,15 @@ class PairingViewModel @Inject constructor(
 
     private fun submitUri(uri: String) {
         _uiState.value = PairingUiState.Pairing
-        repository.parseUri(uri)
-            .onSuccess { info -> repository.pair(info) }
-            .fold(
-                onSuccess = { _uiState.value = PairingUiState.Paired },
-                onFailure = { e -> _uiState.value = PairingUiState.Error(e.message ?: "Pairing failed") }
+        viewModelScope.launch {
+            val result = withContext(Dispatchers.IO) {
+                repository.parseUri(uri)
+                    .onSuccess { info -> repository.pair(info) }
+            }
+            _uiState.value = result.fold(
+                onSuccess = { PairingUiState.Paired },
+                onFailure = { e -> PairingUiState.Error(e.message ?: "Pairing failed") }
             )
+        }
     }
 }
