@@ -155,7 +155,6 @@ for pairing; use `input text` only for short ASCII strings (spaces → `%s`).
 | Reset section | Text | `Danger zone` |
 | Reset button | OutlinedButton | `Reset app` |
 | Reset confirm | AlertDialog | title `Reset app?`, body `This erases your pairing key and all stored credentials. This can't be undone.`, buttons `Cancel` / `Reset` |
-| Clear snackbar | Snackbar | `Request history cleared` + action **`Undo`** |
 | Error dialog | AlertDialog (M3) | title `FIDO Bridge error`, body = message, button `OK` |
 
 ### 4.3 System surfaces
@@ -223,9 +222,9 @@ adb shell am start -a android.intent.action.VIEW -d "$URI" com.fidobridge.client
    with operation-denied.
 5. If two requests arrive quickly, assert the `N more waiting` note.
 
-### F6 — Clear with undo (needs requests in the list)
-- With ≥1 request row, tap `Clear` → snackbar `Request history cleared` + `Undo`.
-- Tap `Undo` → the rows are restored. `Clear` is disabled when the list is empty.
+### F6 — Clear requests (needs requests in the list)
+- With ≥1 request row, tap `Clear` → the list empties immediately (no undo;
+  clearing is immediate upstream). `Clear` is disabled when the list is empty.
 
 ### F7 — Reset app
 - From Home, scroll to bottom (`adb shell input swipe ...`), tap `Reset app` →

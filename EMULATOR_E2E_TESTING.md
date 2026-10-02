@@ -226,8 +226,8 @@ Env overrides: `FIDO2_RELAY_URL`, `FIDO2_STATIC_KEY_PATH`, `ANDROID_HOME`
     requests `mock_daemon` pauses (`--delay`, default 8 s) so each prompt is
     acted on deterministically; between request-steps the app is restarted so
     it performs a fresh Noise handshake with the next `mock_daemon`.
-11. **Clear requests**: tap `Clear`, assert the `Request history cleared`
-    snackbar and the empty state (`No requests yet`).
+11. **Clear requests**: tap `Clear`, assert the list empties immediately
+    (`No requests yet` — the undo snackbar was removed upstream).
 12. **Reset → re-pair**: scroll to the danger zone, tap `Reset app`, confirm
     `Reset`, assert the pairing screen (match the subtitle — the title is not
     exposed to accessibility), then pair again with fresh material and assert
@@ -247,7 +247,7 @@ Env overrides: `FIDO2_RELAY_URL`, `FIDO2_STATIC_KEY_PATH`, `ANDROID_HOME`
 | Request | `BiometricPrompt` | `d(text="WebAuthn sign-in")`, `d(text="example.com")` |
 | Approve | Request row | `d(descriptionContains="accepted")` (merged row `content-desc`) |
 | Reject | Request row | `d(descriptionContains="rejected")` |
-| Clear | Home | snackbar `Request history cleared`, then `d(text="No requests yet")` |
+| Clear | Home | `d(text="No requests yet")` (clears immediately, no undo) |
 | Reset | Pairing screen | subtitle `Scan the pairing code from your computer to connect.` (title is not exposed) |
 | Re-pair | HomeScreen | `d(text="Recent requests")` |
 | State | daemon log | `make-credential: OK`, `get-assertion: OK (N accepted, M rejected)`, exit 0, no `SECURITY ALERT` |

@@ -430,10 +430,6 @@ def _run_request_step(
 def _clear_step(device: Device, log_dir: str) -> None:
     if not device.clear_requests():
         raise DeviceError(
-            f"clear: snackbar not seen; hierarchy:\n{_hierarchy(device, log_dir, 'clear')}"
-        )
-    if not device.wait_text("No requests yet", timeout=10.0):
-        raise DeviceError(
             f"clear: list not empty; hierarchy:\n{_hierarchy(device, log_dir, 'clear')}"
         )
     logger.info("clear: PASS")

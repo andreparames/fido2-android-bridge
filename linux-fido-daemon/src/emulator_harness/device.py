@@ -172,11 +172,14 @@ class Device:
             raise DeviceError("app did not return to the pairing screen after reset")
 
     def clear_requests(self) -> bool:
-        """Tap 'Clear' on Home; return True if the snackbar is seen."""
+        """Tap 'Clear' on Home; return True once the list is empty.
+
+        Clearing is immediate (the undo snackbar was removed upstream).
+        """
         clear = self.d(text="Clear")
         if clear.exists(timeout=5.0):
             clear.click()
-        return self.wait_text("Request history cleared", timeout=10.0)
+        return self.wait_text("No requests yet", timeout=10.0)
 
     # --- selectors (elements per UI_TESTER_GUIDE.md §4) ---------------------
 
