@@ -1,4 +1,8 @@
-# Business Plan — FIDO2 Android Bridge (Remote WebAuthn)
+# Business Plan — Gatebridge
+
+> **Brand name:** Gatebridge (codename during development: "FIDO2 Android
+> Bridge"). Home at `gatebridge.app`. See `BRAND.md` for the naming rationale,
+> screening results, and rejected candidates.
 
 **Positioning:** a niche but useful product. *Remote WebAuthn only* — a way to
 use an Android phone as a hardware-backed FIDO2/WebAuthn authenticator for a
@@ -17,9 +21,9 @@ hardware.**
 
 When a WebAuthn-capable app or browser on a remote Linux server (SSH bastion,
 VPS, dev box, admin panel, control-plane dashboard) requests a security key or
-passkey, the FIDO2 Android Bridge lets the user's phone perform the biometric
-signature in hardware — equivalent to a physical security key, without the
-hardware purchase or USB forwarding.
+passkey, Gatebridge lets the user's phone perform the biometric signature in
+hardware — equivalent to a physical security key, without the hardware
+purchase or USB forwarding.
 
 ### What is deliberately NOT in scope
 
