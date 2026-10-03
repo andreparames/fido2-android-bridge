@@ -261,7 +261,14 @@ jobs:
       - build-daemon
       - build-android
       - integration
-    if: github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/master'
+    # Eligible on every green master push; waits on the release environment.
+    # workflow_dispatch remains available (force_bump / model inputs).
+    if: github.ref == 'refs/heads/master'
+    environment:
+      name: release
+    concurrency:
+      group: release-${{ github.ref }}
+      cancel-in-progress: true
     timeout-minutes: 45
     permissions:
       contents: write
