@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "fido-daemon"
-version = "0.1.0"
+version = "0.2.0"
 description = "Linux daemon bridging CTAP2/WebAuthn requests to a remote Android phone via E2EE WebSocket relay"
 requires-python = ">=3.11"
 license = { text = "MIT" }
