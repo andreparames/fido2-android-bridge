@@ -49,7 +49,7 @@ class RequestNotifier @Inject constructor(
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
         )
         val notification = NotificationCompat.Builder(context, CHANNEL_ID)
-            .setSmallIcon(R.drawable.ic_launcher_foreground)
+            .setSmallIcon(R.mipmap.ic_launcher_foreground)
             .setContentTitle("Approve sign-in")
             .setContentText("Sign-in requested by $detail — open FIDO Bridge to approve")
             .setContentIntent(pendingIntent)

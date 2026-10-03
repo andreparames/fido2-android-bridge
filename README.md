@@ -1,4 +1,8 @@
-# FIDO2 Android Bridge
+<p align="center">
+  <img src=".github/logo.png" alt="FIDO2 Android Bridge" width="128" height="128">
+</p>
+
+<h1 align="center">FIDO2 Android Bridge</h1>
 
 Use your Android phone as a FIDO2/WebAuthn hardware security key for a remote Linux server.
 
