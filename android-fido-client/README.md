@@ -178,9 +178,12 @@ signed with the committed `android-fido-client/debug.keystore`
 
 ### Cutting a release
 
-Releases are cut from **`master` via a manual `CI` workflow dispatch** — not a
-separate release pipeline. The release job runs on the commit that just passed
-tests, then tags **that** release commit and builds artifacts in the same run.
+Releases are cut from **`master` in the normal CI pipeline**. After tests/builds/
+integration pass, the `release-llm` job becomes **Waiting** on the GitHub
+Environment **`release`** (required reviewer). Approve that job on the run page —
+it then tags the commit that just passed CI, builds artifacts in the same run, and
+publishes the GitHub Release. A newer merge cancels older waiting gates via
+workflow concurrency.
 
 Versions must match across:
 
@@ -189,12 +192,15 @@ Versions must match across:
 - git tag `vX.Y.Z`
 
 1. Set repo secret `OPENCODE_GO_API_KEY` (OpenCode Console → Go, **inference**).
-2. Merge to `master` and wait for CI (lint, unit, builds, integration).
-3. Actions → **CI** → *Run workflow* on `master`
-   - optional `force_bump` (`major`/`minor`/`patch`) or leave empty for the agent
-   - model default: `opencode-go/longcat-2.5-preview-free`
-4. `release-llm` job:
-   - asks the model for bump + changelog (merge commits since last tag)
+2. Environment **`release`**: Settings → Environments → `release` → **Required
+   reviewers** → `andreparames`. Leave **Prevent self-review** **off** so you can
+   approve your own runs.
+3. Merge to `master` and wait for CI (lint, unit, builds, integration).
+4. Open the workflow run → **Review deployments** → **Approve and deploy** on
+   environment `release`. (Reject to fail the release job without tagging.)
+5. `release-llm` then:
+   - asks the model for bump + changelog (merge commits since last tag; optional
+     `workflow_dispatch` inputs `force_bump` / `model` still work)
    - **fails if tag `vX.Y.Z` already exists** (never overwrites)
    - bumps version files + `CHANGELOG.md`, commits `release: vX.Y.Z`
    - **pushes the tag first**, then the bump commit to `master` (silent
