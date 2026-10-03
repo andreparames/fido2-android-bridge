@@ -47,7 +47,11 @@ def parse_args() -> argparse.Namespace:
     p.add_argument("--current-version", required=True, help="Current versionName, e.g. 0.1.0")
     p.add_argument("--log-file", type=Path, help="Commit log file (default: stdin)")
     p.add_argument("--out", type=Path, required=True, help="Path to write decision JSON")
-    p.add_argument("--model", default=DEFAULT_MODEL)
+    p.add_argument(
+        "--model",
+        default=DEFAULT_MODEL,
+        help=f"OpenCode Go model id (default: {DEFAULT_MODEL})",
+    )
     p.add_argument("--force-bump", choices=ALLOWED_BUMP, help="Override the model decision")
     p.add_argument(
         "--api-key-env",
@@ -156,14 +160,17 @@ def main() -> None:
     if not api_key:
         raise SystemExit(f"missing API key in env {args.api_key_env}")
 
+    # Push events have empty workflow inputs; never call the API with model "".
+    model = (args.model or "").strip() or DEFAULT_MODEL
+
     log = read_log(args)
     user_prompt = (
         f"Current version: {args.current_version}\n\n"
         f"Commits since last release (merge-first log):\n\n{log}\n"
     )
-    raw = call_opencode_go(api_key, args.model, user_prompt)
+    raw = call_opencode_go(api_key, model, user_prompt)
     decision = validate_decision(raw, args.force_bump)
-    decision["model"] = args.model
+    decision["model"] = model
     decision["current_version"] = args.current_version
 
     args.out.parent.mkdir(parents=True, exist_ok=True)

@@ -325,11 +325,16 @@ jobs:
             echo "::error::Secret OPENCODE_GO_API_KEY is not set"
             exit 1
           fi
+          # inputs.* is empty on push events; fall back to the default model.
+          model="${{ inputs.model }}"
+          if [ -z "$model" ]; then
+            model="opencode-go/longcat-2.5-preview-free"
+          fi
           force="${{ inputs.force_bump }}"
           ask_args=(
             --current-version "${{ steps.ver.outputs.version }}"
             --log-file "${{ steps.log.outputs.log_path }}"
-            --model "${{ inputs.model }}"
+            --model "$model"
             --out "$RUNNER_TEMP/release-decision.json"
           )
           if [ -n "$force" ]; then
