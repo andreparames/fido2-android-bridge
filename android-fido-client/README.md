@@ -176,6 +176,22 @@ signed with the committed `android-fido-client/debug.keystore`
   **one uninstall** before the new stable-signed build can update in place
   (`INSTALL_FAILED_UPDATE_INCOMPATIBLE`).
 
+### Cutting a release
+
+Releases are tag-driven (`vX.Y.Z`). Versions live in both
+`android-fido-client/app/build.gradle.kts` (`versionName` / `versionCode`) and
+`linux-fido-daemon/pyproject.toml` and must match the tag.
+
+1. Set repo secrets: `OPENCODE_GO_API_KEY` (OpenCode Console → Go) and
+   `RELEASE_TOKEN` (fine-grained PAT / GitHub App, `contents: write` on this repo).
+2. Actions → **Release prepare** → Run workflow (default `dry_run=true` prints the
+   agent decision). The agent (`opencode-go/longcat-2.5-preview-free`) reviews merge
+   commits since the last tag and proposes major/minor/patch + changelog.
+3. Re-run with `dry_run=false` to commit `release: vX.Y.Z`, tag, and push via
+   `RELEASE_TOKEN`.
+4. The tag push runs CI: version-match guard → tests/builds → integration →
+   GitHub Release with APK + daemon wheel/sdist.
+
 ---
 
 ## Security invariants (from `agents.md`)
