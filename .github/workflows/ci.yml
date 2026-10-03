@@ -5,6 +5,8 @@ on:
   push:
     branches:
       - master
+    tags:
+      - "v*"
   workflow_dispatch:
 
 concurrency:
@@ -65,11 +67,42 @@ jobs:
         working-directory: android-fido-client
         run: ./gradlew testDebugUnitTest
 
+  version-guard:
+    name: Tag matches version files
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    if: startsWith(github.ref, 'refs/tags/v')
+    steps:
+      - uses: actions/checkout@v4
+      - name: Assert tag == versionName == pyproject version
+        run: |
+          set -euo pipefail
+          tag="${GITHUB_REF_NAME#v}"
+          name=$(sed -n 's/.*versionName = "\([^"]*\)".*/\1/p' android-fido-client/app/build.gradle.kts | head -1)
+          py=$(sed -n 's/^version = "\([^"]*\)".*/\1/p' linux-fido-daemon/pyproject.toml | head -1)
+          echo "tag=$tag versionName=$name pyproject=$py"
+          if [ "$tag" != "$name" ] || [ "$tag" != "$py" ]; then
+            echo "::error::Tag v$tag does not match versionName=$name pyproject=$py"
+            exit 1
+          fi
+
   build-daemon:
     name: Package daemon (sdist + wheel)
     runs-on: ubuntu-latest
-    needs: [daemon-static, daemon-unit, android-static, android-unit]
-    if: github.ref == 'refs/heads/master' || github.event_name == 'workflow_dispatch'
+    needs:
+      - daemon-static
+      - daemon-unit
+      - android-static
+      - android-unit
+      - version-guard
+    if: |
+      always() &&
+      !failure() && !cancelled() &&
+      (
+        github.ref == 'refs/heads/master' ||
+        startsWith(github.ref, 'refs/tags/v') ||
+        github.event_name == 'workflow_dispatch'
+      )
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
@@ -92,8 +125,20 @@ jobs:
   build-android:
     name: Package Android APK (assembleDebug)
     runs-on: ubuntu-latest
-    needs: [daemon-static, daemon-unit, android-static, android-unit]
-    if: github.ref == 'refs/heads/master' || github.event_name == 'workflow_dispatch'
+    needs:
+      - daemon-static
+      - daemon-unit
+      - android-static
+      - android-unit
+      - version-guard
+    if: |
+      always() &&
+      !failure() && !cancelled() &&
+      (
+        github.ref == 'refs/heads/master' ||
+        startsWith(github.ref, 'refs/tags/v') ||
+        github.event_name == 'workflow_dispatch'
+      )
     timeout-minutes: 30
     env:
       # Must match android-fido-client/debug.keystore (androiddebugkey).
@@ -131,7 +176,14 @@ jobs:
     name: Cross-peer integration (live Centrifugo)
     runs-on: ubuntu-latest
     needs: [build-daemon, build-android]
-    if: github.ref == 'refs/heads/master' || github.event_name == 'workflow_dispatch'
+    if: |
+      always() &&
+      !failure() && !cancelled() &&
+      (
+        github.ref == 'refs/heads/master' ||
+        startsWith(github.ref, 'refs/tags/v') ||
+        github.event_name == 'workflow_dispatch'
+      )
     timeout-minutes: 35
     steps:
       - uses: actions/checkout@v4
@@ -248,3 +300,66 @@ jobs:
         run: |
           kill "${CENTRIFUGO_PID:-}" 2>/dev/null || true
           true
+
+  release:
+    name: Publish GitHub Release
+    runs-on: ubuntu-latest
+    needs: [version-guard, build-daemon, build-android, integration]
+    if: |
+      always() &&
+      startsWith(github.ref, 'refs/tags/v') &&
+      needs.version-guard.result == 'success' &&
+      needs.build-daemon.result == 'success' &&
+      needs.build-android.result == 'success' &&
+      needs.integration.result == 'success'
+    timeout-minutes: 15
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: "*"
+          path: dist
+          merge-multiple: true
+      - name: List release assets
+        run: |
+          set -euo pipefail
+          find dist -type f | sort
+          test -n "$(find dist -name '*.apk' | head -1)"
+          test -n "$(find dist -name '*.whl' | head -1)"
+          test -n "$(find dist -name '*.tar.gz' | head -1)"
+      - name: Extract changelog notes for this tag
+        id: notes
+        run: |
+          set -euo pipefail
+          tag="${GITHUB_REF_NAME}"
+          python3 - <<'PY' > "$RUNNER_TEMP/release-notes.md"
+          import os, re, sys
+          from pathlib import Path
+          tag = os.environ["GITHUB_REF_NAME"]
+          text = Path("CHANGELOG.md").read_text(encoding="utf-8")
+          m = re.search(
+              rf"(?ms)^##\s+{re.escape(tag)}\s*\n(.*?)(?=^##\s+|\Z)",
+              text,
+          )
+          body = m.group(1).strip() if m else ""
+          header = f"## {tag}\n"
+          if body:
+              sys.stdout.write(header + body + "\n")
+          else:
+              sys.stdout.write(header + "\nSee commit history for details.\n")
+          PY
+          cat "$RUNNER_TEMP/release-notes.md"
+      - name: Create GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          tag="${GITHUB_REF_NAME}"
+          assets=$(find dist -type f \( -name '*.apk' -o -name '*.whl' -o -name '*.tar.gz' \) | sort)
+          # shellcheck disable=SC2086
+          gh release create "$tag" $assets \
+            --title "$tag" \
+            --notes-file "$RUNNER_TEMP/release-notes.md" \
+            --verify-tag

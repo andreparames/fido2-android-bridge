@@ -1,0 +1,187 @@
+name: Release prepare
+
+on:
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: "Print the LLM decision only; skip commit/tag/push"
+        type: boolean
+        default: true
+      force_bump:
+        description: "Override the agent (empty = agent decides)"
+        type: choice
+        options: ["", "major", "minor", "patch"]
+        default: ""
+      model:
+        description: "OpenCode Go model id"
+        type: string
+        default: "opencode-go/longcat-2.5-preview-free"
+
+concurrency:
+  group: release-prepare
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  decide:
+    name: Agent decides bump + changelog
+    if: github.ref == 'refs/heads/master'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    outputs:
+      bump: ${{ steps.decision.outputs.bump }}
+      version: ${{ steps.decision.outputs.version }}
+      tag: ${{ steps.decision.outputs.tag }}
+      dry_run: ${{ steps.decision.outputs.dry_run }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          fetch-tags: true
+
+      - name: Resolve current version
+        id: ver
+        run: |
+          set -euo pipefail
+          name=$(sed -n 's/.*versionName = "\([^"]*\)".*/\1/p' android-fido-client/app/build.gradle.kts | head -1)
+          py=$(sed -n 's/^version = "\([^"]*\)".*/\1/p' linux-fido-daemon/pyproject.toml | head -1)
+          if [ -z "$name" ] || [ "$name" != "$py" ]; then
+            echo "::error::versionName ($name) must match pyproject version ($py)"
+            exit 1
+          fi
+          echo "version=$name" >> "$GITHUB_OUTPUT"
+
+      - name: Collect commits since last tag
+        id: log
+        run: |
+          set -euo pipefail
+          last_tag=$(git describe --tags --abbrev=0 2>/dev/null || true)
+          echo "last_tag=${last_tag:-<none>}" >> "$GITHUB_OUTPUT"
+          {
+            if [ -n "$last_tag" ]; then
+              echo "Range: ${last_tag}..HEAD"
+              git log --merges --first-parent --format='%h %s%n%b%n---' "${last_tag}..HEAD"
+              echo ""
+              echo "Also non-merge commits in range:"
+              git log --no-merges --first-parent --format='%h %s' "${last_tag}..HEAD"
+            else
+              echo "Range: full master history (bootstrap; no tags yet)"
+              git log --merges --first-parent --format='%h %s%n%b%n---' origin/master
+              echo ""
+              echo "Also non-merge commits:"
+              git log --no-merges --first-parent --format='%h %s' origin/master
+            fi
+          } | tee "$RUNNER_TEMP/commit-log.txt"
+          # Cap prompt size; free models have limited context.
+          head -c 120000 "$RUNNER_TEMP/commit-log.txt" > "$RUNNER_TEMP/commit-log-trimmed.txt"
+          echo "log_path=$RUNNER_TEMP/commit-log-trimmed.txt" >> "$GITHUB_OUTPUT"
+
+      - name: Ask OpenCode Go for bump + changelog
+        id: decision
+        env:
+          OPENCODE_GO_API_KEY: ${{ secrets.OPENCODE_GO_API_KEY }}
+        run: |
+          set -euo pipefail
+          if [ -z "${OPENCODE_GO_API_KEY:-}" ]; then
+            echo "::error::Secret OPENCODE_GO_API_KEY is not set (OpenCode Console → Go API key)"
+            exit 1
+          fi
+          force="${{ inputs.force_bump }}"
+          ask_args=(
+            --current-version "${{ steps.ver.outputs.version }}"
+            --log-file "${{ steps.log.outputs.log_path }}"
+            --model "${{ inputs.model }}"
+            --out "$RUNNER_TEMP/release-decision.json"
+          )
+          if [ -n "$force" ]; then
+            ask_args+=(--force-bump "$force")
+          fi
+          python3 scripts/release/ask_bump.py "${ask_args[@]}"
+
+          bump=$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["bump"])' "$RUNNER_TEMP/release-decision.json")
+          current="${{ steps.ver.outputs.version }}"
+          # Recompute next version here for job summary; bump.py is authoritative later.
+          version=$(python3 -c '
+          import re, sys
+          current, bump = sys.argv[1], sys.argv[2]
+          m = re.fullmatch(r"(\d+)\.(\d+)\.(\d+)", current)
+          if not m:
+              raise SystemExit(f"bad current version {current!r}")
+          major, minor, patch = map(int, m.groups())
+          if bump == "major":
+              print(f"{major+1}.0.0")
+          elif bump == "minor":
+              print(f"{major}.{minor+1}.0")
+          elif bump == "patch":
+              print(f"{major}.{minor}.{patch+1}")
+          else:
+              raise SystemExit(f"bad bump {bump!r}")
+          ' "$current" "$bump")
+          dry_run="${{ inputs.dry_run }}"
+          {
+            echo "bump=$bump"
+            echo "version=$version"
+            echo "tag=v$version"
+            echo "dry_run=$dry_run"
+          } >> "$GITHUB_OUTPUT"
+
+          {
+            echo "## Release decision"
+            echo ""
+            echo "- Model: \`${{ inputs.model }}\`"
+            echo "- Current: \`$current\`"
+            echo "- Bump: **$bump**"
+            echo "- Next: **v$version**"
+            echo "- Dry run: \`$dry_run\`"
+            echo ""
+            echo '```json'
+            cat "$RUNNER_TEMP/release-decision.json"
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: release-decision
+          path: ${{ runner.temp }}/release-decision.json
+          if-no-files-found: error
+          retention-days: 7
+
+  bump:
+    name: Bump, commit, tag, push
+    needs: decide
+    if: |
+      github.ref == 'refs/heads/master' &&
+      needs.decide.outputs.dry_run != 'true' &&
+      needs.decide.outputs.dry_run != true
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          fetch-tags: true
+          # Push with RELEASE_TOKEN, not the workflow GITHUB_TOKEN (which
+          # would not trigger the tag-based release workflow).
+          token: ${{ secrets.RELEASE_TOKEN }}
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: release-decision
+          path: ${{ runner.temp }}/decision
+
+      - name: Apply version bump
+        env:
+          RELEASE_TOKEN: ${{ secrets.RELEASE_TOKEN }}
+        run: |
+          set -euo pipefail
+          if [ -z "${RELEASE_TOKEN:-}" ]; then
+            echo "::error::Secret RELEASE_TOKEN is not set (PAT/App with contents:write)"
+            exit 1
+          fi
+          python3 scripts/release/bump.py \
+            --decision "${{ runner.temp }}/decision/release-decision.json" \
+            --push
