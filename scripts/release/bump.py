@@ -1,18 +1,27 @@
 #!/usr/bin/env python3
 """Apply a release decision: bump versions, changelog, commit, tag, push.
 
-The decision JSON comes from ask_bump.py (or --force-bump). Version numbers
-are computed here from the live files — never trusted from the model.
+The decision JSON comes from ask_bump.py. Version numbers are computed here
+from the live files — never trusted from the model.
+
+Remote write order (intentional):
+  1. Fail if the target tag already exists on origin (leave it alone).
+  2. Apply local version bump + changelog, commit, create local tag.
+  3. Push the tag first. If that push fails (e.g. race), abort — master is
+     not updated.
+  4. Push the version-bump commit to master second (silent; GITHUB_TOKEN
+     in CI does not trigger another workflow run).
+
+Both pushes use the checkout credentials (workflow GITHUB_TOKEN). Builds and
+the GitHub Release happen in the same CI job after this script returns.
 """
 
 from __future__ import annotations
 
 import argparse
 import json
-import os
 import re
 import subprocess
-import sys
 from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
@@ -25,17 +34,17 @@ ALLOWED_BUMP = ("major", "minor", "patch")
 def parse_args() -> argparse.Namespace:
     p = argparse.ArgumentParser(description=__doc__)
     p.add_argument("--decision", type=Path, required=True, help="Decision JSON from ask_bump.py")
-    p.add_argument("--dry-run", action="store_true", help="Print actions; do not write or push")
-    p.add_argument("--push", action="store_true", help="Commit, tag, and push with RELEASE_TOKEN")
     p.add_argument(
-        "--token-env",
-        default="RELEASE_TOKEN",
-        help="Env var holding the git push token (fine-grained PAT / app)",
+        "--skip-push",
+        action="store_true",
+        help="Local only: edit files, commit, tag; do not push (for tests)",
     )
     p.add_argument(
-        "--git-user-name",
-        default="github-actions[bot]",
+        "--out",
+        type=Path,
+        help="Write JSON {bump,version,version_code,tag} here for CI",
     )
+    p.add_argument("--git-user-name", default="github-actions[bot]")
     p.add_argument(
         "--git-user-email",
         default="41981417+github-actions[bot]@users.noreply.github.com",
@@ -100,6 +109,17 @@ def version_code_for(version: str) -> int:
     return major * 10000 + minor * 100 + patch
 
 
+def remote_tag_exists(tag: str) -> bool:
+    proc = run(
+        ["git", "ls-remote", "--tags", "origin", f"refs/tags/{tag}"],
+        check=False,
+        capture=True,
+    )
+    if proc.returncode != 0:
+        raise SystemExit(f"git ls-remote failed: {proc.stderr.strip() or proc.stdout.strip()}")
+    return bool(proc.stdout.strip())
+
+
 def set_android_versions(version_name: str, version_code: int) -> None:
     text = ANDROID_GRADLE.read_text(encoding="utf-8")
     new_text, n1 = re.subn(
@@ -135,9 +155,9 @@ def set_pyproject_version(version: str) -> None:
 
 def changelog_body(raw: str, version: str) -> str:
     body = raw.strip() + "\n"
-    # Force the heading to the recomputed version.
+    # Replace the first markdown H2 (model may write "## vNEXT" or "## 0.2.0").
     body = re.sub(
-        r"^##\s+v?[0-9][^\n]*\n",
+        r"^##\s+[^\n]*\n",
         f"## v{version}\n",
         body,
         count=1,
@@ -157,26 +177,19 @@ def update_changelog(version: str, body: str) -> None:
         )
         return
     text = CHANGELOG.read_text(encoding="utf-8")
-    if "## v" not in text and "## " not in text:
-        text = text.rstrip() + "\n\n" + entry + "\n"
+    marker = "<!-- Entries are prepended by scripts/release/bump.py on each release. -->"
+    if marker in text:
+        head, _, tail = text.partition(marker)
+        text = head + marker + "\n\n" + entry + "\n" + tail.lstrip("\n")
     else:
-        # Insert after the first heading block (title + intro).
         parts = re.split(r"(?m)^(##\s+)", text, maxsplit=1)
         if len(parts) == 1:
             text = text.rstrip() + "\n\n" + entry + "\n"
         else:
-            # parts = [pre, '##\s+', rest] — re.split keeps the delimiter.
             prefix = parts[0]
             rest = parts[1] + parts[2] if len(parts) > 2 else parts[1]
             text = prefix + entry + "\n" + rest
     CHANGELOG.write_text(text, encoding="utf-8")
-
-
-def git_remote_with_token(token: str) -> str:
-    url = run(["git", "config", "--get", "remote.origin.url"], capture=True).stdout.strip()
-    if url.startswith("https://"):
-        return f"https://x-access-token:{token}@{url.removeprefix('https://')}"
-    return url
 
 
 def main() -> None:
@@ -203,17 +216,35 @@ def main() -> None:
         raise SystemExit(f"versionCode would not increase: {current_code} -> {code}")
 
     tag = f"v{version}"
-    existing = run(["git", "tag", "-l", tag], capture=True).stdout.strip()
-    if existing:
-        raise SystemExit(f"tag already exists: {tag}")
+
+    if remote_tag_exists(tag):
+        raise SystemExit(
+            f"tag {tag} already exists on origin; refusing to overwrite. "
+            f"Pick a new version or delete the remote tag deliberately."
+        )
+    local = run(["git", "tag", "-l", tag], capture=True).stdout.strip()
+    if local:
+        raise SystemExit(f"tag {tag} already exists locally; refusing to overwrite")
 
     print(f"current={current_name} (code {current_code})")
     print(f"bump={bump} -> version={version} (code {code}) tag={tag}")
     print(f"rationale: {decision.get('rationale', '')}")
 
-    if args.dry_run:
-        print("dry-run: no files written, no commit/tag/push")
-        return
+    if args.out is not None:
+        args.out.parent.mkdir(parents=True, exist_ok=True)
+        args.out.write_text(
+            json.dumps(
+                {
+                    "bump": bump,
+                    "version": version,
+                    "version_code": code,
+                    "tag": tag,
+                },
+                indent=2,
+            )
+            + "\n",
+            encoding="utf-8",
+        )
 
     set_android_versions(version, code)
     set_pyproject_version(version)
@@ -237,17 +268,15 @@ def main() -> None:
     run(["git", "commit", "-m", f"release: {tag}"])
     run(["git", "tag", "-a", tag, "-m", f"Release {tag}"])
 
-    if not args.push:
-        print("commit + tag created locally; skip push (pass --push)")
+    if args.skip_push:
+        print("skip-push: local commit + tag created; not pushing")
         return
 
-    token = os.environ.get(args.token_env, "").strip()
-    if not token:
-        raise SystemExit(f"missing push token in env {args.token_env}")
-    remote = git_remote_with_token(token)
-    run(["git", "push", remote, "HEAD:master"])
-    run(["git", "push", remote, tag])
-    print(f"pushed master + {tag}")
+    print(f"pushing tag {tag} first…")
+    run(["git", "push", "origin", f"refs/tags/{tag}"])
+    print("pushing version bump to master (silent)…")
+    run(["git", "push", "origin", "HEAD:master"])
+    print(f"pushed tag {tag} + master")
 
 
 if __name__ == "__main__":

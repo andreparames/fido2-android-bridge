@@ -178,19 +178,32 @@ signed with the committed `android-fido-client/debug.keystore`
 
 ### Cutting a release
 
-Releases are tag-driven (`vX.Y.Z`). Versions live in both
-`android-fido-client/app/build.gradle.kts` (`versionName` / `versionCode`) and
-`linux-fido-daemon/pyproject.toml` and must match the tag.
+Releases are cut from **`master` via a manual `CI` workflow dispatch** — not a
+separate release pipeline. The release job runs on the commit that just passed
+tests, then tags **that** release commit and builds artifacts in the same run.
 
-1. Set repo secrets: `OPENCODE_GO_API_KEY` (OpenCode Console → Go) and
-   `RELEASE_TOKEN` (fine-grained PAT / GitHub App, `contents: write` on this repo).
-2. Actions → **Release prepare** → Run workflow (default `dry_run=true` prints the
-   agent decision). The agent (`opencode-go/longcat-2.5-preview-free`) reviews merge
-   commits since the last tag and proposes major/minor/patch + changelog.
-3. Re-run with `dry_run=false` to commit `release: vX.Y.Z`, tag, and push via
-   `RELEASE_TOKEN`.
-4. The tag push runs CI: version-match guard → tests/builds → integration →
-   GitHub Release with APK + daemon wheel/sdist.
+Versions must match across:
+
+- `android-fido-client/app/build.gradle.kts` (`versionName` / `versionCode`)
+- `linux-fido-daemon/pyproject.toml`
+- git tag `vX.Y.Z`
+
+1. Set repo secret `OPENCODE_GO_API_KEY` (OpenCode Console → Go, **inference**).
+2. Merge to `master` and wait for CI (lint, unit, builds, integration).
+3. Actions → **CI** → *Run workflow* on `master`
+   - optional `force_bump` (`major`/`minor`/`patch`) or leave empty for the agent
+   - model default: `opencode-go/longcat-2.5-preview-free`
+4. `release-llm` job:
+   - asks the model for bump + changelog (merge commits since last tag)
+   - **fails if tag `vX.Y.Z` already exists** (never overwrites)
+   - bumps version files + `CHANGELOG.md`, commits `release: vX.Y.Z`
+   - **pushes the tag first**, then the bump commit to `master` (silent
+     `GITHUB_TOKEN` — does not start another CI run)
+   - rebuilds APK + daemon dist from the tagged tree, verifies APK signer
+   - `gh release create` with APK + wheel + sdist + changelog notes
+
+Pushes made with the workflow `GITHUB_TOKEN` do not trigger further workflow
+runs ([docs](https://docs.github.com/en/actions/using-workflows/triggering-a-workflow)).
 
 ---
 
