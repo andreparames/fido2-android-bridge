@@ -4,6 +4,15 @@ All notable changes to this project.
 
 <!-- Entries are prepended by scripts/release/bump.py on each release. -->
 
+## v0.2.1
+
+### Fixed
+- Default model when workflow inputs are empty
+
+### Changed
+- Gate release-llm on Environment release (manual approval)
+- LLM release as master workflow_dispatch (same-run, tag-first)
+
 ## v0.2.0
 
 ### Added
