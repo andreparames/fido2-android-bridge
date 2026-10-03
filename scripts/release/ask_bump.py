@@ -16,6 +16,7 @@ import re
 import sys
 import urllib.error
 import urllib.request
+import uuid
 from pathlib import Path
 
 DEFAULT_MODEL = "opencode-go/longcat-2.5-preview-free"
@@ -85,9 +86,20 @@ def extract_json(content: str) -> dict:
     return data
 
 
+def session_id() -> str:
+    """Stable per-conversation id for OpenCode Go routing/prompt cache."""
+    run_id = os.environ.get("GITHUB_RUN_ID", "").strip()
+    attempt = os.environ.get("GITHUB_RUN_ATTEMPT", "").strip()
+    if run_id:
+        return f"release-prepare-{run_id}" + (f"-{attempt}" if attempt else "")
+    return f"release-prepare-{uuid.uuid4().hex}"
+
+
 def call_opencode_go(api_key: str, model: str, user_prompt: str) -> dict:
+    # OpenCode config uses opencode-go/<id>; the Zen HTTP API wants the bare id.
+    model_id = model.removeprefix("opencode-go/")
     body = {
-        "model": model,
+        "model": model_id,
         "messages": [
             {"role": "system", "content": SYSTEM_PROMPT},
             {"role": "user", "content": user_prompt},
@@ -104,6 +116,8 @@ def call_opencode_go(api_key: str, model: str, user_prompt: str) -> dict:
             "Authorization": f"Bearer {api_key}",
             "Content-Type": "application/json",
             "User-Agent": "fido2-android-bridge-release/1.0",
+            # Required by OpenCode Go: MissingSessionID otherwise.
+            "x-opencode-session": session_id(),
         },
         method="POST",
     )
