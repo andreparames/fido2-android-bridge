@@ -5,13 +5,21 @@ on:
   push:
     branches:
       - master
-    tags:
-      - "v*"
   workflow_dispatch:
+    inputs:
+      force_bump:
+        description: "Override agent (empty = agent decides)"
+        type: choice
+        options: ["", "major", "minor", "patch"]
+        default: ""
+      model:
+        description: "OpenCode Go model id"
+        type: string
+        default: "opencode-go/longcat-2.5-preview-free"
 
 concurrency:
   group: ci-${{ github.ref }}
-  cancel-in-progress: true
+  cancel-in-progress: ${{ github.event_name != 'workflow_dispatch' }}
 
 permissions:
   contents: read
@@ -67,42 +75,11 @@ jobs:
         working-directory: android-fido-client
         run: ./gradlew testDebugUnitTest
 
-  version-guard:
-    name: Tag matches version files
-    runs-on: ubuntu-latest
-    timeout-minutes: 5
-    if: startsWith(github.ref, 'refs/tags/v')
-    steps:
-      - uses: actions/checkout@v4
-      - name: Assert tag == versionName == pyproject version
-        run: |
-          set -euo pipefail
-          tag="${GITHUB_REF_NAME#v}"
-          name=$(sed -n 's/.*versionName = "\([^"]*\)".*/\1/p' android-fido-client/app/build.gradle.kts | head -1)
-          py=$(sed -n 's/^version = "\([^"]*\)".*/\1/p' linux-fido-daemon/pyproject.toml | head -1)
-          echo "tag=$tag versionName=$name pyproject=$py"
-          if [ "$tag" != "$name" ] || [ "$tag" != "$py" ]; then
-            echo "::error::Tag v$tag does not match versionName=$name pyproject=$py"
-            exit 1
-          fi
-
   build-daemon:
     name: Package daemon (sdist + wheel)
     runs-on: ubuntu-latest
-    needs:
-      - daemon-static
-      - daemon-unit
-      - android-static
-      - android-unit
-      - version-guard
-    if: |
-      always() &&
-      !failure() && !cancelled() &&
-      (
-        github.ref == 'refs/heads/master' ||
-        startsWith(github.ref, 'refs/tags/v') ||
-        github.event_name == 'workflow_dispatch'
-      )
+    needs: [daemon-static, daemon-unit, android-static, android-unit]
+    if: github.ref == 'refs/heads/master' || github.event_name == 'workflow_dispatch'
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
@@ -125,25 +102,10 @@ jobs:
   build-android:
     name: Package Android APK (assembleDebug)
     runs-on: ubuntu-latest
-    needs:
-      - daemon-static
-      - daemon-unit
-      - android-static
-      - android-unit
-      - version-guard
-    if: |
-      always() &&
-      !failure() && !cancelled() &&
-      (
-        github.ref == 'refs/heads/master' ||
-        startsWith(github.ref, 'refs/tags/v') ||
-        github.event_name == 'workflow_dispatch'
-      )
+    needs: [daemon-static, daemon-unit, android-static, android-unit]
+    if: github.ref == 'refs/heads/master' || github.event_name == 'workflow_dispatch'
     timeout-minutes: 30
     env:
-      # Must match android-fido-client/debug.keystore (androiddebugkey).
-      # Fails the build if the stable debug key is rotated or CI regresses
-      # to the ephemeral runner keystore.
       EXPECTED_APK_SIGNER_SHA256: "d1df9ef0eefd2802ab1724991774d8471c71d62bb5802ba2fc14cffb3b95be87"
     steps:
       - uses: actions/checkout@v4
@@ -176,14 +138,7 @@ jobs:
     name: Cross-peer integration (live Centrifugo)
     runs-on: ubuntu-latest
     needs: [build-daemon, build-android]
-    if: |
-      always() &&
-      !failure() && !cancelled() &&
-      (
-        github.ref == 'refs/heads/master' ||
-        startsWith(github.ref, 'refs/tags/v') ||
-        github.event_name == 'workflow_dispatch'
-      )
+    if: github.ref == 'refs/heads/master' || github.event_name == 'workflow_dispatch'
     timeout-minutes: 35
     steps:
       - uses: actions/checkout@v4
@@ -271,18 +226,12 @@ jobs:
         run: |
           set -euo pipefail
           log="$RUNNER_TEMP/mock_daemon.log"
-          # 1. Start the mock daemon FIRST — it is the Noise responder and
-          #    blocks awaiting the Android initiator's handshake.
           FIDO2_CHANNEL_ID="$FIDO2_CHANNEL_ID" \
           FIDO2_STATIC_KEY_PATH="/tmp/daemon_key.bin" \
           FIDO2_RELAY_URL="$FIDO2_RELAY_URL" \
           FIDO2_REQUEST_TIMEOUT=180 \
           timeout 900 ../.venv/bin/python -m mock_daemon all --timeout 180 > "$log" 2>&1 &
           mock_pid=$!
-          # 2. Run the Android harness second (Noise initiator).
-          #    --no-build-cache: the harness test must run live against the
-          #    local Centrifugo; the Gradle build cache would restore the
-          #    cached unit-test result (env vars are not task inputs).
           set +e
           ./gradlew --no-build-cache testDebugUnitTest --tests "com.fidobridge.client.harness.IntegrationHarnessTest"
           gradle_rc=$?
@@ -301,48 +250,153 @@ jobs:
           kill "${CENTRIFUGO_PID:-}" 2>/dev/null || true
           true
 
-  release:
-    name: Publish GitHub Release
+  release-llm:
+    name: LLM decide, tag, build, release
     runs-on: ubuntu-latest
-    needs: [version-guard, build-daemon, build-android, integration]
-    if: |
-      always() &&
-      startsWith(github.ref, 'refs/tags/v') &&
-      needs.version-guard.result == 'success' &&
-      needs.build-daemon.result == 'success' &&
-      needs.build-android.result == 'success' &&
-      needs.integration.result == 'success'
-    timeout-minutes: 15
+    needs:
+      - daemon-static
+      - daemon-unit
+      - android-static
+      - android-unit
+      - build-daemon
+      - build-android
+      - integration
+    if: github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/master'
+    timeout-minutes: 45
     permissions:
       contents: write
+    env:
+      EXPECTED_APK_SIGNER_SHA256: "d1df9ef0eefd2802ab1724991774d8471c71d62bb5802ba2fc14cffb3b95be87"
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/download-artifact@v4
         with:
-          pattern: "*"
-          path: dist
-          merge-multiple: true
-      - name: List release assets
+          fetch-depth: 0
+          fetch-tags: true
+
+      - name: Resolve current version
+        id: ver
         run: |
           set -euo pipefail
-          find dist -type f | sort
-          test -n "$(find dist -name '*.apk' | head -1)"
-          test -n "$(find dist -name '*.whl' | head -1)"
-          test -n "$(find dist -name '*.tar.gz' | head -1)"
+          name=$(sed -n 's/.*versionName = "\([^"]*\)".*/\1/p' android-fido-client/app/build.gradle.kts | head -1)
+          py=$(sed -n 's/^version = "\([^"]*\)".*/\1/p' linux-fido-daemon/pyproject.toml | head -1)
+          if [ -z "$name" ] || [ "$name" != "$py" ]; then
+            echo "::error::versionName ($name) must match pyproject version ($py)"
+            exit 1
+          fi
+          echo "version=$name" >> "$GITHUB_OUTPUT"
+
+      - name: Collect commits since last tag
+        id: log
+        run: |
+          set -euo pipefail
+          last_tag=$(git describe --tags --abbrev=0 2>/dev/null || true)
+          echo "last_tag=${last_tag:-<none>}" >> "$GITHUB_OUTPUT"
+          {
+            if [ -n "$last_tag" ]; then
+              echo "Range: ${last_tag}..HEAD"
+              git log --merges --first-parent --format='%h %s%n%b%n---' "${last_tag}..HEAD"
+              echo ""
+              echo "Also non-merge commits in range:"
+              git log --no-merges --first-parent --format='%h %s' "${last_tag}..HEAD"
+            else
+              echo "Range: full master history (bootstrap; no tags yet)"
+              git log --merges --first-parent --format='%h %s%n%b%n---' origin/master
+              echo ""
+              echo "Also non-merge commits:"
+              git log --no-merges --first-parent --format='%h %s' origin/master
+            fi
+          } | tee "$RUNNER_TEMP/commit-log.txt"
+          head -c 120000 "$RUNNER_TEMP/commit-log.txt" > "$RUNNER_TEMP/commit-log-trimmed.txt"
+          echo "log_path=$RUNNER_TEMP/commit-log-trimmed.txt" >> "$GITHUB_OUTPUT"
+
+      - name: Ask OpenCode Go for bump + changelog
+        env:
+          OPENCODE_GO_API_KEY: ${{ secrets.OPENCODE_GO_API_KEY }}
+        run: |
+          set -euo pipefail
+          if [ -z "${OPENCODE_GO_API_KEY:-}" ]; then
+            echo "::error::Secret OPENCODE_GO_API_KEY is not set"
+            exit 1
+          fi
+          force="${{ inputs.force_bump }}"
+          ask_args=(
+            --current-version "${{ steps.ver.outputs.version }}"
+            --log-file "${{ steps.log.outputs.log_path }}"
+            --model "${{ inputs.model }}"
+            --out "$RUNNER_TEMP/release-decision.json"
+          )
+          if [ -n "$force" ]; then
+            ask_args+=(--force-bump "$force")
+          fi
+          python3 scripts/release/ask_bump.py "${ask_args[@]}"
+          cat "$RUNNER_TEMP/release-decision.json"
+
+      - name: Bump, tag (fail if exists), silent master push
+        id: bump
+        run: |
+          set -euo pipefail
+          python3 scripts/release/bump.py \
+            --decision "$RUNNER_TEMP/release-decision.json" \
+            --out "$RUNNER_TEMP/release-bump-out.json"
+          tag=$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["tag"])' "$RUNNER_TEMP/release-bump-out.json")
+          version=$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["version"])' "$RUNNER_TEMP/release-bump-out.json")
+          echo "tag=$tag" >> "$GITHUB_OUTPUT"
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          {
+            echo "## Release"
+            echo ""
+            echo "- Tag: \`$tag\`"
+            echo "- Version: \`$version\`"
+            echo "- Pre-bump SHA: \`${GITHUB_SHA}\`"
+            echo "- Push order: tag first, then master (silent GITHUB_TOKEN)"
+            echo ""
+            echo '```json'
+            cat "$RUNNER_TEMP/release-decision.json"
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Set up JDK/Android + Python toolchains
+        uses: ./.github/actions/setup-android
+      - uses: ./.github/actions/setup-python-daemon
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Build daemon dist (post-bump)
+        run: |
+          set -euo pipefail
+          python -m pip install --upgrade build
+          (cd linux-fido-daemon && python -m build)
+          mkdir -p dist
+          cp linux-fido-daemon/dist/* dist/
+
+      - name: Build Android APK (post-bump) and verify signer
+        working-directory: android-fido-client
+        run: |
+          set -euo pipefail
+          ./gradlew assembleDebug
+          APK="app/build/outputs/apk/debug/app-debug.apk"
+          APKSIGNER="${ANDROID_HOME}/build-tools/34.0.0/apksigner"
+          ACTUAL="$("${APKSIGNER}" verify --print-certs "${APK}" \
+            | awk -F': ' '/certificate SHA-256 digest/ {print tolower($NF); exit}')"
+          echo "Signer SHA-256: ${ACTUAL}"
+          if [ "${ACTUAL}" != "${EXPECTED_APK_SIGNER_SHA256}" ]; then
+            echo "::error::APK signer does not match the committed debug keystore"
+            exit 1
+          fi
+          cp "${APK}" ../dist/
+
       - name: Extract changelog notes for this tag
-        id: notes
+        env:
+          TAG: ${{ steps.bump.outputs.tag }}
         run: |
           set -euo pipefail
-          tag="${GITHUB_REF_NAME}"
           python3 - <<'PY' > "$RUNNER_TEMP/release-notes.md"
           import os, re, sys
           from pathlib import Path
-          tag = os.environ["GITHUB_REF_NAME"]
+          tag = os.environ["TAG"]
           text = Path("CHANGELOG.md").read_text(encoding="utf-8")
-          m = re.search(
-              rf"(?ms)^##\s+{re.escape(tag)}\s*\n(.*?)(?=^##\s+|\Z)",
-              text,
-          )
+          m = re.search(rf"(?ms)^##\s+{re.escape(tag)}\s*\n(.*?)(?=^##\s+|\Z)", text)
           body = m.group(1).strip() if m else ""
           header = f"## {tag}\n"
           if body:
@@ -351,12 +405,18 @@ jobs:
               sys.stdout.write(header + "\nSee commit history for details.\n")
           PY
           cat "$RUNNER_TEMP/release-notes.md"
+
       - name: Create GitHub Release
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
-          tag="${GITHUB_REF_NAME}"
+          tag="${{ steps.bump.outputs.tag }}"
+          echo "Release assets:"
+          find dist -type f | sort
+          test -n "$(find dist -name '*.apk' | head -1)"
+          test -n "$(find dist -name '*.whl' | head -1)"
+          test -n "$(find dist -name '*.tar.gz' | head -1)"
           assets=$(find dist -type f \( -name '*.apk' -o -name '*.whl' -o -name '*.tar.gz' \) | sort)
           # shellcheck disable=SC2086
           gh release create "$tag" $assets \
