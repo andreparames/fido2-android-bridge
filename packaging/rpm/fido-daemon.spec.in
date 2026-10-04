@@ -1,0 +1,84 @@
+# fido-daemon spec template. packaging/build.sh substitutes @VERSION@/@PYMIN@
+# into rpm/fido-daemon.generated.spec, then runs rpmbuild against it.
+#
+# The payload is a prebuilt staging tree (packaging/stage) — a bundled venv at
+# /opt/fido-daemon plus systemd unit, udev rules, config example, and docs.
+# Nothing is compiled here.
+
+%global _pymin @PYMIN@
+
+# Fedora/RHEL define these; Debian's rpm package does not. Conditional so the
+# distro's own values win where they exist.
+%{!?_unitdir:%global _unitdir %{_prefix}/lib/systemd/system}
+%{!?_udevrulesdir:%global _udevrulesdir %{_prefix}/lib/udev/rules.d}
+
+# No debuginfo: the payload is a prebuilt venv, not something we compile.
+%define debug_package %{nil}
+
+Name:           fido-daemon
+Version:        @VERSION@
+Release:        1%{?dist}
+Summary:        Remote WebAuthn Android bridge daemon
+Group:          Applications/System
+Packager:       Fido Daemon Team <noreply@example.com>
+
+License:        MIT
+URL:            https://github.com/andreparames/fido2-android-bridge
+Source0:        fido-daemon-%{version}.tar.gz
+
+# venv is arch-specific (bundled compiled wheels), so BuildArch is omitted.
+Requires:       python3 >= %{_pymin}, systemd, systemd-udev, passwd, shadow-utils
+
+%description
+Linux daemon that bridges local WebAuthn login requests to a remote Android
+phone over an end-to-end encrypted (Noise) WebSocket relay, presenting a
+virtual FIDO2 security key. Private keys stay inside the phone's hardware
+enclave; neither the daemon nor the relay ever sees plain text.
+
+%prep
+%setup -q -c -n stage
+
+%install
+rm -rf %{buildroot}
+mkdir -p %{buildroot}
+cp -a usr etc %{buildroot}/
+
+%pre
+if ! getent group uhid >/dev/null 2>&1; then
+    groupadd --system uhid || :
+fi
+if ! getent passwd fido-daemon >/dev/null 2>&1; then
+    useradd --system \
+        --home-dir /var/lib/fido-daemon \
+        --shell /sbin/nologin \
+        --user-group \
+        fido-daemon || :
+fi
+
+%post
+# Service user must be able to open /dev/uhid (udev grants the group).
+usermod -aG uhid fido-daemon 2>/dev/null || :
+# State directory: writable config + static identity key.
+mkdir -p /var/lib/fido-daemon
+chown fido-daemon:fido-daemon /var/lib/fido-daemon
+chmod 0700 /var/lib/fido-daemon
+# Seed the live config from the /etc example on first install.
+if [ ! -e /var/lib/fido-daemon/config.toml ]; then
+    cp %{_sysconfdir}/fido-daemon/fido-daemon.toml.example /var/lib/fido-daemon/config.toml
+    chown fido-daemon:fido-daemon /var/lib/fido-daemon/config.toml
+    chmod 0600 /var/lib/fido-daemon/config.toml
+fi
+
+%files
+%{_bindir}/fido-daemon
+%{_unitdir}/fido-daemon.service
+%{_udevrulesdir}/70-fido2-bridge-uhid.rules
+%config(noreplace) %{_sysconfdir}/fido-daemon/fido-daemon.toml.example
+%{_docdir}/fido-daemon/README.md
+%{_docdir}/fido-daemon/CHANGELOG.md
+%{_docdir}/fido-daemon/LICENSE
+%{_prefix}/lib/fido-daemon/venv
+
+%changelog
+* Sun Oct 04 2026 Fido Daemon Team <noreply@example.com> - @VERSION@-1
+- Initial packaged release.

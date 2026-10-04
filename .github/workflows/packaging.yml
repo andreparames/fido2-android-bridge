@@ -1,0 +1,102 @@
+name: packaging
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [master]
+    tags: ['v*']
+  pull_request:
+    paths:
+      - 'linux-fido-daemon/**'
+      - 'packaging/**'
+      - '.github/workflows/packaging.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: ${{ matrix.image }} (${{ matrix.target }}, ${{ matrix.arch }})
+    runs-on: ubuntu-latest
+    container: ${{ matrix.image }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - image: debian:12
+            target: deb
+            arch: amd64
+          - image: debian:13
+            target: deb
+            arch: amd64
+          - image: ubuntu:24.04
+            target: deb
+            arch: amd64
+          - image: fedora:41
+            target: rpm
+            arch: x86_64
+          - image: rockylinux:10
+            target: rpm
+            arch: x86_64
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install tooling (deb)
+        if: matrix.target == 'deb'
+        run: |
+          apt-get update -qq
+          apt-get install -y -qq debhelper dpkg-dev lintian \
+              python3 python3-venv python3-pip gnupg
+
+      - name: Install tooling (rpm)
+        if: matrix.target == 'rpm'
+        run: |
+          dnf install -y -q rpm-build rpmlint python3 python3-pip gnupg2 rpm-sign
+
+      - name: Build + lint
+        working-directory: packaging
+        run: ./build.sh ${{ matrix.target }}
+
+      - name: Smoke test (install + run)
+        if: matrix.target == 'deb'
+        run: |
+          apt-get install -y -qq ./out/deb/*.deb
+          /usr/bin/fido-daemon --help >/dev/null
+          getent passwd fido-daemon && getent group uhid
+          ls -l /var/lib/fido-daemon/config.toml
+
+      - name: Smoke test (install + run)
+        if: matrix.target == 'rpm'
+        run: |
+          dnf install -y -q ./out/rpm/*.rpm
+          /usr/bin/fido-daemon --help >/dev/null
+          getent passwd fido-daemon && getent group uhid
+          ls -l /var/lib/fido-daemon/config.toml
+
+      - name: Import signing key
+        if: (startsWith(github.ref, 'refs/tags/') || github.event_name == 'workflow_dispatch')
+        uses: crazy-max/ghaction-import-gpg@v6
+        with:
+          gpg_private_key: ${{ secrets.RELEASE_GPG_PRIVATE_KEY }}
+          passphrase: ${{ secrets.RELEASE_GPG_PASSPHRASE }}
+
+      - name: Sign (deb)
+        if: (startsWith(github.ref, 'refs/tags/') || github.event_name == 'workflow_dispatch') && matrix.target == 'deb'
+        run: |
+          apt-get install -y -qq debsigs
+          for deb in out/deb/*.deb; do debsigs --sign=origin "$deb"; done
+          for deb in out/deb/*.deb; do debsigs --verify "$deb"; done
+
+      - name: Sign (rpm)
+        if: (startsWith(github.ref, 'refs/tags/') || github.event_name == 'workflow_dispatch') && matrix.target == 'rpm'
+        run: |
+          for rpm in out/rpm/*.rpm; do rpmsign --addsign "$rpm"; done
+          for rpm in out/rpm/*.rpm; do rpm -K "$rpm"; done
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: fido-daemon-${{ matrix.image }}-${{ matrix.arch }}
+          path: |
+            packaging/out/${{ matrix.target }}
+            packaging/KEYS
+          if-no-files-found: error

@@ -1,0 +1,5 @@
+# rpmlint configuration for fido-daemon (packaging/PLAN.md §9).
+#
+# `no-signature` is expected on the unsigned build: final artifacts are signed
+# with the release GPG key in the signing step before release.
+Filters = ["E: no-signature"]

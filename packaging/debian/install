@@ -1,0 +1,8 @@
+stage/usr/lib/fido-daemon/venv /usr/lib/fido-daemon/
+stage/usr/bin/fido-daemon /usr/bin/
+stage/usr/lib/systemd/system/fido-daemon.service /usr/lib/systemd/system/
+stage/usr/lib/udev/rules.d/70-fido2-bridge-uhid.rules /usr/lib/udev/rules.d/
+stage/etc/fido-daemon/fido-daemon.toml.example /etc/fido-daemon/
+stage/usr/share/doc/fido-daemon/README.md /usr/share/doc/fido-daemon/
+stage/usr/share/doc/fido-daemon/CHANGELOG.md /usr/share/doc/fido-daemon/
+stage/usr/share/doc/fido-daemon/LICENSE /usr/share/doc/fido-daemon/

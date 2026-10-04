@@ -1,0 +1,14 @@
+# Generated/build artifacts
+stage/
+out/
+*.deb
+*.rpm
+debian/control
+debian/changelog
+debian/files
+debian/tmp/
+debian/fido-daemon/
+debian/*.debhelper
+debian/*.substvars
+rpm/RPMBUILD/
+rpm/*.generated.spec

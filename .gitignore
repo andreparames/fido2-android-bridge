@@ -36,5 +36,10 @@ build/
 *.sock
 *.log
 
+# dpkg-buildpackage droppings from packaging/ (build artifacts)
+*.changes
+*.buildinfo
+*-dbgsym_*.deb
+
 # Centrifugo (contains secrets)
 config.json
