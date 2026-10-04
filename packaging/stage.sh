@@ -33,10 +33,12 @@ echo "[stage] creating venv with $PYTHON_BIN"
 "$VENV/bin/pip" install -q --upgrade pip
 "$VENV/bin/pip" install -q --index-url "$PIP_INDEX_URL" "$DAEMON_DIR"
 
-# pip is only needed to build the venv, not to run the daemon. Drop it to
-# shrink the payload and remove its vendored scripts from lint scans.
-"$VENV/bin/pip" uninstall -q -y pip
-rm -f "$VENV/bin/pip" "$VENV/bin/pip3" "$VENV/bin/pip3.13"
+# pip and setuptools are only needed to build the venv, not to run the daemon.
+# Dropping them shrinks the payload and removes setuptools' distutils-precedence
+# .pth (which otherwise re-creates _distutils_hack/__pycache__ on every python
+# startup, tripping lintian's package-installs-python-pycache-dir).
+"$VENV/bin/pip" uninstall -q -y pip setuptools
+rm -f "$VENV"/bin/pip* 2>/dev/null || true
 
 # Console-script shebangs embed the *build* path of the venv; the venv is
 # installed at /usr/lib/fido-daemon/venv, so rewrite them to that canonical

@@ -15,6 +15,11 @@
 # No debuginfo: the payload is a prebuilt venv, not something we compile.
 %define debug_package %{nil}
 
+# The bundled venv carries a copy of the distro python interpreter, whose
+# build-id collides with the python3 package's /usr/lib/.build-id link
+# (rpm transaction test error on RHEL-family). Disable build-id links.
+%global _build_id_links none
+
 Name:           fido-daemon
 Version:        @VERSION@
 Release:        1%{?dist}

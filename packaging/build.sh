@@ -22,7 +22,7 @@ VERSION="$(python3 -c "import tomllib;print(tomllib.load(open('../linux-fido-dae
 echo "[build] version=$VERSION"
 
 [ -f stage/usr/lib/fido-daemon/venv/bin/python ] || ./stage.sh
-PYMIN="$("$SELF_DIR/stage/usr/lib/fido-daemon/venv/bin/python" -c "import sys;print(f'{sys.version_info[0]}.{sys.version_info[1]}')")"
+PYMIN="$(PYTHONDONTWRITEBYTECODE=1 "$SELF_DIR/stage/usr/lib/fido-daemon/venv/bin/python" -c "import sys;print(f'{sys.version_info[0]}.{sys.version_info[1]}')")"
 echo "[build] venv python=$PYMIN"
 
 mkdir -p out/deb out/rpm
