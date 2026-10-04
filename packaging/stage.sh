@@ -59,6 +59,11 @@ ln -sf python "$VENV/bin/python3.13"
 # with shebangs). This keeps lintian/rpmlint clean.
 find "$VENV" -type f ! -path "$VENV/bin/*" -exec chmod -x {} +
 
+# Ship no bytecode: Python regenerates .pyc at runtime, and build-time .pyc
+# mtimes trip rpmlint (python-bytecode-inconsistent-mtime on Fedora).
+find "$VENV" -name '*.pyc' -delete
+find "$VENV" -name '__pycache__' -type d -prune -exec rm -rf {} +
+
 # Some wheels also ship a `#!` first line on files that are not meant to be
 # run (e.g. segno's cli module). Strip those shebangs so rpmlint does not flag
 # them as non-executable scripts. Only applies under lib/ (bin/ keeps its

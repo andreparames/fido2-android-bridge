@@ -60,7 +60,7 @@ jobs:
       - name: Smoke test (install + run)
         if: matrix.target == 'deb'
         run: |
-          apt-get install -y -qq ./out/deb/*.deb
+          apt-get install -y -qq packaging/out/deb/*.deb
           /usr/bin/fido-daemon --help >/dev/null
           getent passwd fido-daemon && getent group uhid
           ls -l /var/lib/fido-daemon/config.toml
@@ -68,7 +68,7 @@ jobs:
       - name: Smoke test (install + run)
         if: matrix.target == 'rpm'
         run: |
-          dnf install -y -q ./out/rpm/*.rpm
+          dnf install -y -q packaging/out/rpm/*.rpm
           /usr/bin/fido-daemon --help >/dev/null
           getent passwd fido-daemon && getent group uhid
           ls -l /var/lib/fido-daemon/config.toml
@@ -84,14 +84,14 @@ jobs:
         if: (startsWith(github.ref, 'refs/tags/') || github.event_name == 'workflow_dispatch') && matrix.target == 'deb'
         run: |
           apt-get install -y -qq debsigs
-          for deb in out/deb/*.deb; do debsigs --sign=origin "$deb"; done
-          for deb in out/deb/*.deb; do debsigs --verify "$deb"; done
+          for deb in packaging/out/deb/*.deb; do debsigs --sign=origin "$deb"; done
+          for deb in packaging/out/deb/*.deb; do debsigs --verify "$deb"; done
 
       - name: Sign (rpm)
         if: (startsWith(github.ref, 'refs/tags/') || github.event_name == 'workflow_dispatch') && matrix.target == 'rpm'
         run: |
-          for rpm in out/rpm/*.rpm; do rpmsign --addsign "$rpm"; done
-          for rpm in out/rpm/*.rpm; do rpm -K "$rpm"; done
+          for rpm in packaging/out/rpm/*.rpm; do rpmsign --addsign "$rpm"; done
+          for rpm in packaging/out/rpm/*.rpm; do rpm -K "$rpm"; done
 
       - uses: actions/upload-artifact@v4
         with:
