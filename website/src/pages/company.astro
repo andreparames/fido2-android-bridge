@@ -1,0 +1,63 @@
+---
+import Base from "../layouts/Base.astro";
+---
+
+<Base title="Company | Gatebridge">
+  <section class="section">
+    <div class="container prose-page">
+      <h1>About Gatebridge</h1>
+      <p class="lead text-muted">
+        Gatebridge does one job: stronger sign-in on headless and remote Linux
+        servers, using the security hardware already inside your phone.
+      </p>
+
+      <h2>What we believe</h2>
+      <ul>
+        <li>Security keys should not require buying hardware for every seat.</li>
+        <li>Remote servers deserve the same phishing protection as laptops.</li>
+        <li>Secrets belong in hardware, never on a server and never in a cloud key vault.</li>
+        <li>Open source builds trust. Managed convenience is worth paying for.</li>
+      </ul>
+
+      <h2 id="contact">Contact</h2>
+      <ul>
+        <li><strong>General:</strong> <a href="mailto:hello@gatebridge.app">hello@gatebridge.app</a></li>
+        <li><strong>Security:</strong> <a href="mailto:security@gatebridge.app">security@gatebridge.app</a></li>
+        <li><strong>Business inquiries:</strong> <a href="/business">Talk to us →</a></li>
+      </ul>
+
+      <h2>Status</h2>
+      <p>
+        Gatebridge is in active development. The server program works on Linux,
+        and the Android app handles pairing, encrypted communication, and
+        biometric signing. See the
+        <a href="https://github.com/andreparames/fido2-android-bridge">GitHub repository</a> for current status.
+      </p>
+    </div>
+  </section>
+</Base>
+
+<style>
+  .prose-page {
+    max-width: 68ch;
+  }
+
+  .lead {
+    font-size: var(--text-lg);
+    margin-top: var(--space-4);
+    margin-bottom: var(--space-8);
+  }
+
+  .prose-page h2 {
+    margin-top: var(--space-12);
+    margin-bottom: var(--space-4);
+  }
+
+  .prose-page ul {
+    padding-left: var(--space-6);
+  }
+
+  .prose-page li + li {
+    margin-top: var(--space-2);
+  }
+</style>

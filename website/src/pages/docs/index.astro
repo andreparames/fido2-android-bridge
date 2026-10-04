@@ -1,0 +1,61 @@
+---
+import Base from "../../layouts/Base.astro";
+import { getCollection } from "astro:content";
+
+const docs = (await getCollection("docs")).sort(
+  (a, b) => a.data.order - b.data.order
+);
+---
+
+<Base title="Documentation | Gatebridge">
+  <section class="section">
+    <div class="container">
+      <div class="text-center mb-8">
+        <h1>Documentation</h1>
+        <p class="text-muted mt-2" style="max-width: 48ch; margin-inline: auto;">
+          Get started, install the server program, and understand the protocol.
+        </p>
+      </div>
+
+      <div class="docs-grid">
+        {docs.map((doc) => (
+          <a href={`/docs/${doc.id}`} class="card doc-card">
+            <h2>{doc.data.title}</h2>
+            <p class="text-muted">{doc.data.description}</p>
+          </a>
+        ))}
+      </div>
+    </div>
+  </section>
+</Base>
+
+<style>
+  .docs-grid {
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: var(--space-4);
+  }
+
+  .doc-card {
+    display: block;
+    color: inherit;
+    text-decoration: none;
+    transition: border-color 0.15s ease;
+  }
+
+  .doc-card:hover {
+    border-color: var(--color-accent);
+    text-decoration: none;
+  }
+
+  .doc-card h2 {
+    font-size: var(--text-lg);
+    margin-bottom: var(--space-2);
+  }
+
+  @media (min-width: 768px) {
+    .docs-grid {
+      grid-template-columns: repeat(2, 1fr);
+    }
+  }
+</style>

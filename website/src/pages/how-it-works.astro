@@ -1,0 +1,125 @@
+---
+import Base from "../layouts/Base.astro";
+
+const features = [
+  {
+    title: "Admin console",
+    body: "Add or remove users, see which phones are enrolled, revoke a lost phone in one click.",
+  },
+  {
+    title: "Lost-phone recovery",
+    body: "Pair a new phone and revoke the old one. No support ticket required.",
+  },
+  {
+    title: "Audit log",
+    body: "See who signed in, when, and from where, for each app and server.",
+  },
+  {
+    title: "Per-team access lists",
+    body: "Control which apps and servers each person can use their phone to sign in to.",
+  },
+  {
+    title: "Bulk onboarding",
+    body: "Invite teammates and pair their phones at scale.",
+  },
+  {
+    title: "Managed relay",
+    body: "We run the encrypted relay so your team does not have to.",
+  },
+];
+---
+
+<Base title="How it works | Gatebridge">
+  <section class="section">
+    <div class="container prose-page">
+      <h1>How Gatebridge works</h1>
+      <p class="lead text-muted">
+        Gatebridge turns your Android phone into a hardware-backed security key
+        for a remote Linux server. It sits between the server and your phone,
+        carrying sign-in requests across the gap.
+      </p>
+
+      <h2>What happens when you sign in</h2>
+      <ol>
+        <li>
+          You visit a website or open an admin panel on your Linux server.
+          It asks you to sign in with a security key.
+        </li>
+        <li>
+          A small program on the server (the daemon) receives that request.
+        </li>
+        <li>
+          The daemon forwards the request to your phone over an encrypted
+          connection. Your phone never talks to the website directly.
+        </li>
+        <li>
+          Your phone asks for a fingerprint or face. It signs the request
+          using a secret that only exists inside the phone's security chip.
+        </li>
+        <li>
+          The signed response goes back to the server. The website sees a
+          normal security-key sign-in. It never learns the secret.
+        </li>
+      </ol>
+
+      <h2>What you need</h2>
+      <ul>
+        <li>An Android phone with fingerprint or face unlock.</li>
+        <li>A Linux server you can run a small program on (VPS, bastion, dev box).</li>
+        <li>Network access between the two (through our relay, or your own).</li>
+      </ul>
+
+      <h2>What Gatebridge is for</h2>
+      <p>
+        If your team signs in to remote Linux servers and you want stronger
+        protection than passwords, Gatebridge uses the phone everyone already
+        carries. No extra hardware to order, ship, or replace.
+      </p>
+
+      <h2>What it is not</h2>
+      <p>
+        Gatebridge does one thing: it lets your phone act as a security key for
+        remote servers. It is not a password manager, not a replacement for
+        SSH keys, and not a full identity platform. If you need those, other
+        tools do them better.
+      </p>
+
+      <div class="cta-row mt-12">
+        <button type="button" class="btn btn-primary" data-waitlist>Get started</button>
+        <a href="/security" class="btn btn-secondary">Security model</a>
+      </div>
+    </div>
+  </section>
+</Base>
+
+<style>
+  .prose-page {
+    max-width: 68ch;
+  }
+
+  .lead {
+    font-size: var(--text-lg);
+    margin-top: var(--space-4);
+    margin-bottom: var(--space-8);
+  }
+
+  .prose-page h2 {
+    margin-top: var(--space-12);
+    margin-bottom: var(--space-4);
+  }
+
+  .prose-page ol,
+  .prose-page ul {
+    padding-left: var(--space-6);
+  }
+
+  .prose-page li + li {
+    margin-top: var(--space-3);
+  }
+
+  .cta-row {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--space-3);
+  }
+</style>

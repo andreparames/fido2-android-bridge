@@ -1,0 +1,59 @@
+---
+import Base from "../../layouts/Base.astro";
+import { getCollection, render } from "astro:content";
+
+export async function getStaticPaths() {
+  const posts = await getCollection("blog");
+  return posts.map((post) => ({
+    params: { slug: post.id },
+    props: { post },
+  }));
+}
+
+const { post } = Astro.props;
+const { Content } = await render(post);
+---
+
+<Base title={`${post.data.title} | Gatebridge Blog`} description={post.data.description}>
+  <section class="section">
+    <div class="container prose-page">
+      <a href="/blog" class="back-link text-muted">← All posts</a>
+      <time datetime={post.data.pubDate.toISOString()} class="post-date text-muted">
+        {post.data.pubDate.toLocaleDateString("en-US", {
+          year: "numeric",
+          month: "long",
+          day: "numeric",
+        })}
+      </time>
+      <h1>{post.data.title}</h1>
+      <p class="lead text-muted">{post.data.description}</p>
+      <article class="prose">
+        <Content />
+      </article>
+    </div>
+  </section>
+</Base>
+
+<style>
+  .prose-page {
+    max-width: 68ch;
+  }
+
+  .back-link {
+    display: inline-block;
+    font-size: var(--text-sm);
+    margin-bottom: var(--space-6);
+  }
+
+  .post-date {
+    display: block;
+    font-size: var(--text-sm);
+    margin-bottom: var(--space-2);
+  }
+
+  .lead {
+    font-size: var(--text-lg);
+    margin-top: var(--space-4);
+    margin-bottom: var(--space-8);
+  }
+</style>

@@ -1,0 +1,93 @@
+---
+import Base from "../layouts/Base.astro";
+---
+
+<Base title="Security model | Gatebridge">
+  <section class="section">
+    <div class="container prose-page">
+      <h1>Security model</h1>
+      <p class="lead text-muted">
+        Gatebridge is built on one rule: the relay server is untrusted. Secrets
+        stay inside your phone, and everything in transit is encrypted before
+        it leaves either device.
+      </p>
+
+      <h2>Threat model</h2>
+      <p><strong>What we defend against:</strong></p>
+      <ul>
+        <li>A curious or compromised relay server. It only sees encrypted traffic, never plaintext.</li>
+        <li>Network attackers. All data is encrypted end to end, with a fresh key for every session.</li>
+        <li>A lost or stolen phone. Every sign-in needs a fingerprint or face, and the signing secret never leaves the phone's security chip.</li>
+        <li>A malicious operator on the server. They can request signatures, but they never get the secret itself.</li>
+      </ul>
+      <p><strong>What is out of scope:</strong></p>
+      <ul>
+        <li>A fully compromised phone operating system. The hardware chip helps, but no software fix is perfect.</li>
+        <li>A compromised website you are signing in to.</li>
+        <li>Physical attacks on the phone's security chip.</li>
+      </ul>
+
+      <h2>Encryption in transit</h2>
+      <ul>
+        <li><strong>Cipher:</strong> Noise Protocol (Noise_IK_25519_AESGCM_SHA256), an open standard for authenticated encryption.</li>
+        <li><strong>Session keys:</strong> Freshly derived for every connection, so past sessions cannot be unlocked later.</li>
+        <li><strong>Relay visibility:</strong> None. The relay only forwards opaque encrypted messages.</li>
+        <li><strong>Failure handling:</strong> If a message fails its integrity check (replay, tamper), the connection drops immediately.</li>
+      </ul>
+
+      <h2>Where secrets live</h2>
+      <ul>
+        <li>Signing secrets are created and stored in your phone's built-in security chip, a tamper-resistant area of the processor that Android uses for keys and biometrics.</li>
+        <li>Every signature requires biometric authentication enforced at the hardware level. There is no software-only fallback.</li>
+        <li>Nothing is ever uploaded to a server or cloud service.</li>
+      </ul>
+
+      <h2>Pairing and trust</h2>
+      <ul>
+        <li>Pairing uses a special link (shown as a QR code) that identifies both your phone and the server.</li>
+        <li>The server records your phone's public key the first time you pair. Later sign-in attempts from a different phone are rejected until an admin explicitly re-pairs.</li>
+      </ul>
+
+      <h2>Full technical specification</h2>
+      <p>
+        The complete message formats, pairing link structure, encryption details,
+        and error codes are specified in
+        <a href="https://github.com/andreparames/fido2-android-bridge/blob/main/PROTOCOL.md">PROTOCOL.md</a>
+        in the repository. Both the server program and the Android app follow
+        that specification exactly.
+      </p>
+
+      <h2>Reporting a vulnerability</h2>
+      <p>
+        If you believe you have found a security issue, email
+        <a href="mailto:security@gatebridge.app">security@gatebridge.app</a>.
+        Do not open a public GitHub issue for security vulnerabilities.
+      </p>
+    </div>
+  </section>
+</Base>
+
+<style>
+  .prose-page {
+    max-width: 68ch;
+  }
+
+  .lead {
+    font-size: var(--text-lg);
+    margin-top: var(--space-4);
+    margin-bottom: var(--space-8);
+  }
+
+  .prose-page h2 {
+    margin-top: var(--space-12);
+    margin-bottom: var(--space-4);
+  }
+
+  .prose-page ul {
+    padding-left: var(--space-6);
+  }
+
+  .prose-page li + li {
+    margin-top: var(--space-2);
+  }
+</style>

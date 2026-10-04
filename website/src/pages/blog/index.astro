@@ -1,0 +1,94 @@
+---
+import Base from "../../layouts/Base.astro";
+import { getCollection } from "astro:content";
+
+const posts = (await getCollection("blog")).sort(
+  (a, b) => b.data.pubDate.valueOf() - a.data.pubDate.valueOf()
+);
+---
+
+<Base title="Blog | Gatebridge">
+  <section class="section">
+    <div class="container">
+      <div class="text-center mb-8">
+        <h1>Blog</h1>
+        <p class="text-muted mt-2" style="max-width: 48ch; margin-inline: auto;">
+          Guides, comparisons, protocol notes, and release updates.
+        </p>
+      </div>
+
+      <div class="blog-list">
+        {posts.map((post) => (
+          <a href={`/blog/${post.id}`} class="card post-card">
+            <time datetime={post.data.pubDate.toISOString()} class="post-date text-muted">
+              {post.data.pubDate.toLocaleDateString("en-US", {
+                year: "numeric",
+                month: "long",
+                day: "numeric",
+              })}
+            </time>
+            <h2>{post.data.title}</h2>
+            <p class="text-muted">{post.data.description}</p>
+            {post.data.tags.length > 0 && (
+              <div class="post-tags">
+                {post.data.tags.map((tag) => (
+                  <span class="tag">{tag}</span>
+                ))}
+              </div>
+            )}
+          </a>
+        ))}
+      </div>
+    </div>
+  </section>
+</Base>
+
+<style>
+  .blog-list {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-4);
+    max-width: 720px;
+    margin-inline: auto;
+  }
+
+  .post-card {
+    display: block;
+    color: inherit;
+    text-decoration: none;
+    transition: border-color 0.15s ease;
+  }
+
+  .post-card:hover {
+    border-color: var(--color-accent);
+    text-decoration: none;
+  }
+
+  .post-date {
+    display: block;
+    font-size: var(--text-sm);
+    margin-bottom: var(--space-2);
+  }
+
+  .post-card h2 {
+    font-size: var(--text-xl);
+    margin-bottom: var(--space-2);
+  }
+
+  .post-tags {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--space-2);
+    margin-top: var(--space-4);
+  }
+
+  .tag {
+    font-size: var(--text-xs);
+    font-weight: var(--weight-medium);
+    color: var(--color-text-muted);
+    background: var(--color-surface);
+    border: 1px solid var(--color-border);
+    border-radius: 999px;
+    padding: var(--space-1) var(--space-2);
+  }
+</style>

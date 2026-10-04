@@ -1,0 +1,62 @@
+---
+import Base from "../../layouts/Base.astro";
+import { getCollection } from "astro:content";
+
+const useCases = (await getCollection("useCases")).sort(
+  (a, b) => a.data.segment.localeCompare(b.data.segment)
+);
+---
+
+<Base title="Use cases | Gatebridge">
+  <section class="section">
+    <div class="container">
+      <div class="text-center mb-8">
+        <h1>Use cases</h1>
+        <p class="text-muted mt-2" style="max-width: 48ch; margin-inline: auto;">
+          Gatebridge fits people and teams who sign in to Linux servers as part
+          of daily work, without buying hardware keys or running a full identity platform.
+        </p>
+      </div>
+
+      <div class="use-grid">
+        {useCases.map((uc) => (
+          <a href={`/use-cases/${uc.id}`} class="card use-card">
+            <h2>{uc.data.title}</h2>
+            <p class="text-muted">{uc.data.description}</p>
+          </a>
+        ))}
+      </div>
+    </div>
+  </section>
+</Base>
+
+<style>
+  .use-grid {
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: var(--space-4);
+  }
+
+  .use-card {
+    display: block;
+    color: inherit;
+    text-decoration: none;
+    transition: border-color 0.15s ease;
+  }
+
+  .use-card:hover {
+    border-color: var(--color-accent);
+    text-decoration: none;
+  }
+
+  .use-card h2 {
+    font-size: var(--text-xl);
+    margin-bottom: var(--space-2);
+  }
+
+  @media (min-width: 768px) {
+    .use-grid {
+      grid-template-columns: repeat(2, 1fr);
+    }
+  }
+</style>

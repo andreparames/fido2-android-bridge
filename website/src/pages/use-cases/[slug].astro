@@ -1,0 +1,56 @@
+---
+import Base from "../../layouts/Base.astro";
+import { getCollection, render } from "astro:content";
+
+export async function getStaticPaths() {
+  const useCases = await getCollection("useCases");
+  return useCases.map((uc) => ({
+    params: { slug: uc.id },
+    props: { uc },
+  }));
+}
+
+const { uc } = Astro.props;
+const { Content } = await render(uc);
+---
+
+<Base title={`${uc.data.title} | Gatebridge`} description={uc.data.description}>
+  <section class="section">
+    <div class="container prose-page">
+      <a href="/use-cases" class="back-link text-muted">← All use cases</a>
+      <h1>{uc.data.title}</h1>
+      <p class="lead text-muted">{uc.data.description}</p>
+      <article class="prose">
+        <Content />
+      </article>
+      <div class="cta-row mt-12">
+        <button type="button" class="btn btn-primary" data-waitlist>Get started</button>
+        <a href="/how-it-works" class="btn btn-secondary">How it works</a>
+      </div>
+    </div>
+  </section>
+</Base>
+
+<style>
+  .prose-page {
+    max-width: 68ch;
+  }
+
+  .back-link {
+    display: inline-block;
+    font-size: var(--text-sm);
+    margin-bottom: var(--space-6);
+  }
+
+  .lead {
+    font-size: var(--text-lg);
+    margin-top: var(--space-4);
+    margin-bottom: var(--space-8);
+  }
+
+  .cta-row {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--space-3);
+  }
+</style>

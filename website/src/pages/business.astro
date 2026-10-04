@@ -1,0 +1,137 @@
+---
+import Base from "../layouts/Base.astro";
+---
+
+<Base title="Business | Gatebridge">
+  <section class="section">
+    <div class="container prose-page">
+      <h1>Gatebridge for Business</h1>
+      <p class="lead text-muted">
+        For organizations with 200+ people that need single sign-on, a support
+        agreement, and stricter access rules, with the same phone-backed
+        sign-in core.
+      </p>
+
+      <h2>What's included</h2>
+      <ul>
+        <li>Everything in the Team tier (admin console, recovery, audit log, access lists)</li>
+        <li>Single sign-on (SAML or OIDC)</li>
+        <li>Support agreement with response times</li>
+        <li>Stricter access policies</li>
+        <li>Guided onboarding</li>
+      </ul>
+
+      <h2>Talk to us</h2>
+      <p>
+        The Business tier is sold with a conversation, not self-serve checkout.
+        Tell us about your setup and we will get back to you within two business days.
+      </p>
+
+      <form
+        class="contact-form card"
+        action="https://formsubmit.co/gatebridge@andreparames.com"
+        method="POST"
+      >
+        <input type="hidden" name="_subject" value="Gatebridge Business inquiry" />
+        <input type="hidden" name="_template" value="table" />
+        <input type="text" name="_honey" style="display:none" tabindex="-1" autocomplete="off" />
+        <div class="form-row">
+          <label for="name">Name</label>
+          <input type="text" id="name" name="name" required autocomplete="name" />
+        </div>
+        <div class="form-row">
+          <label for="email">Work email</label>
+          <input type="email" id="email" name="email" required autocomplete="email" />
+        </div>
+        <div class="form-row">
+          <label for="company">Company</label>
+          <input type="text" id="company" name="company" required autocomplete="organization" />
+        </div>
+        <div class="form-row">
+          <label for="seats">Estimated number of people</label>
+          <select id="seats" name="seats">
+            <option value="200-500">200 to 500</option>
+            <option value="500-1000">500 to 1,000</option>
+            <option value="1000+">1,000 or more</option>
+          </select>
+        </div>
+        <div class="form-row">
+          <label for="message">How do you plan to use Gatebridge?</label>
+          <textarea id="message" name="message" rows="4"></textarea>
+        </div>
+        <button type="submit" class="btn btn-primary">Request a conversation</button>
+      </form>
+
+      <p class="text-muted mt-6" style="font-size: var(--text-sm);">
+        Prefer email? Write to <a href="mailto:business@gatebridge.app">business@gatebridge.app</a>.
+      </p>
+    </div>
+  </section>
+</Base>
+
+<style>
+  .prose-page {
+    max-width: 56ch;
+  }
+
+  .lead {
+    font-size: var(--text-lg);
+    margin-top: var(--space-4);
+    margin-bottom: var(--space-8);
+  }
+
+  .prose-page h2 {
+    margin-top: var(--space-12);
+    margin-bottom: var(--space-4);
+  }
+
+  .prose-page ul {
+    padding-left: var(--space-6);
+  }
+
+  .prose-page li + li {
+    margin-top: var(--space-2);
+  }
+
+  .contact-form {
+    margin-top: var(--space-6);
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-4);
+  }
+
+  .form-row {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-2);
+  }
+
+  .form-row label {
+    font-size: var(--text-sm);
+    font-weight: var(--weight-medium);
+  }
+
+  .form-row input,
+  .form-row select,
+  .form-row textarea {
+    font-family: var(--font-sans);
+    font-size: var(--text-sm);
+    padding: var(--space-2) var(--space-3);
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-md);
+    background: var(--color-bg);
+    color: var(--color-text);
+  }
+
+  .form-row input:focus,
+  .form-row select:focus,
+  .form-row textarea:focus {
+    outline: 2px solid var(--color-accent);
+    outline-offset: 1px;
+    border-color: var(--color-accent);
+  }
+
+  .contact-form .btn {
+    align-self: flex-start;
+  }
+</style>

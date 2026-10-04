@@ -1,0 +1,114 @@
+---
+import Base from "../layouts/Base.astro";
+---
+
+<Base title="Open source | Gatebridge">
+  <section class="section">
+    <div class="container prose-page">
+      <h1>Open source</h1>
+      <p class="lead text-muted">
+        Gatebridge is open-core. The server program, the Android app, and the
+        message protocol are open source. The hosted service and admin tools
+        are the paid product.
+      </p>
+
+      <h2>The split</h2>
+      <div class="split-grid">
+        <div class="card">
+          <h3>Open source (free forever)</h3>
+          <ul>
+            <li>Linux server program source</li>
+            <li>Android app source</li>
+            <li>Message protocol (PROTOCOL.md)</li>
+            <li>Relay configuration examples</li>
+            <li>Build and deployment scripts</li>
+          </ul>
+          <a href="https://github.com/andreparames/fido2-android-bridge" class="btn btn-secondary mt-4" target="_blank" rel="noopener noreferrer">
+            View on GitHub
+          </a>
+        </div>
+        <div class="card">
+          <h3>Paid product (managed convenience)</h3>
+          <ul>
+            <li>Pre-built Play Store app with auto-updates</li>
+            <li>Hosted encrypted relay</li>
+            <li>Admin console and device registry</li>
+            <li>Team management and audit log</li>
+            <li>Support (email and Slack)</li>
+          </ul>
+          <button type="button" class="btn btn-primary mt-4" data-waitlist>Get notified</button>
+        </div>
+      </div>
+
+      <h2>Why this model</h2>
+      <p>
+        You can run Gatebridge entirely for free: clone the repo, build the
+        server program, sideload the app, and run your own relay. That route
+        has real friction: run the relay software, manage certificates, handle
+        app updates, manage pairing. The paid product removes that friction.
+        This is the same trade as Ghost or Mattermost: open source is not the
+        same as a free hosted service.
+      </p>
+
+      <h2>License</h2>
+      <p>
+        The open-source parts use a permissive license. See the repository for
+        the current choice. The hosted service we run for customers is
+        proprietary.
+      </p>
+
+      <h2>Contributing</h2>
+      <p>
+        Contributions are welcome. The codebase uses strict test-driven
+        development. See the repository's CONTRIBUTING.md and the architecture
+        plans for context.
+      </p>
+    </div>
+  </section>
+</Base>
+
+<style>
+  .prose-page {
+    max-width: 68ch;
+  }
+
+  .lead {
+    font-size: var(--text-lg);
+    margin-top: var(--space-4);
+    margin-bottom: var(--space-8);
+  }
+
+  .prose-page h2 {
+    margin-top: var(--space-12);
+    margin-bottom: var(--space-4);
+  }
+
+  .prose-page ul {
+    padding-left: var(--space-6);
+  }
+
+  .prose-page li + li {
+    margin-top: var(--space-2);
+  }
+
+  .split-grid {
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: var(--space-4);
+    margin-block: var(--space-4);
+  }
+
+  .split-grid h3 {
+    margin-bottom: var(--space-4);
+  }
+
+  .split-grid ul {
+    padding-left: var(--space-5);
+  }
+
+  @media (min-width: 768px) {
+    .split-grid {
+      grid-template-columns: 1fr 1fr;
+    }
+  }
+</style>

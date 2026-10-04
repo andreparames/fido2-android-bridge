@@ -1,0 +1,132 @@
+---
+const year = new Date().getFullYear();
+
+const columns = [
+  {
+    title: "Product",
+    links: [
+      { href: "/how-it-works", label: "How it works" },
+      { href: "/use-cases", label: "Use cases" },
+    ],
+  },
+  {
+    title: "Resources",
+    links: [
+      { href: "/docs", label: "Documentation" },
+      { href: "/blog", label: "Blog" },
+      { href: "/security", label: "Security model" },
+      { href: "/open-source", label: "Open source" },
+    ],
+  },
+  {
+    title: "Company",
+    links: [
+      { href: "/company", label: "About" },
+      { href: "/company#contact", label: "Contact" },
+      { href: "/business", label: "Business" },
+      { href: "https://github.com/andreparames/fido2-android-bridge", label: "GitHub" },
+    ],
+  },
+];
+---
+
+<footer class="site-footer">
+  <div class="container footer-grid">
+    <div class="footer-brand">
+      <a href="/" class="logo">Gatebridge</a>
+      <p class="text-muted">
+        Hardware-backed sign-in for remote Linux servers, using the phone already in your pocket.
+      </p>
+    </div>
+
+    {columns.map((col) => (
+      <div class="footer-col">
+        <h3 class="footer-heading">{col.title}</h3>
+        <ul>
+          {col.links.map((link) => (
+            <li>
+              <a href={link.href} rel={link.href.startsWith("http") ? "noopener noreferrer" : undefined}>
+                {link.label}
+              </a>
+            </li>
+          ))}
+        </ul>
+      </div>
+    ))}
+  </div>
+
+  <div class="container footer-bottom">
+    <p class="text-muted">&copy; {year} Gatebridge. All rights reserved.</p>
+    <p class="text-muted">Open source</p>
+  </div>
+</footer>
+
+<style>
+  .site-footer {
+    border-top: 1px solid var(--color-border);
+    padding-block: var(--space-12) var(--space-8);
+    margin-top: var(--space-20);
+  }
+
+  .footer-grid {
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: var(--space-8);
+  }
+
+  .footer-brand .logo {
+    display: inline-block;
+    font-weight: var(--weight-semibold);
+    font-size: var(--text-lg);
+    color: var(--color-text);
+    margin-bottom: var(--space-3);
+  }
+
+  .footer-brand p {
+    font-size: var(--text-sm);
+    max-width: 28ch;
+  }
+
+  .footer-heading {
+    font-size: var(--text-sm);
+    font-weight: var(--weight-semibold);
+    margin-bottom: var(--space-3);
+  }
+
+  .footer-col ul {
+    list-style: none;
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-2);
+  }
+
+  .footer-col a {
+    font-size: var(--text-sm);
+    color: var(--color-text-muted);
+  }
+
+  .footer-col a:hover {
+    color: var(--color-text);
+  }
+
+  .footer-bottom {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-2);
+    margin-top: var(--space-12);
+    padding-top: var(--space-6);
+    border-top: 1px solid var(--color-border);
+    font-size: var(--text-xs);
+  }
+
+  @media (min-width: 640px) {
+    .footer-grid {
+      grid-template-columns: 2fr 1fr 1fr 1fr;
+    }
+
+    .footer-bottom {
+      flex-direction: row;
+      justify-content: space-between;
+    }
+  }
+</style>

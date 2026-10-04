@@ -1,0 +1,203 @@
+---
+// Waitlist dialog. Opened by any [data-waitlist] button.
+---
+
+<dialog class="waitlist-dialog" data-waitlist-dialog aria-labelledby="waitlist-title">
+  <form method="dialog" class="waitlist-form" data-waitlist-form>
+    <button type="button" class="dialog-close" aria-label="Close" data-waitlist-close>
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+        <path d="M6 6l12 12M18 6L6 18" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
+      </svg>
+    </button>
+
+    <div class="waitlist-content" data-waitlist-prompt>
+      <h2 id="waitlist-title">Get notified at launch</h2>
+      <p class="text-muted">
+        Gatebridge is not out yet. Leave your email and we will let you know the moment
+        it ships. Early subscribers get a free period when we launch.
+      </p>
+      <div class="form-row">
+        <label for="waitlist-email">Email</label>
+        <input
+          type="email"
+          id="waitlist-email"
+          name="email"
+          required
+          autocomplete="email"
+          placeholder="you@company.com"
+        />
+      </div>
+      <button type="submit" class="btn btn-primary waitlist-submit">Notify me</button>
+    </div>
+
+    <div class="waitlist-content waitlist-success" data-waitlist-success hidden>
+      <h2>You are on the list</h2>
+      <p class="text-muted">
+        We will email you when Gatebridge launches, along with your free period details.
+      </p>
+      <button type="button" class="btn btn-secondary" data-waitlist-close>Close</button>
+    </div>
+  </form>
+</dialog>
+
+<style>
+  .waitlist-dialog {
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-lg);
+    background: var(--color-bg);
+    color: var(--color-text);
+    padding: 0;
+    max-width: 28rem;
+    width: calc(100% - 2rem);
+  }
+
+  .waitlist-dialog::backdrop {
+    background: rgb(0 0 0 / 0.5);
+    backdrop-filter: blur(4px);
+  }
+
+  .waitlist-form {
+    position: relative;
+    padding: var(--space-8);
+  }
+
+  .dialog-close {
+    position: absolute;
+    top: var(--space-4);
+    right: var(--space-4);
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 2rem;
+    height: 2rem;
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-md);
+    background: transparent;
+    color: var(--color-text-muted);
+    cursor: pointer;
+  }
+
+  .dialog-close:hover {
+    color: var(--color-text);
+    background: var(--color-surface);
+  }
+
+  .waitlist-content h2 {
+    font-size: var(--text-xl);
+    margin-bottom: var(--space-3);
+    padding-right: var(--space-8);
+  }
+
+  .waitlist-content p {
+    margin-bottom: var(--space-6);
+  }
+
+  .form-row {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-2);
+    margin-bottom: var(--space-4);
+  }
+
+  .form-row label {
+    font-size: var(--text-sm);
+    font-weight: var(--weight-medium);
+  }
+
+  .form-row input {
+    font-family: var(--font-sans);
+    font-size: var(--text-sm);
+    padding: var(--space-2) var(--space-3);
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-md);
+    background: var(--color-bg);
+    color: var(--color-text);
+  }
+
+  .form-row input:focus {
+    outline: 2px solid var(--color-accent);
+    outline-offset: 1px;
+    border-color: var(--color-accent);
+  }
+
+  .waitlist-submit {
+    width: 100%;
+  }
+
+  .waitlist-success .btn {
+    margin-top: var(--space-2);
+  }
+</style>
+
+<script>
+  const dialog = document.querySelector<HTMLDialogElement>("[data-waitlist-dialog]");
+  const prompt = document.querySelector("[data-waitlist-prompt]");
+  const success = document.querySelector("[data-waitlist-success]");
+  const form = document.querySelector<HTMLFormElement>("[data-waitlist-form]");
+
+  function openDialog() {
+    if (!dialog) return;
+    prompt?.removeAttribute("hidden");
+    success?.setAttribute("hidden", "");
+    form?.reset();
+    dialog.showModal();
+  }
+
+  function closeDialog() {
+    dialog?.close();
+  }
+
+  document.querySelectorAll("[data-waitlist]").forEach((btn) => {
+    btn.addEventListener("click", (e) => {
+      e.preventDefault();
+      openDialog();
+    });
+  });
+
+  document.querySelectorAll("[data-waitlist-close]").forEach((btn) => {
+    btn.addEventListener("click", closeDialog);
+  });
+
+  dialog?.addEventListener("click", (e) => {
+    if (e.target === dialog) closeDialog();
+  });
+
+  const FORMSUBMIT_ENDPOINT = "https://formsubmit.co/ajax/gatebridge@andreparames.com";
+
+  form?.addEventListener("submit", async (e) => {
+    e.preventDefault();
+    const email = (form.elements.namedItem("email") as HTMLInputElement)?.value;
+    if (!email) return;
+
+    const submitBtn = form.querySelector<HTMLButtonElement>(".waitlist-submit");
+    if (submitBtn) {
+      submitBtn.disabled = true;
+      submitBtn.textContent = "Sending...";
+    }
+
+    try {
+      const res = await fetch(FORMSUBMIT_ENDPOINT, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Accept: "application/json",
+        },
+        body: JSON.stringify({
+          email,
+          _subject: "Gatebridge waitlist signup",
+          _template: "table",
+        }),
+      });
+
+      if (!res.ok) throw new Error(`FormSubmit error: ${res.status}`);
+      prompt?.setAttribute("hidden", "");
+      success?.removeAttribute("hidden");
+    } catch {
+      if (submitBtn) {
+        submitBtn.disabled = false;
+        submitBtn.textContent = "Notify me";
+      }
+      alert("Something went wrong. Please try again or email hello@gatebridge.app.");
+    }
+  });
+</script>
