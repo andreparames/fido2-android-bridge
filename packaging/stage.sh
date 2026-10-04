@@ -88,7 +88,7 @@ PY
 # mtimes trip rpmlint (python-bytecode-inconsistent-mtime on Fedora) and
 # lintian (package-installs-python-pycache-dir). Must run AFTER the import
 # check above, which would otherwise regenerate __pycache__.
-find "$VENV" -name '*.pyc' -delete
-find "$VENV" -name '__pycache__' -type d -prune -exec rm -rf {} +
+find "$VENV" -type d -name '__pycache__' -exec rm -rf {} + 2>/dev/null || true
+find "$VENV" -name '*.pyc' -delete 2>/dev/null || true
 
 echo "[stage] staging tree ready at $STAGE"
