@@ -1,0 +1,16 @@
+#!/usr/bin/make -f
+# debian/rules for the fido-daemon package.
+# The payload is a prebuilt staging tree (packaging/stage) produced by
+# packaging/build.sh; nothing is compiled here, so no buildsystem is used.
+
+%:
+	dh $@ --buildsystem=none
+
+# Decision (§11 #3): never auto-enable/start the daemon on install — pairing
+# must happen first (see debian/fido-daemon.postinst).
+override_dh_installsystemd:
+	dh_installsystemd --no-enable --no-start
+
+# CHANGELOG.md is shipped as upstream docs, not a Debian changelog.
+override_dh_installchangelogs:
+	dh_installchangelogs -XCHANGELOG.md

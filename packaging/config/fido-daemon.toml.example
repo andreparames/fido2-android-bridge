@@ -1,0 +1,20 @@
+# Example fido-daemon configuration.
+#
+# Installed to /etc/fido-daemon/fido-daemon.toml.example as a read-only
+# reference. The live config lives at /var/lib/fido-daemon/config.toml (owned
+# by the fido-daemon service user); the package seeds it from this file on
+# first install, and the daemon rewrites it as needed (pinned phone key).
+#
+# Values are pairing-derived. Generate them with:
+#
+#   sudo -u fido-daemon fido-daemon pair -c /var/lib/fido-daemon/config.toml
+#
+# and print a pairing QR code for the Android app. `unpair` clears the pinned
+# phone key so a different phone can be paired.
+
+# channel_id = "sha256-hex-of-the-pairing-channel"
+# relay_token = "centrifugo-connection-token"
+# phone_public_key = "base64-32-byte-pinned-phone-static-key"
+
+# Optional override (defaults to the bundled relay):
+# relay_url = "wss://relay.example.com/connection/websocket"

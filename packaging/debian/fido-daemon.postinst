@@ -1,0 +1,53 @@
+#!/bin/sh
+set -e
+
+# fido-daemon postinst (packaging/PLAN.md §7).
+# Creates the dedicated service user, the uhid group, the state directory, and
+# seeds the live config from the /etc example. Never auto-enables the unit
+# (pairing must happen first — see the printed instructions).
+
+case "$1" in
+    configure)
+        # uhid group: udev rule systemd/70-fido2-bridge-uhid.rules grants this
+        # group access to /dev/uhid (virtual FIDO2 HID device).
+        if ! getent group uhid >/dev/null 2>&1; then
+            groupadd --system uhid
+        fi
+
+        # Dedicated non-privileged user the daemon runs as (system service).
+        if ! getent passwd fido-daemon >/dev/null 2>&1; then
+            useradd --system \
+                --home-dir /var/lib/fido-daemon \
+                --shell /usr/sbin/nologin \
+                --user-group \
+                fido-daemon
+        fi
+
+        # State directory: writable config + static identity key.
+        install -d -o fido-daemon -g fido-daemon -m 0700 /var/lib/fido-daemon
+
+        # Seed the live config from the /etc example on first install.
+        if [ ! -e /var/lib/fido-daemon/config.toml ]; then
+            install -o fido-daemon -g fido-daemon -m 0600 \
+                /etc/fido-daemon/fido-daemon.toml.example \
+                /var/lib/fido-daemon/config.toml
+        fi
+
+        # The service user must be able to open /dev/uhid (group granted by
+        # the udev rule). Idempotent.
+        usermod -aG uhid fido-daemon 2>/dev/null || true
+
+        cat <<'EOF'
+
+fido-daemon installed. To pair and start:
+
+  sudo -u fido-daemon fido-daemon pair -c /var/lib/fido-daemon/config.toml
+  sudo systemctl enable --now fido-daemon
+
+To also expose a virtual FIDO2 HID device for browser WebAuthn:
+  sudo systemctl edit fido-daemon        # add --uhid to ExecStart
+EOF
+        ;;
+esac
+
+exit 0

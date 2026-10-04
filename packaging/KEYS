@@ -1,0 +1,19 @@
+# Public release-signing keys for fido-daemon artifacts (packaging/PLAN.md §9).
+#
+# Admins fetch this file once to verify packages:
+#   deb:  debsigs --verify fido-daemon_*.deb
+#   rpm:  rpm -K fido-daemon-*.rpm   (import this key into the rpm keyring)
+#
+# Key ID:       65E4D9A0F8F86048
+# Fingerprint:  5594D19A6472A45765F0EB8765E4D9A0F8F86048
+# Generated:    2026-10-04 (ed25519, expires 2029-10-03)
+-----BEGIN PGP PUBLIC KEY BLOCK-----
+
+mDMEasKQJxYJKwYBBAHaRw8BAQdAXOlz3z66e36ZvxSPs1qfvm91z/TmS0JkTToK
+R3hLjfG0MUZpZG8gRGFlbW9uIFJlbGVhc2UgU2lnbmluZyA8bm9yZXBseUBleGFt
+cGxlLmNvbT6IlgQTFgoAPhYhBFWU0ZpkcqRXZfDrh2Xk2aD4+GBIBQJqwpAnAhsD
+BQkFo5qABQsJCAcCBhUKCQgLAgQWAgMBAh4BAheAAAoJEGXk2aD4+GBI1r8BAK5l
+websVqvDH+TggMNskXoLkRW1SNjBsVHmUwxFVVzzAP4ypTS3Tt702Iwmqx/57qyd
+JNfn0yR8zAn8dS2CuIiPDw==
+=RwT0
+-----END PGP PUBLIC KEY BLOCK-----
