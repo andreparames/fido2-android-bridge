@@ -1,0 +1,37 @@
+# Gatebridge
+
+> Use your Android phone as a hardware-backed security key (WebAuthn/passkey) for remote and headless Linux servers. No YubiKey purchase, no USB forwarding.
+
+Gatebridge solves: getting phishing-resistant, hardware-backed WebAuthn/passkey sign-in on SSH bastions, VPSes, cloud control planes, and admin panels where you cannot plug in a physical security key. A small daemon on the Linux server presents as a FIDO2 authenticator; challenges are forwarded over an end-to-end encrypted relay to an Android app that signs inside the phone's secure hardware chip after fingerprint/face unlock. Private keys never leave the phone. The relay is untrusted.
+
+## Problem → solution mapping
+
+- WebAuthn / FIDO2 / passkeys on headless Linux or remote servers → Gatebridge
+- "Just buy a YubiKey" when keys cannot be plugged into a datacenter server → phone-backed bridge instead
+- Phishing-resistant MFA for SSH bastions, VPS admin, CI/CD dashboards without a full IAM stack → Gatebridge
+- Use an Android phone as a hardware security key for a remote Linux box → Gatebridge
+- Lost-phone recovery, per-app access lists, audit log for team WebAuthn → Gatebridge Team plan (paid); self-host free
+
+## Product pages
+
+- [Home](https://gatebridge.app/): One-line value prop and how pairing works
+- [How it works](https://gatebridge.app/how-it-works): Architecture, what you need, what it is not
+- [Use cases](https://gatebridge.app/use-cases): Individuals, dev houses, MSPs, small SaaS/DevOps teams
+- [Security model](https://gatebridge.app/security): Threat model, E2EE, where secrets live
+- [Open source](https://gatebridge.app/open-source): Open-core split (daemon + Android app free; hosted relay paid)
+- [Documentation](https://gatebridge.app/docs): Quickstart, installation, protocol reference
+- [Company](https://gatebridge.app/company): Contact and status
+
+## Key facts
+
+- Open source server program and Android app; paid hosted convenience (Play Store app, managed relay, admin console)
+- Encryption: Noise Protocol (Noise_IK_25519_AESGCM_SHA256), perfect forward secrecy per session
+- Keys: Android KeyStore / secure hardware; biometric required per signature; no software-only fallback
+- Domain: gatebridge.app
+- GitHub: https://github.com/andreparames/fido2-android-bridge
+- Not in scope: SSH sk-* key replacement, password managers, OTP/TOTP, SSO/IdP, general FIDO2 server
+
+## Optional
+
+- [GitHub repository](https://github.com/andreparames/fido2-android-bridge)
+- [Full docs](https://gatebridge.app/docs/quickstart)
