@@ -10,5 +10,6 @@ debian/tmp/
 debian/fido-daemon/
 debian/*.debhelper
 debian/*.substvars
+debian/debhelper-build-stamp
 rpm/RPMBUILD/
 rpm/*.generated.spec
