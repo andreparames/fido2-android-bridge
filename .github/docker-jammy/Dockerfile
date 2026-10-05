@@ -15,6 +15,7 @@ RUN apt-get update \
         python3.11-venv \
         libffi-dev \
         build-essential \
+    && python3.11 -m ensurepip --upgrade \
     && python3.11 -m pip install --no-cache-dir --upgrade pip cffi \
     && rm -rf /var/lib/apt/lists/*
 
