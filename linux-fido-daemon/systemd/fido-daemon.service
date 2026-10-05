@@ -1,6 +1,6 @@
 [Unit]
 Description=Remote WebAuthn Android Bridge Daemon
-Documentation=https://github.com/andreparames/fido2-android-bridge
+Documentation=https://github.com/gatebridgeapp/fido2-android-bridge
 After=network-online.target
 Wants=network-online.target
 

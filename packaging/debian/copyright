@@ -1,7 +1,7 @@
 Format: https://www.debian.org/doc/packaging-manuals/copyright-format/1.0/
 Upstream-Name: fido-daemon
 Upstream-Contact: Fido Daemon Team <noreply@example.com>
-Source: https://github.com/andreparames/fido2-android-bridge
+Source: https://github.com/gatebridgeapp/fido2-android-bridge
 
 Files: *
 Copyright: 2026 Fido2Android contributors

@@ -8,7 +8,7 @@
 # half a script).
 #
 # Usage:
-#   curl -fsSL https://andreparames.github.io/fido2-android-bridge/install.sh | sudo sh
+#   curl -fsSL https://packages.gatebridge.app/install.sh | sudo sh
 #
 # Environment variables:
 #   FIDO_DAEMON_BASE_URL   Repository base URL (default: the GitHub Pages site).
@@ -20,7 +20,7 @@
 # python3.11 first.
 set -eu
 
-BASE_URL="${FIDO_DAEMON_BASE_URL:-https://andreparames.github.io/fido2-android-bridge}"
+BASE_URL="${FIDO_DAEMON_BASE_URL:-https://packages.gatebridge.app}"
 # NB: do not call this VERSION — /etc/os-release (sourced below) sets VERSION to
 # the human-readable distro version (e.g. "13 (trixie)").
 DAEMON_VERSION="${FIDO_DAEMON_VERSION:-}"

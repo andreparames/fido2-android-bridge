@@ -56,8 +56,8 @@ gpg --batch --pinentry-mode loopback --passphrase-file <(printf '%s' "$MASTER") 
     && echo "[ok] master passphrase restored on the keyring" \
     || { echo "[fail] could not restore master passphrase — re-run this script"; exit 1; }
 
-gh secret set RELEASE_GPG_PRIVATE_KEY --repo andreparames/fido2-android-bridge < /tmp/ci-key.b64
-printf '%s' "$CI" | gh secret set RELEASE_GPG_PASSPHRASE --repo andreparames/fido2-android-bridge
+gh secret set RELEASE_GPG_PRIVATE_KEY --repo gatebridgeapp/fido2-android-bridge < /tmp/ci-key.b64
+printf '%s' "$CI" | gh secret set RELEASE_GPG_PASSPHRASE --repo gatebridgeapp/fido2-android-bridge
 rm -f /tmp/ci-key.b64
 echo "[ok] GitHub secrets set (RELEASE_GPG_PRIVATE_KEY, RELEASE_GPG_PASSPHRASE)"
 

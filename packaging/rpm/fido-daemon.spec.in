@@ -27,7 +27,7 @@ Group:          Applications/System
 Packager:       Fido Daemon Team <noreply@example.com>
 
 License:        MIT
-URL:            https://github.com/andreparames/fido2-android-bridge
+URL:            https://github.com/gatebridgeapp/fido2-android-bridge
 Source0:        fido-daemon-%{version}.tar.gz
 
 # Runs on the distro python3 (>= 3.11) with pure/abi3 wheels under

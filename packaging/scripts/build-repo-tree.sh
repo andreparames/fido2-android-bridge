@@ -93,6 +93,7 @@ gpg --batch --armor --export "$KEYID" > "$OUT/RPM-GPG-KEY" 2>/dev/null || \
 
 # --- Pages niceties ---
 touch "$OUT/.nojekyll"
+echo "packages.gatebridge.app" > "$OUT/CNAME"
 install -m 0755 "$SELF_DIR/../install.sh" "$OUT/install.sh"
 cat > "$OUT/index.html" <<'EOF'
 <!doctype html>
@@ -100,10 +101,10 @@ cat > "$OUT/index.html" <<'EOF'
 <body>
 <h1>fido-daemon package repository</h1>
 <p>One-line install (auto-detects the distribution):</p>
-<pre>curl -fsSL https://andreparames.github.io/fido2-android-bridge/install.sh | sudo sh</pre>
-<p>Debian/Ubuntu: <code>deb [signed-by=fido-daemon.gpg] https://andreparames.github.io/fido2-android-bridge/debian/&lt;suite&gt;/ ./</code></p>
-<p>RHEL-family: add a repo with <code>baseurl=https://andreparames.github.io/fido2-android-bridge/repo/&lt;distro&gt;/&lt;arch&gt;/</code> and <code>gpgkey=.../RPM-GPG-KEY</code>.</p>
-<p>See <a href="https://github.com/andreparames/fido2-android-bridge/blob/master/packaging/README.md">packaging/README.md</a>.</p>
+<pre>curl -fsSL https://packages.gatebridge.app/install.sh | sudo sh</pre>
+<p>Debian/Ubuntu: <code>deb [signed-by=fido-daemon.gpg] https://packages.gatebridge.app/debian/&lt;suite&gt;/ ./</code></p>
+<p>RHEL-family: add a repo with <code>baseurl=https://packages.gatebridge.app/repo/&lt;distro&gt;/&lt;arch&gt;/</code> and <code>gpgkey=.../RPM-GPG-KEY</code>.</p>
+<p>See <a href="https://github.com/gatebridgeapp/fido2-android-bridge/blob/master/packaging/README.md">packaging/README.md</a>.</p>
 </body></html>
 EOF
 
