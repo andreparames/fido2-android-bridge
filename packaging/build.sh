@@ -18,8 +18,23 @@ TARGET="${1:-all}"
 SELF_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cd "$SELF_DIR"
 
-VERSION="$(python3 -c "import tomllib;print(tomllib.load(open('../linux-fido-daemon/pyproject.toml','rb'))['project']['version'])")"
+VERSION="$(sed -n 's/^version = "\(.*\)"/\1/p' ../linux-fido-daemon/pyproject.toml | head -1)"
 echo "[build] version=$VERSION"
+
+# Pick a >= 3.11 interpreter for staging. On Ubuntu 22.04 the distro python3 is
+# 3.10, so fall back to python3.11 (deadsnakes) when present.
+if [ -z "${PYTHON_BIN:-}" ]; then
+    for py in python3 python3.11; do
+        if command -v "$py" >/dev/null 2>&1 &&
+           "$py" -c 'import sys; raise SystemExit(0 if sys.version_info >= (3, 11) else 1)' 2>/dev/null; then
+            PYTHON_BIN="$py"
+            break
+        fi
+    done
+    PYTHON_BIN="${PYTHON_BIN:-python3}"
+fi
+export PYTHON_BIN
+echo "[build] python=$PYTHON_BIN"
 
 [ -d stage/usr/lib/fido-daemon/pylib ] || ./stage.sh
 # Floor only: the package runs on the distro python3 (pure/abi3 wheels).

@@ -54,6 +54,14 @@ and the `fido-daemon` user in the `uhid` group — both set up by the package.
 Packages are served from this repo's GitHub Pages site, published on tags /
 `workflow_dispatch` by the `publish` job in `packaging.yml`.
 
+The easiest way is the one-line installer, which detects the distro, adds the
+repo, and installs the package (on Ubuntu 22.04 it offers to install
+`python3.11` first):
+
+```sh
+curl -fsSL https://andreparames.github.io/fido2-android-bridge/install.sh | sudo sh
+```
+
 ### Debian / Ubuntu
 
 ```sh
@@ -66,7 +74,8 @@ sudo apt update && sudo apt install fido-daemon
 ```
 
 Suite per distro: `bookworm` (Debian 12), `trixie` (Debian 13), `noble`
-(Ubuntu 24.04).
+(Ubuntu 24.04), `jammy` (Ubuntu 22.04). The daemon runs on the distro
+`python3` if it is >= 3.11, otherwise on `python3.11`.
 
 ### RHEL / Fedora / Rocky / Alma
 

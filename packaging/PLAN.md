@@ -437,7 +437,7 @@ by the `publish` job of `packaging.yml` on tags / `workflow_dispatch`
 
 ```
 site/
-  debian/<suite>/            flat apt repo per suite (bookworm/trixie/noble):
+  debian/<suite>/            flat apt repo per suite (bookworm/trixie/noble/jammy):
                              Packages, Packages.gz, Release, InRelease (signed),
                              fido-daemon_*.deb
   repo/<distro>/<arch>/      dnf repo per distro (fedora/x86_64, rockylinux/x86_64):
@@ -446,6 +446,10 @@ site/
   RPM-GPG-KEY                release public key (armored; rpm gpgkey=)
   index.html, .nojekyll      Pages: no autoindex, no Jekyll
 ```
+
+One-line installer (auto-detects the distro, adds the repo, installs; offers
+`python3.11` on Ubuntu 22.04):
+`curl -fsSL https://andreparames.github.io/fido2-android-bridge/install.sh | sudo sh`
 
 Client setup — **Debian/Ubuntu**:
 ```
@@ -482,12 +486,15 @@ environment approved once.
 
 ## 10. Verification (maps to agents.md §6 Definition of Done)
 
-Matrix: `debian:12`/`debian:13`, `ubuntu:24.04`, `fedora:41`, `rockylinux:10`,
-amd64 + arm64. For each:
+Matrix: `debian:12`/`debian:13`, `ubuntu:24.04`, `ubuntu:22.04`, `fedora:41`,
+`rockylinux:10`, amd64 + arm64. For each:
 
 > Python floor is **3.11** (`pyproject.toml`; `centrifuge-python` needs ≥3.10),
-> which excludes Rocky 8/9 (3.9), Ubuntu 20.04 (3.8) and 22.04 (3.10). The
-> per-distro container matrix below reflects that.
+> which excludes Rocky 8/9 (3.9) and Ubuntu 20.04 (3.8). Ubuntu 22.04 ships
+> python3 3.10, so its package runs on `python3.11` (deadsnakes): the wrapper
+> falls back to it, the installer offers to install it, and cffi comes from pip
+> since deadsnakes ships no `python3.11-cffi`. The per-distro container matrix
+> below reflects that.
 
 1. `apt install ./fido-daemon_*.deb` / `dnf install ./fido-daemon-*.rpm` — clean,
    dependencies satisfied from distro repos only.
