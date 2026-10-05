@@ -146,11 +146,11 @@ jobs:
         run: |
           packaging/scripts/build-repo-tree.sh \
             --keyid 65E4D9A0F8F86048 \
-            --apt bookworm dist/fido-daemon-debian12-amd64/packaging/out/deb \
-            --apt trixie   dist/fido-daemon-debian13-amd64/packaging/out/deb \
-            --apt noble    dist/fido-daemon-ubuntu2404-amd64/packaging/out/deb \
-            --rpm fedora/x86_64     dist/fido-daemon-fedora41-x86_64/packaging/out/rpm \
-            --rpm rockylinux/x86_64 dist/fido-daemon-rockylinux10-x86_64/packaging/out/rpm \
+            --apt bookworm dist/fido-daemon-debian12-amd64/out/deb \
+            --apt trixie   dist/fido-daemon-debian13-amd64/out/deb \
+            --apt noble    dist/fido-daemon-ubuntu2404-amd64/out/deb \
+            --rpm fedora/x86_64     dist/fido-daemon-fedora41-x86_64/out/rpm \
+            --rpm rockylinux/x86_64 dist/fido-daemon-rockylinux10-x86_64/out/rpm \
             site
 
       - name: Upload Pages artifact
