@@ -82,7 +82,7 @@ jobs:
         run: ./build.sh ${{ matrix.target }}
 
       - name: Smoke test (install + run)
-        if: matrix.target == 'deb' && (startsWith(github.ref, 'refs/tags/') || github.event_name == 'workflow_dispatch')
+        if: matrix.target == 'deb'
         run: |
           apt-get install -y -qq ./packaging/out/deb/*.deb
           /usr/bin/fido-daemon --help >/dev/null
@@ -90,7 +90,7 @@ jobs:
           ls -l /var/lib/fido-daemon/config.toml
 
       - name: Smoke test (install + run)
-        if: matrix.target == 'rpm' && (startsWith(github.ref, 'refs/tags/') || github.event_name == 'workflow_dispatch')
+        if: matrix.target == 'rpm'
         run: |
           dnf install -y -q ./packaging/out/rpm/*.rpm
           /usr/bin/fido-daemon --help >/dev/null
