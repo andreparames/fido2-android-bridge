@@ -52,10 +52,9 @@ if find "$PYLIB" -name '*.so' ! -name '*.abi3.so' | grep -q .; then
     exit 1
 fi
 
-# No bytecode; drop exec bits on data files.
+# Drop exec bits on data files (no console scripts are shipped; the wrapper is
+# created below).
 find "$PYLIB" -type f -exec chmod -x {} + 2>/dev/null || true
-find "$PYLIB" -type d -name '__pycache__' -exec rm -rf {} + 2>/dev/null || true
-find "$PYLIB" -name '*.pyc' -delete 2>/dev/null || true
 
 # Wrapper: run the distro python3 against the bundled pylib.
 cat > "$STAGE/usr/bin/fido-daemon" <<'WRAP'
@@ -73,12 +72,17 @@ cp "$REPO_ROOT/CHANGELOG.md"                           "$STAGE/usr/share/doc/fid
 cp "$DAEMON_DIR/LICENSE"                               "$STAGE/usr/share/doc/fido-daemon/LICENSE"
 
 # Verify with the distro python3 that will actually run it.
-PYTHONPATH="$PYLIB" "$PYTHON_BIN" - <<'PY'
+PYTHONDONTWRITEBYTECODE=1 PYTHONPATH="$PYLIB" "$PYTHON_BIN" - <<'PY'
 import importlib
 for module in ("fido_daemon", "fido_daemon.cli", "centrifuge", "cryptography",
                "noise", "segno", "tomlkit", "websockets", "google.protobuf"):
     importlib.import_module(module)
 print("[stage] all runtime imports OK")
 PY
+
+# No bytecode. Must run LAST: the import check above would otherwise recreate
+# __pycache__ (lintian's package-installs-python-pycache-dir on Debian 12).
+find "$PYLIB" -type d -name '__pycache__' -exec rm -rf {} + 2>/dev/null || true
+find "$PYLIB" -name '*.pyc' -delete 2>/dev/null || true
 
 echo "[stage] staging tree ready at $STAGE"
