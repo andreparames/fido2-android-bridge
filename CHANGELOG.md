@@ -4,6 +4,30 @@ All notable changes to this project.
 
 <!-- Entries are prepended by scripts/release/bump.py on each release. -->
 
+## v0.3.0
+
+### Added
+- App logo and updated launcher icons
+- deb/rpm packaging for linux-fido-daemon
+- Marketing website with GitHub Pages deploy workflow
+- llms.txt, sitemap, AI crawler robots, and JSON-LD
+- BRAND.md with naming rationale
+- Business plan for remote WebAuthn product
+- Manually-triggered Jammy image build with Python 3.11 + cffi
+
+### Fixed
+- Render-blocking: self-host fonts, inline CSS
+- Center waitlist dialog on screen
+
+### Changed
+- CI: use prebuilt ghcr.io jammy image (Python 3.11) for Ubuntu 22.04 job
+- CI: trigger packaging only on workflow_dispatch/tags; drop redundant smoke-test gate
+- CI: run install smoke test only on workflow_dispatch/tags
+- CI: bootstrap pip via ensurepip in Jammy image
+- Run on distro python3 (>= 3.11) instead of a bundled interpreter
+- Publish apt/rpm repos on GitHub Pages
+- Move marketing website to gatebridge-site repo
+
 ## v0.2.1
 
 ### Fixed
