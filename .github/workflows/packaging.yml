@@ -43,6 +43,10 @@ jobs:
             target: rpm
             arch: x86_64
             label: rockylinux10
+          - image: quay.io/centos/centos:stream10
+            target: rpm
+            arch: x86_64
+            label: centosstream10
     steps:
       - uses: actions/checkout@v4
 
@@ -57,7 +61,8 @@ jobs:
         if: matrix.target == 'rpm'
         run: |
           dnf install -y -q epel-release || true
-          dnf install -y -q rpm-build rpmlint python3 python3-pip gnupg2 rpm-sign
+          dnf install -y -q rpm-build python3 python3-pip gnupg2 rpm-sign
+          dnf install -y -q rpmlint || true
 
       - name: Build + lint
         working-directory: packaging
@@ -151,6 +156,7 @@ jobs:
             --apt noble    dist/fido-daemon-ubuntu2404-amd64/out/deb \
             --rpm fedora/x86_64     dist/fido-daemon-fedora41-x86_64/out/rpm \
             --rpm rockylinux/x86_64 dist/fido-daemon-rockylinux10-x86_64/out/rpm \
+            --rpm centos/x86_64     dist/fido-daemon-centosstream10-x86_64/out/rpm \
             site
 
       - name: Upload Pages artifact

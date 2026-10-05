@@ -1,7 +1,8 @@
 # fido-daemon packaging
 
 Builds installable `.deb` and `.rpm` packages for the daemon. See `PLAN.md`
-for the full design (bundled venv, dedicated `fido-daemon` system user, signing).
+for the full design (bundled pure/abi3 wheels run on the distro `python3`,
+dedicated `fido-daemon` system user, signing).
 
 ## Build
 
@@ -12,8 +13,9 @@ Requires (Debian/Ubuntu): `debhelper dpkg-dev lintian rpm rpmlint`. Debian's
 ./build.sh          # stage -> deb -> rpm -> lint -> out/{deb,rpm}
 ```
 
-The venv links the build machine's python3, so for a distro-correct package
-build inside the target distro (CI builds a per-distro matrix; see §10).
+The payload is version-independent (pure-Python + abi3 wheels, no bundled
+interpreter), so one package per arch works on any distro with `python3 >= 3.11`.
+CI still builds/smoke-tests inside each target distro (see §10).
 
 ## Install
 

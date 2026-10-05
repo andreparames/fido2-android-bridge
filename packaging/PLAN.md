@@ -37,34 +37,36 @@ verified directly against the local Debian 13 package index and PyPI metadata
 | `noiseprotocol` | ✅ `python3-noiseprotocol 0.3.1` | unclear | |
 | `centrifuge-python` | ❌ **not packaged** | ❌ | needs `websockets>=15`, `protobuf>=5.29` |
 
-**Decision: bundle a self-contained virtualenv under `/usr/lib/fido-daemon/venv`.**
-Install **all** dependencies (pinned) into it at build time; the package just
-unpacks it.
+**Decision: bundle the app + its dependencies as pure-Python + abi3 wheels
+under `/usr/lib/fido-daemon/pylib`, and run them on the distro `python3`
+(>= 3.11) via a small wrapper. Do NOT bundle a Python interpreter.**
 
 Why:
 - The one dependency **no distro ships** (`centrifuge-python`) is the core
   relay client — there is no Debian/RedHat story without bundling or vendoring.
-- A bundled venv is **distro-agnostic**: identical behaviour on Ubuntu, Rocky,
-  Fedora, openSUSE — no per-distro dependency mapping to maintain.
-- `cryptography` ships `cp37-abi3-manylinux` wheels for x86_64 **and** aarch64,
-  so no compiler/toolchain is needed on the target (wheels built once at
-  packaging time).
-- This is the established pattern for commercial cross-distro agents/tools
-  (Datadog agent, AWS CLI, GitHub Actions runners).
+- **No bundled interpreter** means no `libpythonX.Y.so` pin: the same package
+  installs on any distro with `python3 >= 3.11`. (An earlier bundled-venv design
+  shipped a copy of the build distro's interpreter, whose `NEEDED
+  libpython3.13.so.1.0` made the rpm uninstallable on CentOS Stream 10 / newer
+  Fedora.)
+- Only **abi3** native wheels are kept (`cryptography`, `protobuf`), which are
+  forward-compatible across Python 3.11–3.14. `websockets`' optional C speedups
+  and `cffi` are dropped. `cffi` (`_cffi_backend`) is Python-minor-specific, so
+  it is **provided by the distro** (`python3-cffi`, also a dep of
+  `python3-cryptography`); the bundled cryptography's Rust module imports it at
+  load.
+- Still **arch-specific** (abi3 `.so` are per-arch): build `amd64` + `arm64`.
 
 Trade-offs (accepted):
-- Package becomes **arch-specific** (contains `.so` from the venv): build for
-  `amd64` + `arm64`, not `all`/`noarch`.
-- Package is larger (~10–20 MB compressed).
-- Needs `python3 >= 3.11` at runtime (the venv links the system interpreter; it
-  is not fully hermetic).
+- Requires a distro `python3 >= 3.11` (all current targets have it; the floor is
+  set by `websockets` 17 — see below).
 - Fedora's official packaging guidelines *discourage* bundling Python modules —
   but those rules govern packages shipped **in Fedora's own repos**, not
-  third-party self-hosted distribution. We are the latter; bundling is the
-  right call for a commercial daemon.
+  third-party self-hosted distribution. We are the latter.
 
-Rejected alternative: declare distro `python3-*` dependencies. Only fully works
-on Debian (where one wheel would still need vendoring) and is fragile on RPM.
+Rejected alternative: declare distro `python3-*` dependencies for everything.
+Only fully works on Debian (where `centrifuge-python` would still need
+vendoring) and is fragile on RPM.
 
 ---
 
@@ -72,12 +74,12 @@ on Debian (where one wheel would still need vendoring) and is fragile on RPM.
 
 **Decision: native tooling per family, fed from one shared staging tree.**
 
-- **deb** → `debhelper` (dh), compat **13**. No `dh-python` needed (venv is
+- **deb** → `debhelper` (dh), compat **13**. No `dh-python` needed (wheels are
   bundled, nothing installed into `dist-packages`). `dh_installudev` +
   install of the **system** unit + `/etc` conffile.
 - **rpm** → `rpmbuild` with a single `fido-daemon.spec` using standard macros
   (`%{_unitdir}`, `%{_udevrulesdir}`, `%{_sysconfdir}`, `%{_prefix}`).
-- Shared build: `packaging/build.sh` runs `stage.sh` (builds the venv + staging
+- Shared build: `packaging/build.sh` runs `stage.sh` (builds the pylib + staging
   tree) once, then hands the tree to each format builder.
 
 Why not **FPM** for both? FPM is fine for quick artifacts but expresses
@@ -99,7 +101,7 @@ packaging/
   PLAN.md                         # this document
   README.md                       # per-distro install instructions
   build.sh                        # orchestrate: stage -> deb -> rpm (containers)
-  stage.sh                        # build /usr/lib/fido-daemon venv + staging tree
+  stage.sh                        # build /usr/lib/fido-daemon pylib + staging tree
   debian/
     control
     rules
@@ -122,8 +124,8 @@ Staging tree produced by `stage.sh`:
 
 ```
 stage/
-  opt/fido-daemon/venv/           # venv + all deps + fido_daemon package
-  usr/bin/fido-daemon             # symlink -> /usr/lib/fido-daemon/venv/bin/fido-daemon
+  usr/lib/fido-daemon/pylib/           # app + pure/abi3 deps + fido_daemon
+  usr/bin/fido-daemon             # symlink -> /usr/lib/fido-daemon/pylib/bin/fido-daemon
   usr/lib/systemd/system/fido-daemon.service
   usr/lib/udev/rules.d/70-fido2-bridge-uhid.rules
   etc/fido-daemon/fido-daemon.toml.example
@@ -163,7 +165,7 @@ Single source of truth: `linux-fido-daemon/pyproject.toml` (`[project] version`)
    Group=fido-daemon
    RuntimeDirectory=fido-daemon          # -> /run/fido-daemon (chowned to the
    RuntimeDirectoryMode=0700             #    service user by systemd)
-   ExecStart=/usr/lib/fido-daemon/venv/bin/fido-daemon \
+   ExecStart=/usr/lib/fido-daemon/pylib/bin/fido-daemon \
        -c /var/lib/fido-daemon/config.toml \
        --socket %t/fido-daemon/fido2-bridge.sock
    Environment=PYTHONUNBUFFERED=1
@@ -210,10 +212,10 @@ Single source of truth: `linux-fido-daemon/pyproject.toml` (`[project] version`)
 ## 7. deb specifics
 
 - Name `fido-daemon`, Section `utils`, Priority `optional`,
-  **Architecture: `amd64` / `arm64`** (venv is arch-specific).
+  **Architecture: `amd64` / `arm64`** (abi3 `.so` are arch-specific).
 - `Depends: python3 (>= 3.11), systemd, udev, passwd, adduser` — nothing else.
 - `debian/install`:
-  - `stage/usr/lib/fido-daemon/venv → /usr/lib/fido-daemon/`
+  - `stage/usr/lib/fido-daemon/pylib → /usr/lib/fido-daemon/`
   - `usr/bin/fido-daemon → /usr/bin/`
   - `usr/lib/systemd/system/fido-daemon.service → /usr/lib/systemd/system/`
   - `usr/lib/udev/rules.d/70-fido2-bridge-uhid.rules → /usr/lib/udev/rules.d/`
@@ -234,7 +236,7 @@ Single source of truth: `linux-fido-daemon/pyproject.toml` (`[project] version`)
   - No `prerm`/`postrm` logic beyond defaults; do **not** delete the user or
     the group (state may persist / other tools may rely on it).
 - `debian/changelog` generated by `build.sh` from `pyproject.toml` + git log.
-- `debian/copyright` — MIT, with the venv's bundled wheels documented
+- `debian/copyright` — MIT, with the bundled wheels documented
   (Debian asks for per-component copyright for vendored code; keep a list of
   bundled wheels and their licenses).
 - Target lintian: zero errors.
@@ -244,14 +246,14 @@ Single source of truth: `linux-fido-daemon/pyproject.toml` (`[project] version`)
 ## 8. rpm specifics
 
 - `Name: fido-daemon`, `Version`/`Release` from §5, `License: MIT`,
-  `BuildArch` omitted → per-`%{_arch}` (venv).
+  `BuildArch` omitted → per-`%{_arch}` (arch-specific abi3 `.so`).
 - `Requires: python3 >= 3.11, systemd, systemd-udev, passwd, shadow-utils`.
 - `%install`:
-  - copy venv → `%{buildroot}/usr/lib/fido-daemon`
+  - copy pylib → `%{buildroot}/usr/lib/fido-daemon`
   - system unit → `%{_unitdir}` (`/usr/lib/systemd/system`)
   - udev rules → `%{_udevrulesdir}` (`/usr/lib/udev/rules.d`)
   - config example → `%{_sysconfdir}/fido-daemon/`
-  - `%{_bindir}/fido-daemon` symlink → venv console script
+  - `%{_bindir}/fido-daemon` wrapper script
 - `%files` mirrors the above; mark `/etc/fido-daemon/fido-daemon.toml.example`
   as `%config(noreplace)`.
 - Scriptlets:
@@ -277,7 +279,7 @@ Single source of truth: `linux-fido-daemon/pyproject.toml` (`[project] version`)
 
 ```
 VERSION  := tomllib(pyproject.toml)
-1. stage.sh            # venv + staging tree (pinned requirements, pip wheel cache)
+1. stage.sh            # pylib + staging tree (pure/abi3 wheels)
 2. deb                 # debian:13 container: dpkg-buildpackage -b -us -uc
 3. rpm                 # rockylinux:9 container: rpmbuild -ba fido-daemon.spec
 4. checks              # lintian + rpmlint on artifacts (fail on errors)
@@ -285,9 +287,10 @@ VERSION  := tomllib(pyproject.toml)
 6. out/{deb,rpm}/      # signed artifacts + SHA256SUMS + SIGSUMS
 ```
 
-Container images pinned by digest for reproducibility. `stage.sh` builds the
-venv against the **oldest** supported Python (3.11) so the venv's
-abi3/wheel tags are maximally compatible with newer runtimes.
+`stage.sh` installs pure-Python + **abi3** wheels (pruning `cffi` and
+`websockets` speedups) into `/usr/lib/fido-daemon/pylib`; the package runs on
+the distro `python3 >= 3.11` via a wrapper, so the same payload works across
+python 3.11–3.14 and across distros.
 
 ### Signing (decision: include)
 
@@ -494,7 +497,7 @@ amd64 + arm64. For each:
    conffile present.
 4. `/usr/bin/fido-daemon --help` and `sudo -u fido-daemon fido-daemon pair
    --no-qr` — run, config written to `/etc/fido-daemon/config.toml`.
-5. `ldd` the venv python + `import cryptography` — no missing shared libs.
+5. `ldd` the abi3 `.so` + `import cryptography` — no missing shared libs.
 6. Start unit (`systemctl start fido-daemon`): socket created at
    `/run/fido-daemon/fido2-bridge.sock` with `0600` (owned by `fido-daemon`);
    clean unlink on stop.
@@ -508,8 +511,8 @@ amd64 + arm64. For each:
 
 | # | Question | Decision |
 |---|----------|----------|
-| 1 | Dependency strategy | **Bundled venv** under `/usr/lib/fido-daemon/venv` (§2) |
-| 2 | Arch set | **Both**: `amd64` + `arm64` |
+| 1 | Dependency strategy | **Bundled pure/abi3 wheels** under `/usr/lib/fido-daemon/pylib`, run on distro `python3 >= 3.11` (no bundled interpreter) (§2) |
+| 2 | Arch set | **Both**: `amd64` + `arm64` (arch-specific abi3 `.so`) |
 | 3 | Auto-enable on install | **No** — pairing must happen first; `postinst`/`%pre` print next steps |
 | 4 | `uhid` group | **Create via package postinst** (`groupadd --system uhid`, guarded) |
 | 5 | Tooling | **Native**: debhelper + rpmbuild (§3) |
