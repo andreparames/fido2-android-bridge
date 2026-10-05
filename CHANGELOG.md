@@ -4,6 +4,12 @@ All notable changes to this project.
 
 <!-- Entries are prepended by scripts/release/bump.py on each release. -->
 
+## v0.3.1
+
+### Changed
+
+- Point repository URLs at the gatebridgeapp org and packages.gatebridge.app
+
 ## v0.3.0
 
 ### Added
