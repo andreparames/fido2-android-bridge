@@ -1,9 +1,10 @@
 # fido-daemon spec template. packaging/build.sh substitutes @VERSION@/@PYMIN@
 # into rpm/fido-daemon.generated.spec, then runs rpmbuild against it.
 #
-# The payload is a prebuilt staging tree (packaging/stage) — a bundled venv at
-# /opt/fido-daemon plus systemd unit, udev rules, config example, and docs.
-# Nothing is compiled here.
+# The payload is a prebuilt staging tree (packaging/stage): pure-Python + abi3
+# wheels under %{_prefix}/lib/fido-daemon/pylib, a /usr/bin/fido-daemon wrapper,
+# the systemd unit, udev rules, config example, and docs. Nothing is compiled
+# here; the app runs on the distro python3 (>= 3.11).
 
 %global _pymin @PYMIN@
 
@@ -12,12 +13,10 @@
 %{!?_unitdir:%global _unitdir %{_prefix}/lib/systemd/system}
 %{!?_udevrulesdir:%global _udevrulesdir %{_prefix}/lib/udev/rules.d}
 
-# No debuginfo: the payload is a prebuilt venv, not something we compile.
+# No debuginfo: the payload is a prebuilt tree, not something we compile.
 %define debug_package %{nil}
 
-# The bundled venv carries a copy of the distro python interpreter, whose
-# build-id collides with the python3 package's /usr/lib/.build-id link
-# (rpm transaction test error on RHEL-family). Disable build-id links.
+# Disable build-id links (the bundled abi3 .so need no debug-link metadata).
 %global _build_id_links none
 
 Name:           fido-daemon
@@ -31,8 +30,11 @@ License:        MIT
 URL:            https://github.com/andreparames/fido2-android-bridge
 Source0:        fido-daemon-%{version}.tar.gz
 
-# venv is arch-specific (bundled compiled wheels), so BuildArch is omitted.
-Requires:       python3 >= %{_pymin}, systemd, systemd-udev, passwd, shadow-utils
+# Runs on the distro python3 (>= 3.11) with pure/abi3 wheels under
+# %{_prefix}/lib/fido-daemon/pylib; no bundled interpreter, so no libpython pin.
+# cffi is Python-minor-specific and provided by the distro (needed by the
+# bundled cryptography's Rust module).
+Requires:       python3 >= %{_pymin}, python3-cffi, systemd, systemd-udev, passwd, shadow-utils
 
 %description
 Linux daemon that bridges local WebAuthn login requests to a remote Android
@@ -82,7 +84,7 @@ fi
 %{_docdir}/fido-daemon/README.md
 %{_docdir}/fido-daemon/CHANGELOG.md
 %{_docdir}/fido-daemon/LICENSE
-%{_prefix}/lib/fido-daemon/venv
+%{_prefix}/lib/fido-daemon/pylib
 
 %changelog
 * Sun Oct 04 2026 Fido Daemon Team <noreply@example.com> - @VERSION@-1

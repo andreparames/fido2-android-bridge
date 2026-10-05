@@ -1,77 +1,69 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# Build the bundled /opt/fido-daemon venv and assemble the staging tree that
-# both the .deb and .rpm builders consume (packaging/PLAN.md §4/§9).
+# Build the app tree + staging tree consumed by the deb/rpm builders
+# (packaging/PLAN.md §2/§4).
 #
-# The venv is NOT relocatable across Python versions: it links the build
-# machine's python3, so build each package on a machine whose python version
-# matches the target (CI builds per-distro containers). PYTHON_BIN lets you
-# pick an older interpreter, e.g. PYTHON_BIN=python3.11.
+# We do NOT bundle a Python interpreter. The package runs on the distro's
+# `python3` (>= 3.11) via a small wrapper, with pure-Python + abi3 wheels under
+# /usr/lib/fido-daemon/pylib. This keeps ONE package usable across distros and
+# across python 3.11/3.12/3.13/3.14 (no `libpython` pin, which previously made
+# the rpm uninstallable on CentOS Stream 10 / newer Fedora).
+#
+# Native modules kept must be abi3 (stable ABI). cffi is dropped and provided
+# by the distro (python3-cffi): cryptography's Rust module imports
+# `_cffi_backend` at load, but cffi's _cffi_backend is Python-minor-specific, so
+# it cannot be bundled. websockets' C speedups are optional (pure fallback).
 
 SELF_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$SELF_DIR/.." && pwd)"
 DAEMON_DIR="$REPO_ROOT/linux-fido-daemon"
 STAGE="$SELF_DIR/stage"
+PYLIB="$STAGE/usr/lib/fido-daemon/pylib"
 
 PYTHON_BIN="${PYTHON_BIN:-python3}"
 PIP_INDEX_URL="${PIP_INDEX_URL:-https://pypi.org/simple}"
 
 rm -rf "$STAGE"
 mkdir -p \
-  "$STAGE/usr/lib/fido-daemon/venv" \
+  "$PYLIB" \
   "$STAGE/usr/bin" \
   "$STAGE/usr/lib/systemd/system" \
   "$STAGE/usr/lib/udev/rules.d" \
   "$STAGE/etc/fido-daemon" \
   "$STAGE/usr/share/doc/fido-daemon"
 
-VENV="$STAGE/usr/lib/fido-daemon/venv"
+echo "[stage] installing app + deps (--target) with $PYTHON_BIN"
+BUILDER="$(mktemp -d)"
+"$PYTHON_BIN" -m venv "$BUILDER"
+"$BUILDER/bin/pip" install -q --upgrade pip
+"$BUILDER/bin/pip" install -q --index-url "$PIP_INDEX_URL" --target "$PYLIB" "$DAEMON_DIR"
+rm -rf "$BUILDER" "$PYLIB/bin"   # console scripts replaced by our wrapper
 
-echo "[stage] creating venv with $PYTHON_BIN"
-"$PYTHON_BIN" -m venv "$VENV"
-"$VENV/bin/pip" install -q --upgrade pip
-"$VENV/bin/pip" install -q --index-url "$PIP_INDEX_URL" "$DAEMON_DIR"
+# Keep only version-independent native code.
+rm -rf "$PYLIB"/cffi "$PYLIB"/cffi-*.dist-info "$PYLIB"/_cffi_backend*.so
+rm -rf "$PYLIB"/pycparser "$PYLIB"/pycparser-*.dist-info
+rm -f  "$PYLIB"/websockets/speedups*.so
 
-# pip and setuptools are only needed to build the venv, not to run the daemon.
-# Dropping them shrinks the payload and removes setuptools' distutils-precedence
-# .pth (which otherwise re-creates _distutils_hack/__pycache__ on every python
-# startup, tripping lintian's package-installs-python-pycache-dir).
-"$VENV/bin/pip" uninstall -q -y pip setuptools
-rm -f "$VENV"/bin/pip* 2>/dev/null || true
+# Guard: only abi3 native modules may remain.
+if find "$PYLIB" -name '*.so' ! -name '*.abi3.so' | grep -q .; then
+    echo "[stage] ERROR: non-abi3 native module present (would pin a python minor):" >&2
+    find "$PYLIB" -name '*.so' ! -name '*.abi3.so' >&2
+    exit 1
+fi
 
-# Console-script shebangs embed the *build* path of the venv; the venv is
-# installed at /usr/lib/fido-daemon/venv, so rewrite them to that canonical
-# path. Only touch regular files (bin/python* are symlinks to the system
-# python).
-for f in "$VENV/bin"/*; do
-    [ -f "$f" ] && sed -i \
-        "1s|^#!$VENV/bin/python3|#!/usr/lib/fido-daemon/venv/bin/python3|" \
-        "$f"
-done
+# Drop exec bits on data files (no console scripts are shipped; the wrapper is
+# created below).
+find "$PYLIB" -type f -exec chmod -x {} + 2>/dev/null || true
 
-# Debian's venv *copies* the interpreter into bin/python3/python3.13 instead
-# of symlinking it; keep a single copy (bin/python) and point the others at it
-# to avoid shipping ~14MB of duplicate binaries. The copies are identical.
-ln -sf python "$VENV/bin/python3"
-ln -sf python "$VENV/bin/python3.13"
+# Wrapper: run the distro python3 against the bundled pylib.
+cat > "$STAGE/usr/bin/fido-daemon" <<'WRAP'
+#!/bin/sh
+PYTHONPATH=/usr/lib/fido-daemon/pylib exec /usr/bin/python3 -m fido_daemon.cli "$@"
+WRAP
+chmod 0755 "$STAGE/usr/bin/fido-daemon"
 
-# Wheels ship files with the executable bit set (protobuf/pip/etc.); those are
-# not scripts, so drop exec bits everywhere except bin/ (real console scripts
-# with shebangs). This keeps lintian/rpmlint clean.
-find "$VENV" -type f ! -path "$VENV/bin/*" -exec chmod -x {} +
-
-# Some wheels also ship a `#!` first line on files that are not meant to be
-# run (e.g. segno's cli module). Strip those shebangs so rpmlint does not flag
-# them as non-executable scripts. Only applies under lib/ (bin/ keeps its
-# console-script shebangs).
-find "$VENV/lib" -type f -exec sh -c '
-    if head -c2 "$1" | grep -q "^#!"; then sed -i "1d" "$1"; fi
-' _ {} \;
-
-echo "[stage] wiring bin, systemd unit, udev rules, config, docs"
-ln -s /usr/lib/fido-daemon/venv/bin/fido-daemon "$STAGE/usr/bin/fido-daemon"
-rm -f "$VENV/.gitignore"                     # pip venv artifact; not payload
+echo "[stage] wiring systemd unit, udev rules, config, docs"
 cp "$DAEMON_DIR/systemd/fido-daemon.service"           "$STAGE/usr/lib/systemd/system/"
 cp "$DAEMON_DIR/systemd/70-fido2-bridge-uhid.rules"    "$STAGE/usr/lib/udev/rules.d/"
 cp "$SELF_DIR/config/fido-daemon.toml.example"         "$STAGE/etc/fido-daemon/"
@@ -79,18 +71,18 @@ cp "$DAEMON_DIR/README.md"                             "$STAGE/usr/share/doc/fid
 cp "$REPO_ROOT/CHANGELOG.md"                           "$STAGE/usr/share/doc/fido-daemon/CHANGELOG.md"
 cp "$DAEMON_DIR/LICENSE"                               "$STAGE/usr/share/doc/fido-daemon/LICENSE"
 
-"$VENV/bin/python" - <<'PY'
+# Verify with the distro python3 that will actually run it.
+PYTHONDONTWRITEBYTECODE=1 PYTHONPATH="$PYLIB" "$PYTHON_BIN" - <<'PY'
 import importlib
-for module in ("fido_daemon", "centrifuge", "cryptography", "noise", "segno", "tomlkit"):
+for module in ("fido_daemon", "fido_daemon.cli", "centrifuge", "cryptography",
+               "noise", "segno", "tomlkit", "websockets", "google.protobuf"):
     importlib.import_module(module)
 print("[stage] all runtime imports OK")
 PY
 
-# Ship no bytecode: Python regenerates .pyc at runtime, and build-time .pyc
-# mtimes trip rpmlint (python-bytecode-inconsistent-mtime on Fedora) and
-# lintian (package-installs-python-pycache-dir). Must run AFTER the import
-# check above, which would otherwise regenerate __pycache__.
-find "$VENV" -type d -name '__pycache__' -exec rm -rf {} + 2>/dev/null || true
-find "$VENV" -name '*.pyc' -delete 2>/dev/null || true
+# No bytecode. Must run LAST: the import check above would otherwise recreate
+# __pycache__ (lintian's package-installs-python-pycache-dir on Debian 12).
+find "$PYLIB" -type d -name '__pycache__' -exec rm -rf {} + 2>/dev/null || true
+find "$PYLIB" -name '*.pyc' -delete 2>/dev/null || true
 
 echo "[stage] staging tree ready at $STAGE"

@@ -1,6 +1,0 @@
-# Bundled self-contained venv (packaging/PLAN.md §2): ships one copy of the
-# Python interpreter because Debian's venv copies the binary (it cannot be
-# symlinked), and the venv console scripts intentionally point at
-# /usr/lib/fido-daemon/venv/bin/python3 rather than /usr/bin/python3.
-fido-daemon: embedded-library
-fido-daemon: wrong-path-for-interpreter

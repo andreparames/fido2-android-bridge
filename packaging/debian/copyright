@@ -11,12 +11,11 @@ Files: debian/*
 Copyright: 2026 Fido2Android contributors
 License: MIT
 
-# Third-party Python packages bundled into /usr/lib/fido-daemon/venv. Each
-# wheel ships its own license file under .../venv/lib/python*/site-packages/<pkg>/
-# and its metadata (including LICENSE / COPYING) inside the corresponding
-# *.dist-info directory; the full per-component list is available from the
-# build log of packaging/stage.sh.
-Files: usr/lib/fido-daemon/venv/*
+# Third-party Python packages bundled (pure-Python + abi3 wheels) into
+# /usr/lib/fido-daemon/pylib. Each wheel ships its own license file and
+# metadata (LICENSE / COPYING) inside its *.dist-info directory; the full
+# per-component list is available from the build log of packaging/stage.sh.
+Files: usr/lib/fido-daemon/pylib/*
 Copyright: see each bundled package
 License: MIT or compatible (per-package; see dist-info metadata)
 

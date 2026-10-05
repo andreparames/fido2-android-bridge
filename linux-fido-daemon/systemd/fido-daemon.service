@@ -15,7 +15,7 @@ Group=fido-daemon
 # daemon can bind its 0600 socket inside it.
 RuntimeDirectory=fido-daemon
 RuntimeDirectoryMode=0700
-ExecStart=/usr/lib/fido-daemon/venv/bin/fido-daemon -c /var/lib/fido-daemon/config.toml --socket %t/fido-daemon/fido2-bridge.sock
+ExecStart=/usr/bin/fido-daemon -c /var/lib/fido-daemon/config.toml --socket %t/fido-daemon/fido2-bridge.sock
 Environment=PYTHONUNBUFFERED=1
 Environment=FIDO2_STATIC_KEY_PATH=/var/lib/fido-daemon/static_key.pem
 Restart=on-failure

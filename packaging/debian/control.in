@@ -9,7 +9,7 @@ Vcs-Git: https://github.com/andreparames/fido2-android-bridge.git
 
 Package: fido-daemon
 Architecture: any
-Depends: ${misc:Depends}, ${shlibs:Depends}, python3 (>= @PYMIN@), systemd, udev, passwd, adduser
+Depends: ${misc:Depends}, ${shlibs:Depends}, python3 (>= @PYMIN@), python3-cffi, systemd, udev, passwd, adduser
 Description: Remote WebAuthn Android bridge daemon
  Linux daemon that bridges local WebAuthn login requests to a remote Android
  phone over an end-to-end encrypted (Noise) WebSocket relay, presenting a

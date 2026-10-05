@@ -1,4 +1,4 @@
-stage/usr/lib/fido-daemon/venv /usr/lib/fido-daemon/
+stage/usr/lib/fido-daemon/pylib /usr/lib/fido-daemon/
 stage/usr/bin/fido-daemon /usr/bin/
 stage/usr/lib/systemd/system/fido-daemon.service /usr/lib/systemd/system/
 stage/usr/lib/udev/rules.d/70-fido2-bridge-uhid.rules /usr/lib/udev/rules.d/

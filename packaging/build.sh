@@ -9,9 +9,9 @@ set -euo pipefail
 # Version is single-sourced from linux-fido-daemon/pyproject.toml (§5).
 #
 # Build the .deb with dpkg-buildpackage (Debian/Ubuntu) and the .rpm with
-# rpmbuild (works from Debian's rpm package too). The venv links the build
-# machine's python3, so for a distro-correct package run this inside the
-# target distro (CI builds one container per distro; see §10).
+# rpmbuild (works from Debian's rpm package too). The payload is pure-Python +
+# abi3 wheels run on the distro python3 (>= 3.11), so it is version-independent;
+# CI still builds/lint/smoke-tests inside each target distro (see §10).
 
 TARGET="${1:-all}"
 
@@ -21,9 +21,10 @@ cd "$SELF_DIR"
 VERSION="$(python3 -c "import tomllib;print(tomllib.load(open('../linux-fido-daemon/pyproject.toml','rb'))['project']['version'])")"
 echo "[build] version=$VERSION"
 
-[ -f stage/usr/lib/fido-daemon/venv/bin/python ] || ./stage.sh
-PYMIN="$(PYTHONDONTWRITEBYTECODE=1 "$SELF_DIR/stage/usr/lib/fido-daemon/venv/bin/python" -c "import sys;print(f'{sys.version_info[0]}.{sys.version_info[1]}')")"
-echo "[build] venv python=$PYMIN"
+[ -d stage/usr/lib/fido-daemon/pylib ] || ./stage.sh
+# Floor only: the package runs on the distro python3 (pure/abi3 wheels).
+PYMIN="3.11"
+echo "[build] python3 floor=$PYMIN"
 
 mkdir -p out/deb out/rpm
 
