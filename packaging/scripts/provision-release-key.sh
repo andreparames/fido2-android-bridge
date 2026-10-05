@@ -47,7 +47,7 @@ ls -l "$BACKUP"
 # 3. CI copy: swap to CI passphrase, export, restore master
 printf '%s\n%s\n%s\nsave\nquit\n' "$MASTER" "$CI" "$CI" |
     gpg --batch --pinentry-mode loopback --command-fd 0 --edit-key "$RELEASE" passwd >/dev/null 2>&1
-gpg --batch --pinentry-mode loopback --passphrase-file <(printf '%s' "$CI") \
+gpg --batch --armor --pinentry-mode loopback --passphrase-file <(printf '%s' "$CI") \
     --export-secret-keys "$RELEASE" | base64 -w0 > /tmp/ci-key.b64
 printf '%s\n%s\n%s\nsave\nquit\n' "$CI" "$MASTER" "$MASTER" |
     gpg --batch --pinentry-mode loopback --command-fd 0 --edit-key "$RELEASE" passwd >/dev/null 2>&1

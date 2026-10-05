@@ -47,7 +47,41 @@ sudo systemctl restart fido-daemon
 This requires the udev rules (`/usr/lib/udev/rules.d/70-fido2-bridge-uhid.rules`)
 and the `fido-daemon` user in the `uhid` group — both set up by the package.
 
-## Verifying signatures
+## Installing from the hosted repos
+
+Packages are served from this repo's GitHub Pages site, published on tags /
+`workflow_dispatch` by the `publish` job in `packaging.yml`.
+
+### Debian / Ubuntu
+
+```sh
+sudo install -d -m 0755 /etc/apt/keyrings
+sudo curl -fsSL https://andreparames.github.io/fido2-android-bridge/fido-daemon.gpg \
+  -o /etc/apt/keyrings/fido-daemon.gpg
+echo "deb [signed-by=/etc/apt/keyrings/fido-daemon.gpg] https://andreparames.github.io/fido2-android-bridge/debian/trixie/ ./" \
+  | sudo tee /etc/apt/sources.list.d/fido-daemon.list
+sudo apt update && sudo apt install fido-daemon
+```
+
+Suite per distro: `bookworm` (Debian 12), `trixie` (Debian 13), `noble`
+(Ubuntu 24.04).
+
+### RHEL / Fedora / Rocky / Alma
+
+```sh
+sudo rpm --import https://andreparames.github.io/fido2-android-bridge/RPM-GPG-KEY
+sudo tee /etc/yum.repos.d/fido-daemon.repo >/dev/null <<'EOF'
+[fido-daemon]
+name=fido-daemon
+baseurl=https://andreparames.github.io/fido2-android-bridge/repo/fedora/x86_64/
+enabled=1
+gpgcheck=1
+gpgkey=https://andreparames.github.io/fido2-android-bridge/RPM-GPG-KEY
+EOF
+sudo dnf install fido-daemon
+```
+
+### Verifying signatures
 
 ```sh
 # deb
