@@ -10,10 +10,12 @@ set -euo pipefail
 # across python 3.11/3.12/3.13/3.14 (no `libpython` pin, which previously made
 # the rpm uninstallable on CentOS Stream 10 / newer Fedora).
 #
-# Native modules kept must be abi3 (stable ABI). cffi is dropped and provided
-# by the distro (python3-cffi): cryptography's Rust module imports
-# `_cffi_backend` at load, but cffi's _cffi_backend is Python-minor-specific, so
-# it cannot be bundled. websockets' C speedups are optional (pure fallback).
+# Native modules kept must be abi3 (stable ABI). cffi is dropped because
+# cryptography imports `_cffi_backend` at load and cffi's _cffi_backend is
+# Python-minor-specific, so it cannot be bundled. It is provided by the distro
+# (python3-cffi) on python3 >= 3.11, or by pip for the python3.11 fallback used
+# on Ubuntu 22.04 (see packaging/install.sh). websockets' C speedups are
+# optional (pure-Python fallback).
 
 SELF_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$SELF_DIR/.." && pwd)"
@@ -21,7 +23,18 @@ DAEMON_DIR="$REPO_ROOT/linux-fido-daemon"
 STAGE="$SELF_DIR/stage"
 PYLIB="$STAGE/usr/lib/fido-daemon/pylib"
 
-PYTHON_BIN="${PYTHON_BIN:-python3}"
+# Pick a >= 3.11 interpreter (the bundled wheels target it). build.sh exports
+# PYTHON_BIN; standalone runs fall back to python3.11 when python3 is older.
+if [ -z "${PYTHON_BIN:-}" ]; then
+    for py in python3 python3.11; do
+        if command -v "$py" >/dev/null 2>&1 &&
+           "$py" -c 'import sys; raise SystemExit(0 if sys.version_info >= (3, 11) else 1)' 2>/dev/null; then
+            PYTHON_BIN="$py"
+            break
+        fi
+    done
+    PYTHON_BIN="${PYTHON_BIN:-python3}"
+fi
 PIP_INDEX_URL="${PIP_INDEX_URL:-https://pypi.org/simple}"
 
 rm -rf "$STAGE"
@@ -56,10 +69,21 @@ fi
 # created below).
 find "$PYLIB" -type f -exec chmod -x {} + 2>/dev/null || true
 
-# Wrapper: run the distro python3 against the bundled pylib.
+# Wrapper: run the distro python3 if it is >= 3.11, else python3.11.
 cat > "$STAGE/usr/bin/fido-daemon" <<'WRAP'
 #!/bin/sh
-PYTHONPATH=/usr/lib/fido-daemon/pylib exec /usr/bin/python3 -m fido_daemon.cli "$@"
+# Prefer the distro python3; fall back to python3.11 (e.g. Ubuntu 22.04).
+PYTHONPATH=/usr/lib/fido-daemon/pylib
+export PYTHONPATH
+if command -v python3 >/dev/null 2>&1 &&
+   python3 -c 'import sys; raise SystemExit(0 if sys.version_info >= (3, 11) else 1)' 2>/dev/null; then
+    exec python3 -m fido_daemon.cli "$@"
+fi
+if command -v python3.11 >/dev/null 2>&1; then
+    exec python3.11 -m fido_daemon.cli "$@"
+fi
+echo "fido-daemon: requires Python 3.11 or newer, but none was found" >&2
+exit 1
 WRAP
 chmod 0755 "$STAGE/usr/bin/fido-daemon"
 

@@ -3,19 +3,14 @@ name: packaging
 on:
   workflow_dispatch:
   push:
-    branches: [master]
     tags: ['v*']
-  pull_request:
-    paths:
-      - 'linux-fido-daemon/**'
-      - 'packaging/**'
-      - '.github/workflows/packaging.yml'
 
 permissions:
   contents: read
 
 jobs:
   build:
+    if: startsWith(github.ref, 'refs/tags/') || github.event_name == 'workflow_dispatch'
     name: ${{ matrix.image }} (${{ matrix.target }}, ${{ matrix.arch }})
     runs-on: ubuntu-latest
     container: ${{ matrix.image }}
@@ -35,6 +30,12 @@ jobs:
             target: deb
             arch: amd64
             label: ubuntu2404
+            pybin: python3
+          - image: ubuntu:22.04
+            target: deb
+            arch: amd64
+            label: ubuntu2204
+            pybin: python3.11
           - image: fedora:41
             target: rpm
             arch: x86_64
@@ -57,6 +58,16 @@ jobs:
           apt-get install -y -qq debhelper dpkg-dev lintian \
               python3 python3-venv python3-pip python3-cffi gnupg
 
+      - name: Install Python 3.11 (Ubuntu 22.04)
+        if: matrix.label == 'ubuntu2204'
+        run: |
+          apt-get install -y -qq software-properties-common
+          add-apt-repository -y ppa:deadsnakes/ppa
+          apt-get update -qq
+          apt-get install -y -qq python3.11 python3.11-venv python3.11-dev
+          python3.11 -m ensurepip --upgrade
+          python3.11 -m pip install --upgrade cffi
+
       - name: Install tooling (rpm)
         if: matrix.target == 'rpm'
         run: |
@@ -66,6 +77,8 @@ jobs:
 
       - name: Build + lint
         working-directory: packaging
+        env:
+          PYTHON_BIN: ${{ matrix.pybin }}
         run: ./build.sh ${{ matrix.target }}
 
       - name: Smoke test (install + run)
@@ -154,6 +167,7 @@ jobs:
             --apt bookworm dist/fido-daemon-debian12-amd64/out/deb \
             --apt trixie   dist/fido-daemon-debian13-amd64/out/deb \
             --apt noble    dist/fido-daemon-ubuntu2404-amd64/out/deb \
+            --apt jammy    dist/fido-daemon-ubuntu2204-amd64/out/deb \
             --rpm fedora/x86_64     dist/fido-daemon-fedora41-x86_64/out/rpm \
             --rpm rockylinux/x86_64 dist/fido-daemon-rockylinux10-x86_64/out/rpm \
             --rpm centos/x86_64     dist/fido-daemon-centosstream10-x86_64/out/rpm \
