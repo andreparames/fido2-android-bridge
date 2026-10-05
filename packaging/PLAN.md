@@ -431,7 +431,7 @@ a third-party service.
 ### Repo publishing (decision: in scope — GitHub Pages)
 
 The apt and dnf repos are served as **static trees on this repo's GitHub
-Pages** site (`https://andreparames.github.io/fido2-android-bridge/`), built
+Pages** site (`https://packages.gatebridge.app/`), built
 by the `publish` job of `packaging.yml` on tags / `workflow_dispatch`
 (`packaging/scripts/build-repo-tree.sh`):
 
@@ -449,28 +449,28 @@ site/
 
 One-line installer (auto-detects the distro, adds the repo, installs; offers
 `python3.11` on Ubuntu 22.04):
-`curl -fsSL https://andreparames.github.io/fido2-android-bridge/install.sh | sudo sh`
+`curl -fsSL https://packages.gatebridge.app/install.sh | sudo sh`
 
 Client setup — **Debian/Ubuntu**:
 ```
 sudo install -d -m 0755 /etc/apt/keyrings
-sudo curl -fsSL https://andreparames.github.io/fido2-android-bridge/fido-daemon.gpg \
+sudo curl -fsSL https://packages.gatebridge.app/fido-daemon.gpg \
   -o /etc/apt/keyrings/fido-daemon.gpg
-echo "deb [signed-by=/etc/apt/keyrings/fido-daemon.gpg] https://andreparames.github.io/fido2-android-bridge/debian/<suite>/ ./" \
+echo "deb [signed-by=/etc/apt/keyrings/fido-daemon.gpg] https://packages.gatebridge.app/debian/<suite>/ ./" \
   | sudo tee /etc/apt/sources.list.d/fido-daemon.list   # suite: bookworm|trixie|noble
 sudo apt update && sudo apt install fido-daemon
 ```
 
 **RHEL-family**:
 ```
-sudo rpm --import https://andreparames.github.io/fido2-android-bridge/RPM-GPG-KEY
+sudo rpm --import https://packages.gatebridge.app/RPM-GPG-KEY
 cat >/etc/yum.repos.d/fido-daemon.repo <<EOF
 [fido-daemon]
 name=fido-daemon
-baseurl=https://andreparames.github.io/fido2-android-bridge/repo/fedora/x86_64/
+baseurl=https://packages.gatebridge.app/repo/fedora/x86_64/
 enabled=1
 gpgcheck=1
-gpgkey=https://andreparames.github.io/fido2-android-bridge/RPM-GPG-KEY
+gpgkey=https://packages.gatebridge.app/RPM-GPG-KEY
 EOF
 sudo dnf install fido-daemon
 ```

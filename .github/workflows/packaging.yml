@@ -7,6 +7,7 @@ on:
 
 permissions:
   contents: read
+  packages: read
 
 jobs:
   build:
@@ -31,7 +32,7 @@ jobs:
             arch: amd64
             label: ubuntu2404
             pybin: python3
-          - image: ghcr.io/andreparames/fido2-android-bridge/docker-jammy:latest
+          - image: ghcr.io/gatebridgeapp/fido2-android-bridge/docker-jammy:latest
             target: deb
             arch: amd64
             label: ubuntu2204

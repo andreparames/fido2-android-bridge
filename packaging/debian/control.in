@@ -4,8 +4,8 @@ Priority: optional
 Maintainer: Fido Daemon Team <noreply@example.com>
 Build-Depends: debhelper-compat (= 13)
 Standards-Version: 4.7.0
-Homepage: https://github.com/andreparames/fido2-android-bridge
-Vcs-Git: https://github.com/andreparames/fido2-android-bridge.git
+Homepage: https://github.com/gatebridgeapp/fido2-android-bridge
+Vcs-Git: https://github.com/gatebridgeapp/fido2-android-bridge.git
 
 Package: fido-daemon
 Architecture: any
