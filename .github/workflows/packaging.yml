@@ -106,3 +106,51 @@ jobs:
             packaging/out/${{ matrix.target }}
             packaging/KEYS
           if-no-files-found: error
+
+  publish:
+    name: Publish apt/rpm repos (GitHub Pages)
+    needs: [build]
+    if: (startsWith(github.ref, 'refs/tags/') || github.event_name == 'workflow_dispatch')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pages: write
+      id-token: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Download build artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: dist
+
+      - name: Install repo tools
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq apt-utils createrepo-c
+
+      - name: Import signing key
+        uses: crazy-max/ghaction-import-gpg@v6
+        with:
+          gpg_private_key: ${{ secrets.RELEASE_GPG_PRIVATE_KEY }}
+          passphrase: ${{ secrets.RELEASE_GPG_PASSPHRASE }}
+
+      - name: Assemble repo tree
+        run: |
+          packaging/scripts/build-repo-tree.sh \
+            --keyid 65E4D9A0F8F86048 \
+            --apt bookworm dist/fido-daemon-debian12-amd64/packaging/out/deb \
+            --apt trixie   dist/fido-daemon-debian13-amd64/packaging/out/deb \
+            --apt noble    dist/fido-daemon-ubuntu2404-amd64/packaging/out/deb \
+            --rpm fedora/x86_64     dist/fido-daemon-fedora41-x86_64/packaging/out/rpm \
+            --rpm rockylinux/x86_64 dist/fido-daemon-rockylinux10-x86_64/packaging/out/rpm \
+            site
+
+      - name: Upload Pages artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: site
+
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4

@@ -425,8 +425,55 @@ verifiable by `apt`/`dnf` (only good for release-asset checksums); hosted
 build platforms (**COPR**, **PPA**, **OBS**) sign for you but tie the build to
 a third-party service.
 
-Out of scope for v1 (noted): apt/dnf **repo publishing**, CI wiring. CI hook is
-a natural follow-up once `build.sh` works locally.
+### Repo publishing (decision: in scope — GitHub Pages)
+
+The apt and dnf repos are served as **static trees on this repo's GitHub
+Pages** site (`https://andreparames.github.io/fido2-android-bridge/`), built
+by the `publish` job of `packaging.yml` on tags / `workflow_dispatch`
+(`packaging/scripts/build-repo-tree.sh`):
+
+```
+site/
+  debian/<suite>/            flat apt repo per suite (bookworm/trixie/noble):
+                             Packages, Packages.gz, Release, InRelease (signed),
+                             fido-daemon_*.deb
+  repo/<distro>/<arch>/      dnf repo per distro (fedora/x86_64, rockylinux/x86_64):
+                             fido-daemon-*.rpm + repodata/ (createrepo_c)
+  fido-daemon.gpg            release public key (binary; apt signed-by=)
+  RPM-GPG-KEY                release public key (armored; rpm gpgkey=)
+  index.html, .nojekyll      Pages: no autoindex, no Jekyll
+```
+
+Client setup — **Debian/Ubuntu**:
+```
+sudo install -d -m 0755 /etc/apt/keyrings
+sudo curl -fsSL https://andreparames.github.io/fido2-android-bridge/fido-daemon.gpg \
+  -o /etc/apt/keyrings/fido-daemon.gpg
+echo "deb [signed-by=/etc/apt/keyrings/fido-daemon.gpg] https://andreparames.github.io/fido2-android-bridge/debian/<suite>/ ./" \
+  | sudo tee /etc/apt/sources.list.d/fido-daemon.list   # suite: bookworm|trixie|noble
+sudo apt update && sudo apt install fido-daemon
+```
+
+**RHEL-family**:
+```
+sudo rpm --import https://andreparames.github.io/fido2-android-bridge/RPM-GPG-KEY
+cat >/etc/yum.repos.d/fido-daemon.repo <<EOF
+[fido-daemon]
+name=fido-daemon
+baseurl=https://andreparames.github.io/fido2-android-bridge/repo/fedora/x86_64/
+enabled=1
+gpgcheck=1
+gpgkey=https://andreparames.github.io/fido2-android-bridge/RPM-GPG-KEY
+EOF
+sudo dnf install fido-daemon
+```
+
+Notes: Pages is one site per repo (the marketing site moved to its own repo,
+so this repo's Pages hosts the package repos). `.deb`/`.rpm` carry the same
+version across suites (per-python distro builds), so each distro gets its own
+suite/dir rather than a shared pool. GitHub Pages has a 1 GB site limit; prune
+old versions if it grows. The first Pages deploy needs the `github-pages`
+environment approved once.
 
 ---
 
@@ -467,7 +514,7 @@ amd64 + arm64. For each:
 | 4 | `uhid` group | **Create via package postinst** (`groupadd --system uhid`, guarded) |
 | 5 | Tooling | **Native**: debhelper + rpmbuild (§3) |
 | 6 | SELinux | **No policy module** — document issue + optional local module in README (§8) |
-| 7 | Signing | **Include** in the pipeline; key isolated from build hosts (§9); repo publishing still out of scope for v1 |
+| 7 | Signing | **Include** in the pipeline; key isolated from build hosts (§9); repo publishing via **GitHub Pages** (§9.2) |
 | 8 | Run model | **System service under a dedicated `fido-daemon` user** (§6), not a per-user unit — server-target deployment, survives logout |
 | 9 | Service user provisioning | **postinst/`%pre` create the user + group**, add to `uhid`, create `/var/lib/fido-daemon` (§7/§8) |
 | 10 | Socket reachability | **0600 owned by `fido-daemon`** — only same-user local clients; human-user clients use the uhid path (world-rw hidraw). Revisit if a direct-socket client under another user is needed |
