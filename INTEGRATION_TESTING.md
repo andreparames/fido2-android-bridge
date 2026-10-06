@@ -65,12 +65,20 @@ default. Use a config like:
   "log": { "level": "info" },
   "channel": {
     "without_namespace": {
-      "allow_subscribe_for_client": true,
-      "allow_subscribe_for_anonymous": true,
-      "allow_publish_for_client": true,
-      "allow_publish_for_anonymous": true,
-      "allow_publish_for_subscriber": true
-    }
+      "allow_subscribe_for_client": false,
+      "allow_publish_for_client": false,
+      "allow_publish_for_subscriber": false
+    },
+    "namespaces": [
+      {
+        "name": "fidobridge",
+        "allow_subscribe_for_client": true,
+        "allow_subscribe_for_anonymous": true,
+        "allow_publish_for_client": true,
+        "allow_publish_for_anonymous": true,
+        "allow_publish_for_subscriber": true
+      }
+    ]
   },
   "http_server": { "address": "127.0.0.1", "port": 9000 }
 }
