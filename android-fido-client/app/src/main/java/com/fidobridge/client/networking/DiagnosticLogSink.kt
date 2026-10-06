@@ -3,7 +3,6 @@ package com.fidobridge.client.networking
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.Executor
 import java.util.concurrent.Executors
-import java.util.concurrent.TimeUnit
 
 /**
  * Fans diagnostic entries out to two destinations:
@@ -14,6 +13,10 @@ import java.util.concurrent.TimeUnit
  *    persistence failures can never break the authentication/security path.
  * 2. The relay log channel via [RelayLogPublisher] — only when [relayEnabled],
  *    which is `true` for debug builds and `false` for release/prod builds.
+ *
+ * [stop] refuses new writes and drains everything already queued, so a caller
+ * (e.g. app reset) can clear the store afterwards without a late write
+ * recreating it. [start] re-enables logging for a reconnect.
  */
 class DiagnosticLogSink(
     private val store: DiagnosticLogStore,
@@ -24,12 +27,17 @@ class DiagnosticLogSink(
     }
 ) {
 
+    @Volatile
+    private var accepting = true
+
     fun start(channelId: String, relayUrl: String, relayToken: String?) {
+        accepting = true
         if (!relayEnabled) return
         runCatching { publisher.start(channelId, relayUrl, relayToken) }
     }
 
     fun log(message: String) {
+        if (!accepting) return
         val entry = DiagnosticLogEntry.now(message)
         writer.execute { runCatching { store.append(entry) } }
         if (relayEnabled) {
@@ -39,15 +47,24 @@ class DiagnosticLogSink(
         }
     }
 
-    /** Drains queued local writes (best effort) before tearing down the relay. */
+    /**
+     * Refuses further writes and waits for every already-queued write to finish
+     * before tearing down the relay, so nothing can be appended after the caller
+     * clears the store.
+     */
     fun stop() {
-        val drained = CountDownLatch(1)
-        runCatching { writer.execute { drained.countDown() } }
-        runCatching { drained.await(DRAIN_TIMEOUT_SECONDS, TimeUnit.SECONDS) }
+        accepting = false
+        drain()
         if (relayEnabled) runCatching { publisher.stop() }
     }
 
-    companion object {
-        private const val DRAIN_TIMEOUT_SECONDS = 2L
+    private fun drain() {
+        val drained = CountDownLatch(1)
+        runCatching { writer.execute { drained.countDown() } }
+        try {
+            drained.await()
+        } catch (e: InterruptedException) {
+            Thread.currentThread().interrupt()
+        }
     }
 }

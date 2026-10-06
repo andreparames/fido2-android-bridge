@@ -88,20 +88,22 @@ class FileDiagnosticLogStore(
     /**
      * Encodes one entry so it can never exceed [maxBytes] on its own (the
      * rotation bound would otherwise be violated by a single oversized line).
-     * Oversized messages are truncated; the result is always valid JSON Lines.
+     * Oversized messages are truncated to the longest prefix that fits, found by
+     * binary search; the result is always valid JSON Lines.
      */
     private fun encodeWithinLimit(entry: DiagnosticLogEntry): ByteArray {
-        var message = entry.message
-        var line = lineBytes(entry.copy(message = message))
-        while (line.size > maxBytes && message.isNotEmpty()) {
-            message = if (line.size / 2 > maxBytes) {
-                message.substring(0, message.length / 2)
+        if (lineBytes(entry).size <= maxBytes) return lineBytes(entry)
+        var low = 0
+        var high = entry.message.length
+        while (low < high) {
+            val mid = (low + high + 1) / 2
+            if (lineBytes(entry.copy(message = entry.message.substring(0, mid))).size <= maxBytes) {
+                low = mid
             } else {
-                message.dropLast(1)
+                high = mid - 1
             }
-            line = lineBytes(entry.copy(message = message))
         }
-        return line
+        return lineBytes(entry.copy(message = entry.message.substring(0, low)))
     }
 
     private fun lineBytes(entry: DiagnosticLogEntry): ByteArray =

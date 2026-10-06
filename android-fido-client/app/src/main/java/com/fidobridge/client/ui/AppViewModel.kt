@@ -46,9 +46,13 @@ class AppViewModel @Inject constructor(
     fun reconnect() = pipeline.reconnect()
 
     fun reset(onComplete: (Boolean) -> Unit) {
-        pipeline.stop()
         viewModelScope.launch {
-            val ok = withContext(Dispatchers.IO) { appResetManager.reset() }
+            // Stop the pipeline first (drains queued diagnostics off-main) so the
+            // store can be cleared without a late write recreating it.
+            val ok = withContext(Dispatchers.IO) {
+                pipeline.stop()
+                appResetManager.reset()
+            }
             if (!ok) {
                 userMessageBus.post("Reset incomplete — some data may remain. Try again.")
             }

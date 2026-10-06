@@ -107,6 +107,30 @@ class DiagnosticLogSinkTest {
     }
 
     @Test
+    fun `stop refuses writes that arrive afterwards`() {
+        val store = RecordingStore()
+        val sink = DiagnosticLogSink(store, RecordingPublisher(), relayEnabled = false, writer = direct)
+
+        sink.log("before")
+        sink.stop()
+        sink.log("after")
+
+        assertEquals(listOf("before"), store.entries.map { it.message })
+    }
+
+    @Test
+    fun `start re-enables logging after stop`() {
+        val store = RecordingStore()
+        val sink = DiagnosticLogSink(store, RecordingPublisher(), relayEnabled = false, writer = direct)
+
+        sink.stop()
+        sink.start("c".repeat(32), "wss://relay", null)
+        sink.log("resumed")
+
+        assertEquals(listOf("resumed"), store.entries.map { it.message })
+    }
+
+    @Test
     fun `start only connects the relay when enabled`() {
         val disabledPublisher = RecordingPublisher()
         DiagnosticLogSink(RecordingStore(), disabledPublisher, relayEnabled = false, writer = direct)

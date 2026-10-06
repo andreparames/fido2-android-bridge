@@ -95,9 +95,9 @@ interface DiagnosticLogStore {
   executor (ordered, off the caller thread, wrapped in `runCatching` so a
   storage failure can never propagate into the pipeline/biometric callbacks);
   if `relayEnabled`, publish as best-effort. Remove the early-return drop.
-- `start(...)`: no-op relay connect when `!relayEnabled` (keeps local logging
-  working with no relay credentials). `stop()` drains queued writes then tears
-  down the relay.
+- `start(...)`: re-enables logging and (only when `relayEnabled`) connects the
+  relay. `stop()` refuses new writes, drains everything already queued, then
+  tears the relay down — so a later `clear()` can't be undone by a late write.
 - The executor is injectable so tests can run writes inline and deterministically.
 
 ### 3.3 Build gating (`app/build.gradle.kts`)
@@ -200,9 +200,10 @@ Per the repo rule ("no implementation code precedes its failing test"):
   storage nor a full disk can block or break the pipeline/biometric callbacks.
 - **Rotation race:** appends can arrive from multiple threads; guard the file
   store with a single lock and serialize writes through one executor.
-- **Reset vs in-flight writes:** `reset()` clears the store after the pipeline is
-  stopped; already-queued appends are drained by the single-thread executor, so
-  the ordering stays append→clear. Exported copies stay outside this guarantee.
+- **Reset vs in-flight writes:** `reset()` first stops the pipeline on
+  `Dispatchers.IO`; the sink then refuses new writes and fully drains its queue,
+  so the subsequent `clear()` cannot be undone by a late append. Exported copies
+  stay outside this guarantee.
 - **Device transfer:** `allowBackup="false"` is not sufficient on all API 31+
   OEMs; `dataExtractionRules` excludes `diagnostics/` from D2D transfer.
 - **Provider variance:** some SAF providers reject `application/zip`; use
