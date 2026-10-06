@@ -23,8 +23,9 @@ class AppResetManagerTest {
         override fun append(entry: DiagnosticLogEntry) = Unit
         override fun readAll(): String = ""
         override fun exportZipTo(output: OutputStream) = Unit
-        override fun clear() {
+        override fun clear(): Boolean {
             cleared = true
+            return true
         }
         override fun sizeBytes(): Long = 0
     }

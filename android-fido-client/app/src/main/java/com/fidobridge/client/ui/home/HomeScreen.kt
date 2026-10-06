@@ -122,7 +122,13 @@ fun HomeScreen(
 
                 DiagnosticsSection(
                     onExportClick = {
-                        exportLauncher.launch("gatebridge-diagnostics-${System.currentTimeMillis()}.zip")
+                        viewModel.checkDiagnosticsAvailable { available ->
+                            if (available) {
+                                exportLauncher.launch("gatebridge-diagnostics-${System.currentTimeMillis()}.zip")
+                            } else {
+                                viewModel.notifyNoDiagnostics()
+                            }
+                        }
                     }
                 )
 

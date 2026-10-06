@@ -20,7 +20,7 @@ class DiagnosticsExporterTest {
         override fun exportZipTo(output: OutputStream) {
             output.write(bytes)
         }
-        override fun clear() = Unit
+        override fun clear(): Boolean = true
         override fun sizeBytes(): Long = bytes.size.toLong()
     }
 

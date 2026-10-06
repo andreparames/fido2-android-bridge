@@ -37,7 +37,7 @@ class AppViewModelTest {
         override fun append(entry: DiagnosticLogEntry) = Unit
         override fun readAll(): String = ""
         override fun exportZipTo(output: OutputStream) = Unit
-        override fun clear() = Unit
+        override fun clear(): Boolean = true
         override fun sizeBytes(): Long = size
     }
 
@@ -182,31 +182,41 @@ class AppViewModelTest {
     }
 
     @Test
-    fun `exportDiagnostics reports when there is nothing to export`() {
+    fun `checkDiagnosticsAvailable reports the store state`() {
         Dispatchers.setMain(UnconfinedTestDispatcher())
         try {
-            val exporter = mockk<DiagnosticsExporter>(relaxed = true)
-            val bus = UserMessageBus()
-            val vm = viewModel(
-                userMessageBus = bus,
-                diagnosticLogStore = FakeDiagnosticLogStore(size = 0),
-                diagnosticsExporter = exporter
-            )
             val done = CountDownLatch(1)
-            var result: Boolean? = null
-
-            vm.exportDiagnostics(mockk()) {
-                result = it
-                done.countDown()
-            }
-
+            var available: Boolean? = null
+            viewModel(diagnosticLogStore = FakeDiagnosticLogStore(size = 5))
+                .checkDiagnosticsAvailable {
+                    available = it
+                    done.countDown()
+                }
             assertTrue(done.await(5, TimeUnit.SECONDS))
-            assertEquals(false, result)
-            verify(exactly = 0) { exporter.exportTo(any()) }
-            assertEquals("No logs to export yet.", bus.message.value)
+            assertEquals(true, available)
+
+            val emptyDone = CountDownLatch(1)
+            var empty: Boolean? = null
+            viewModel(diagnosticLogStore = FakeDiagnosticLogStore(size = 0))
+                .checkDiagnosticsAvailable {
+                    empty = it
+                    emptyDone.countDown()
+                }
+            assertTrue(emptyDone.await(5, TimeUnit.SECONDS))
+            assertEquals(false, empty)
         } finally {
             Dispatchers.resetMain()
         }
+    }
+
+    @Test
+    fun `notifyNoDiagnostics reports a message`() {
+        val bus = UserMessageBus()
+        val vm = viewModel(userMessageBus = bus)
+
+        vm.notifyNoDiagnostics()
+
+        assertEquals("No logs to export yet.", bus.message.value)
     }
 
     @Test

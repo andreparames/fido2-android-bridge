@@ -1,12 +1,15 @@
 package com.fidobridge.client.networking
 
 import java.io.OutputStream
+import java.util.concurrent.Executor
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class DiagnosticLogSinkTest {
+
+    private val direct = Executor { it.run() }
 
     private class RecordingStore : DiagnosticLogStore {
         val entries = mutableListOf<DiagnosticLogEntry>()
@@ -15,8 +18,16 @@ class DiagnosticLogSinkTest {
         }
         override fun readAll(): String = ""
         override fun exportZipTo(output: OutputStream) = Unit
-        override fun clear() = Unit
+        override fun clear(): Boolean = true
         override fun sizeBytes(): Long = entries.size.toLong()
+    }
+
+    private class ThrowingStore : DiagnosticLogStore {
+        override fun append(entry: DiagnosticLogEntry) = throw java.io.IOException("disk full")
+        override fun readAll(): String = ""
+        override fun exportZipTo(output: OutputStream) = Unit
+        override fun clear(): Boolean = true
+        override fun sizeBytes(): Long = 0
     }
 
     private class RecordingPublisher : RelayLogPublisher {
@@ -40,7 +51,7 @@ class DiagnosticLogSinkTest {
     fun `log persists locally and skips the relay when disabled`() {
         val store = RecordingStore()
         val publisher = RecordingPublisher()
-        val sink = DiagnosticLogSink(store, publisher, relayEnabled = false)
+        val sink = DiagnosticLogSink(store, publisher, relayEnabled = false, writer = direct)
 
         sink.log("hello")
 
@@ -52,7 +63,7 @@ class DiagnosticLogSinkTest {
     fun `log persists locally and publishes when enabled`() {
         val store = RecordingStore()
         val publisher = RecordingPublisher()
-        val sink = DiagnosticLogSink(store, publisher, relayEnabled = true)
+        val sink = DiagnosticLogSink(store, publisher, relayEnabled = true, writer = direct)
 
         sink.log("hello")
 
@@ -64,7 +75,7 @@ class DiagnosticLogSinkTest {
     fun `log persists locally even when the relay publisher was never started`() {
         val store = RecordingStore()
         val publisher = RecordingPublisher()
-        val sink = DiagnosticLogSink(store, publisher, relayEnabled = true)
+        val sink = DiagnosticLogSink(store, publisher, relayEnabled = true, writer = direct)
 
         sink.log("offline")
 
@@ -72,14 +83,38 @@ class DiagnosticLogSinkTest {
     }
 
     @Test
+    fun `a local storage failure never propagates and the relay still publishes`() {
+        val publisher = RecordingPublisher()
+        val sink = DiagnosticLogSink(ThrowingStore(), publisher, relayEnabled = true, writer = direct)
+
+        sink.log("boom") // must not throw
+
+        assertEquals(1, publisher.published.size)
+    }
+
+    @Test
+    fun `stop drains queued writes`() {
+        val store = RecordingStore()
+        val publisher = RecordingPublisher()
+        // Default single-thread executor: writes are queued off the caller thread.
+        val sink = DiagnosticLogSink(store, publisher, relayEnabled = true)
+
+        repeat(200) { sink.log("m$it") }
+        sink.stop()
+
+        assertEquals(200, store.entries.size)
+        assertTrue(publisher.stopped)
+    }
+
+    @Test
     fun `start only connects the relay when enabled`() {
         val disabledPublisher = RecordingPublisher()
-        DiagnosticLogSink(RecordingStore(), disabledPublisher, relayEnabled = false)
+        DiagnosticLogSink(RecordingStore(), disabledPublisher, relayEnabled = false, writer = direct)
             .start("c".repeat(32), "wss://relay", "tok")
         assertFalse(disabledPublisher.started)
 
         val enabledPublisher = RecordingPublisher()
-        DiagnosticLogSink(RecordingStore(), enabledPublisher, relayEnabled = true)
+        DiagnosticLogSink(RecordingStore(), enabledPublisher, relayEnabled = true, writer = direct)
             .start("c".repeat(32), "wss://relay", "tok")
         assertTrue(enabledPublisher.started)
         assertEquals(Triple("c".repeat(32), "wss://relay", "tok"), enabledPublisher.lastArgs)
@@ -88,11 +123,11 @@ class DiagnosticLogSinkTest {
     @Test
     fun `stop only tears the relay down when enabled`() {
         val disabledPublisher = RecordingPublisher()
-        DiagnosticLogSink(RecordingStore(), disabledPublisher, relayEnabled = false).stop()
+        DiagnosticLogSink(RecordingStore(), disabledPublisher, relayEnabled = false, writer = direct).stop()
         assertFalse(disabledPublisher.stopped)
 
         val enabledPublisher = RecordingPublisher()
-        DiagnosticLogSink(RecordingStore(), enabledPublisher, relayEnabled = true).stop()
+        DiagnosticLogSink(RecordingStore(), enabledPublisher, relayEnabled = true, writer = direct).stop()
         assertTrue(enabledPublisher.stopped)
     }
 }

@@ -13,7 +13,9 @@ interface DiagnosticLogStore {
     fun append(entry: DiagnosticLogEntry)
     fun readAll(): String
     fun exportZipTo(output: OutputStream)
-    fun clear()
+
+    /** Deletes all stored diagnostics. Returns true when nothing remains on disk. */
+    fun clear(): Boolean
     fun sizeBytes(): Long
 }
 
@@ -36,7 +38,7 @@ class FileDiagnosticLogStore(
     @Synchronized
     override fun append(entry: DiagnosticLogEntry) {
         dir.mkdirs()
-        val line = DiagnosticLogEntry.encode(entry).toByteArray(Charsets.UTF_8) + NEWLINE
+        val line = encodeWithinLimit(entry)
         if (currentFile.length() > 0 && currentFile.length() + line.size > maxBytes) {
             rotate()
         }
@@ -67,9 +69,10 @@ class FileDiagnosticLogStore(
     }
 
     @Synchronized
-    override fun clear() {
-        currentFile.delete()
-        rotatedFile.delete()
+    override fun clear(): Boolean {
+        val currentGone = !currentFile.exists() || currentFile.delete()
+        val rotatedGone = !rotatedFile.exists() || rotatedFile.delete()
+        return currentGone && rotatedGone
     }
 
     @Synchronized
@@ -82,6 +85,28 @@ class FileDiagnosticLogStore(
         currentFile.renameTo(rotatedFile)
     }
 
+    /**
+     * Encodes one entry so it can never exceed [maxBytes] on its own (the
+     * rotation bound would otherwise be violated by a single oversized line).
+     * Oversized messages are truncated; the result is always valid JSON Lines.
+     */
+    private fun encodeWithinLimit(entry: DiagnosticLogEntry): ByteArray {
+        var message = entry.message
+        var line = lineBytes(entry.copy(message = message))
+        while (line.size > maxBytes && message.isNotEmpty()) {
+            message = if (line.size / 2 > maxBytes) {
+                message.substring(0, message.length / 2)
+            } else {
+                message.dropLast(1)
+            }
+            line = lineBytes(entry.copy(message = message))
+        }
+        return line
+    }
+
+    private fun lineBytes(entry: DiagnosticLogEntry): ByteArray =
+        (DiagnosticLogEntry.encode(entry) + "\n").toByteArray(Charsets.UTF_8)
+
     /** Reads only the lines that still decode, so a truncated tail never breaks readAll. */
     private fun retainedLines(file: File): List<String> =
         file.readLines(Charsets.UTF_8).filter { DiagnosticLogEntry.decode(it) != null }
@@ -90,7 +115,5 @@ class FileDiagnosticLogStore(
         const val CURRENT_NAME = "diagnostics.jsonl"
         const val ROTATED_NAME = "diagnostics.1.jsonl"
         const val DEFAULT_MAX_BYTES = 1L shl 20 // 1 MiB
-
-        private val NEWLINE = byteArrayOf('\n'.code.toByte())
     }
 }

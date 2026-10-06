@@ -45,16 +45,34 @@ class FileDiagnosticLogStoreTest {
     }
 
     @Test
-    fun `clear removes every file`() {
+    fun `clear removes every file and reports success`() {
         val store = store(maxBytes = 80)
         repeat(3) { store.append(entry("m$it")) }
 
-        store.clear()
+        assertTrue(store.clear())
 
         assertFalse(File(tmp.root, FileDiagnosticLogStore.CURRENT_NAME).exists())
         assertFalse(File(tmp.root, FileDiagnosticLogStore.ROTATED_NAME).exists())
         assertEquals(0L, store.sizeBytes())
         assertEquals("", store.readAll())
+    }
+
+    @Test
+    fun `clear on an empty store is still a success`() {
+        assertTrue(store().clear())
+    }
+
+    @Test
+    fun `append truncates a single entry that cannot fit one generation`() {
+        val store = store(maxBytes = 80)
+        val message = "x".repeat(10_000)
+
+        store.append(entry(message))
+
+        val line = store.readAll().trim()
+        val decoded = DiagnosticLogEntry.decode(line)!!
+        assertTrue(decoded.message.length < message.length)
+        assertTrue(store.sizeBytes() <= 80)
     }
 
     @Test

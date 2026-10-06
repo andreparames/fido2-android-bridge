@@ -35,8 +35,8 @@ class AppResetManager(
         val identityCleared = identityStore.clear()
         val credentialsCleared = credentialStore.clear()
         requestLog.clear()
-        diagnosticLogStore.clear()
-        return keysDeleted && identityCleared && credentialsCleared
+        val diagnosticsCleared = diagnosticLogStore.clear()
+        return keysDeleted && identityCleared && credentialsCleared && diagnosticsCleared
     }
 
     companion object {

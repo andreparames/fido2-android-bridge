@@ -56,15 +56,18 @@ class AppViewModel @Inject constructor(
         }
     }
 
-    fun hasDiagnostics(): Boolean = diagnosticLogStore.sizeBytes() > 0
+    /** Reports, off the main thread, whether there are logs to export. */
+    fun checkDiagnosticsAvailable(onResult: (Boolean) -> Unit) {
+        viewModelScope.launch {
+            val available = withContext(Dispatchers.IO) { diagnosticLogStore.sizeBytes() > 0 }
+            onResult(available)
+        }
+    }
+
+    fun notifyNoDiagnostics() = userMessageBus.post("No logs to export yet.")
 
     fun exportDiagnostics(uri: Uri, onComplete: (Boolean) -> Unit = {}) {
         viewModelScope.launch {
-            if (diagnosticLogStore.sizeBytes() == 0L) {
-                userMessageBus.post("No logs to export yet.")
-                onComplete(false)
-                return@launch
-            }
             val ok = withContext(Dispatchers.IO) { diagnosticsExporter.exportTo(uri) }
             userMessageBus.post(if (ok) "Diagnostics exported." else "Could not export diagnostics.")
             onComplete(ok)
