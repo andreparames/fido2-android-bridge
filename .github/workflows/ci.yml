@@ -166,12 +166,20 @@ jobs:
             },
             "channel": {
               "without_namespace": {
-                "allow_subscribe_for_client": true,
-                "allow_subscribe_for_anonymous": true,
-                "allow_publish_for_client": true,
-                "allow_publish_for_anonymous": true,
-                "allow_publish_for_subscriber": true
-              }
+                "allow_subscribe_for_client": false,
+                "allow_publish_for_client": false,
+                "allow_publish_for_subscriber": false
+              },
+              "namespaces": [
+                {
+                  "name": "fidobridge",
+                  "allow_subscribe_for_client": true,
+                  "allow_subscribe_for_anonymous": true,
+                  "allow_publish_for_client": true,
+                  "allow_publish_for_anonymous": true,
+                  "allow_publish_for_subscriber": true
+                }
+              ]
             }
           }
           EOF
