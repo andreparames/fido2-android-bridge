@@ -9,6 +9,9 @@ from __future__ import annotations
 
 PROTOCOL_VERSION = 3
 
+# Relay topic namespace (PROTOCOL.md §3.3): the topic is "fidobridge:<channel_id>".
+RELAY_CHANNEL_PREFIX = "fidobridge:"
+
 # Message types (PROTOCOL.md §4.1 / §5).
 TYPE_GET_ASSERTION = "getAssertion"
 TYPE_MAKE_CREDENTIAL = "makeCredential"

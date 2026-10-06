@@ -21,7 +21,7 @@ every seal/open/correlation step in `relay.py` executes for real.
 | Component | Role |
 |-----------|------|
 | **MockBrowser** | Opens the daemon's Unix socket, writes a synthetic CTAP2 CBOR request (`getAssertion` or `makeCredential`), reads back the CTAP2 status + CBOR response. |
-| **MockPhone** | Subscribes to `fidobridge.<channel_id>`, decrypts incoming sealed requests with the session key, calls a responder function, seals the result, and publishes it back. |
+| **MockPhone** | Subscribes to `fidobridge:<channel_id>`, decrypts incoming sealed requests with the session key, calls a responder function, seals the result, and publishes it back. |
 | **Daemon** | The real `fido_daemon.cli._run` — not mocked. Parses CTAP2, seals, relays, opens, encodes the reply. |
 
 Both peers share the same `AesGcmCipher` and channel id derived from the

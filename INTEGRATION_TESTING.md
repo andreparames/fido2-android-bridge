@@ -125,7 +125,7 @@ FIDO2_REQUEST_TIMEOUT=180 \
   .venv/bin/python -m mock_daemon all --timeout 180 > /tmp/mock_daemon.log 2>&1 &
 ```
 
-It logs `connected to relay channel fidobridge.<channel_id>` then waits for the
+It logs `connected to relay channel fidobridge:<channel_id>` then waits for the
 phone's `ik1`.
 
 ## 4. Run the Android harness test (Noise initiator)
@@ -158,7 +158,7 @@ FIDO2_HARNESS_TIMEOUT=200 \
 | Symptom | Cause / fix |
 |---|---|
 | Clients disconnect with code **3501** `bad request` | Missing `client.allow_anonymous_connect_without_token`; the harness connects anonymously. Add it (or use a JWT via `FIDO2_RELAY_TOKEN`). |
-| Subscribe fails with code **103** `permission denied` | Channel needs `allow_subscribe_for_anonymous` / `allow_publish_for_anonymous` under `channel.without_namespace`. |
+| Subscribe fails with code **103** `permission denied` | The topic must live in the `fidobridge` namespace — use `fidobridge:<channel_id>` (colon, PROTOCOL.md §3.3); non-namespaced topics are refused. |
 | Android test fails `relay did not connect within 15s` | The app's `CentrifugoTransport` no longer wires a `tokenGetter` when no token is set (empty-token getter aborted anonymous connects); verify Centrifugo is reachable at the URL. |
 | `mock_daemon` keeps timing out | Its request waits for the handshake; raise `--timeout`/`FIDO2_REQUEST_TIMEOUT` (≥120) and start it **before** the Android test. |
 | `SECURITY ALERT: Noise transport authentication failed` on the daemon | The daemon's own relay echo must be skipped **before** decrypt (Noise sender/receiver keys differ); already fixed in `relay.py`. |

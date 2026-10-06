@@ -107,6 +107,7 @@ object DataModule {
         identityStore = identityStore,
         relayUrl = BuildConfig.RELAY_URL,
         processor = processor,
+        defaultRelayToken = BuildConfig.RELAY_TOKEN,
         transportFactory = { endpoint, channel, relayToken -> CentrifugoTransport(endpoint, channel, relayToken) as RelayTransport },
         logSink = logSink
     )

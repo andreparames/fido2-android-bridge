@@ -4,7 +4,7 @@ object Protocol {
     const val VERSION = 3
     const val SCHEME = "fidobridge"
     const val PAIR_HOST = "pair"
-    const val RELAY_CHANNEL_PREFIX = "fidobridge."
+    const val RELAY_CHANNEL_PREFIX = "fidobridge:"
 
     // Noise IK transport (PROTOCOL.md §1, §6): the phone is the initiator.
     const val NOISE_PROTOCOL_NAME = "Noise_IK_25519_AESGCM_SHA256"

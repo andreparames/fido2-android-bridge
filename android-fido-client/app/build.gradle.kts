@@ -41,6 +41,11 @@ android {
             "RELAY_URL",
             "\"${escapeForBuildConfig(relayUrl())}\""
         )
+        buildConfigField(
+            "String",
+            "RELAY_TOKEN",
+            "\"${escapeForBuildConfig(relayToken())}\""
+        )
     }
 
     buildTypes {
@@ -124,7 +129,22 @@ dependencies {
 }
 
 fun relayUrl(): String =
-    System.getenv("FIDO2_RELAY_URL") ?: "wss://gary.andreparames.com:8000/connection/websocket"
+    System.getenv("FIDO2_RELAY_URL") ?: "wss://relay.gatebridge.app/connection/websocket"
+
+// Dev convenience: the shared Centrifugo connection JWT is read from the
+// `pass` store at build time (entry overridable via FIDO_RELAY_PASS_ENTRY).
+// Empty when `pass`/the entry is unavailable, so the client fails closed.
+// The embedded token ships inside the APK and is extractable.
+fun relayToken(): String {
+    val entry = System.getenv("FIDO_RELAY_PASS_ENTRY") ?: "fidobridge/relay-token"
+    return try {
+        val process = ProcessBuilder("pass", "show", entry).start()
+        val output = process.inputStream.bufferedReader().use { it.readText().trim() }
+        if (process.waitFor() == 0) output else ""
+    } catch (_: Exception) {
+        ""
+    }
+}
 
 fun escapeForBuildConfig(value: String): String =
     value.replace("\\", "\\\\").replace("\"", "\\\"")

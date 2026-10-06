@@ -13,6 +13,7 @@ import io.github.centrifugal.centrifuge.Subscription
 import io.github.centrifugal.centrifuge.SubscriptionEventListener
 import io.github.centrifugal.centrifuge.TokenCallback
 import io.github.centrifugal.centrifuge.UnauthorizedException
+import com.fidobridge.client.protocol.Protocol
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
@@ -47,7 +48,7 @@ class DiagnosticLogSink @Inject constructor() {
             }
         })
         client = c
-        sub = c.newSubscription("fidobridge.log.$channelId", object : SubscriptionEventListener() {})
+        sub = c.newSubscription("${Protocol.RELAY_CHANNEL_PREFIX}log:$channelId", object : SubscriptionEventListener() {})
         c.connect()
     }
 

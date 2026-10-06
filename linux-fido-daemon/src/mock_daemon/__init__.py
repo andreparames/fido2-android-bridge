@@ -2,7 +2,7 @@
 
 This module acts as a stand-in for the Linux daemon when testing the Android
 app end-to-end through a real Centrifugo broker.  It connects to Centrifugo,
-subscribes to ``fidobridge.<channel_id>``, seals and publishes a canned
+subscribes to ``fidobridge:<channel_id>``, seals and publishes a canned
 ``getAssertion`` or ``makeCredential`` request, then waits for and validates
 the sealed response.
 """

@@ -1,7 +1,7 @@
 """Centrifugo relay client with Noise IK transport (PROTOCOL.md v3).
 
 The relay is an untrusted Centrifugo broker. Both peers subscribe and publish
-to the channel ``fidobridge.<channel_id>``; the PROTOCOL.md §3 ``WireEnvelope``
+to the channel ``fidobridge:<channel_id>``; the PROTOCOL.md §3 ``WireEnvelope``
 is the publication payload.
 
 The daemon is the Noise **responder**. On every (re)connect the phone
@@ -39,6 +39,7 @@ from fido_daemon.noise import (
     envelope_from_json,
     envelope_to_json,
 )
+from fido_daemon.protocol import RELAY_CHANNEL_PREFIX
 
 logger = logging.getLogger(__name__)
 
@@ -81,7 +82,7 @@ class RelayClient:
 
     @property
     def channel(self) -> str:
-        return f"fidobridge.{self._channel_id}"
+        return f"{RELAY_CHANNEL_PREFIX}{self._channel_id}"
 
     @property
     def tampered(self) -> bool:

@@ -15,18 +15,43 @@ from __future__ import annotations
 import base64
 import binascii
 import os
+import subprocess
 from dataclasses import dataclass
 from pathlib import Path
 
 import tomlkit
 
 DEFAULT_SOCKET_PATH = "/run/user/{uid}/fido2-bridge.sock"
-DEFAULT_RELAY_URL = "wss://relay.example.invalid/connection/websocket"
+DEFAULT_RELAY_URL = "wss://relay.gatebridge.app/connection/websocket"
 DEFAULT_STATIC_KEY_PATH = "~/.config/fido-daemon/static_key.pem"
 DEFAULT_REQUEST_TIMEOUT_SECONDS = 30.0
 DEFAULT_CHANNEL_ID = ""
 DEFAULT_UHID_NAME = "fido-daemon"
+DEFAULT_RELAY_PASS_ENTRY = "fidobridge/relay-token"
 PHONE_KEY_BYTES = 32
+
+
+def default_relay_token() -> str:
+    """Return the relay token from the user's `pass` store, else "".
+
+    Reads ``pass show <entry>`` where the entry name comes from
+    ``FIDO_RELAY_PASS_ENTRY`` (default ``fidobridge/relay-token``, matching the
+    Android build-time embed). Empty string if `pass` is missing, the lookup
+    fails, or the entry is empty — callers then fall back to anonymous.
+    """
+    entry = os.environ.get("FIDO_RELAY_PASS_ENTRY", DEFAULT_RELAY_PASS_ENTRY)
+    try:
+        result = subprocess.run(
+            ["pass", "show", entry],
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+    except (FileNotFoundError, OSError):
+        return ""
+    if result.returncode != 0:
+        return ""
+    return result.stdout.strip()
 
 
 @dataclass(frozen=True)
@@ -54,7 +79,7 @@ class Config:
             static_key_path=os.path.expanduser(
                 os.environ.get("FIDO2_STATIC_KEY_PATH", DEFAULT_STATIC_KEY_PATH)
             ),
-            relay_token=os.environ.get("FIDO2_RELAY_TOKEN", ""),
+            relay_token=os.environ.get("FIDO2_RELAY_TOKEN") or default_relay_token(),
             request_timeout=float(
                 os.environ.get("FIDO2_REQUEST_TIMEOUT", DEFAULT_REQUEST_TIMEOUT_SECONDS)
             ),
