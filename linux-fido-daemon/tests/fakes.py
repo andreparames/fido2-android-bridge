@@ -22,6 +22,7 @@ from fido_daemon.noise import (
     envelope_from_json,
     envelope_to_json,
 )
+from fido_daemon.protocol import RELAY_CHANNEL_PREFIX
 
 CHANNEL_ID = "0123456789abcdef0123456789abcdef"
 RELAY_URL = "ws://localhost:8000/connection/websocket"
@@ -117,7 +118,7 @@ class NoisePhonePeer:
     ) -> None:
         self._broker = broker
         self._channel_id = channel_id
-        self._channel = f"fidobridge.{channel_id}"
+        self._channel = f"{RELAY_CHANNEL_PREFIX}{channel_id}"
         self._daemon_static_public = daemon_static_public
         self._static_private = static_private or secrets.token_bytes(32)
         self._responder = responder

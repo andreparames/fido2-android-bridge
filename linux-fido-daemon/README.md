@@ -87,16 +87,19 @@ overridden by a TOML config file (`-c/--config`) holding `channel_id`,
 | Variable                    | Default                                        | Purpose |
 |-----------------------------|------------------------------------------------|---------|
 | `FIDO2_REMOTE_SOCKET`       | `/run/user/<UID>/fido2-bridge.sock`            | Unix socket path |
-| `FIDO2_RELAY_URL`           | `wss://relay.example.invalid/connection/websocket` | Centrifugo WebSocket endpoint |
+| `FIDO2_RELAY_URL`           | `wss://relay.gatebridge.app/connection/websocket` | Centrifugo WebSocket endpoint |
 | `FIDO2_CHANNEL_ID`          | `""` (required to run)                         | **derived** channel id (32 lowercase hex) |
 | `FIDO2_STATIC_KEY_PATH`     | `~/.config/fido-daemon/static_key.pem`         | daemon's long-term X25519 static key (0600) |
 | `FIDO2_PHONE_PUBLIC_KEY`    | `""`                                           | pinned phone static key (base64, 32 bytes); overrides the learned pin |
-| `FIDO2_RELAY_TOKEN`         | `""` (anonymous)                               | Centrifugo connection JWT |
+| `FIDO2_RELAY_TOKEN`         | embedded connection JWT (in `config.py`)       | Centrifugo connection JWT |
 | `FIDO2_REQUEST_TIMEOUT`     | `30.0`                                         | Relay round-trip timeout (seconds) |
 
 `FIDO2_RELAY_TOKEN` is attached on startup and on every reconnect (via the
-SDK's `get_token` callback) and is never logged or leaked into the URL. Leave
-it empty for an unprotected/anonymous Centrifugo during local development.
+SDK's `get_token` callback) and is never logged or leaked into the URL. When
+the variable is unset the daemon uses the shared connection JWT embedded in
+`DEFAULT_RELAY_TOKEN` (no `pass` or secrets store needed at runtime — the
+daemon runs on the remote server). Set it to another value to override, or
+to `""` for an unprotected/anonymous Centrifugo during local development.
 
 The phone's static key is pinned by **trust-on-first-use**: the first phone
 that completes a valid handshake is stored in the config file
@@ -130,7 +133,7 @@ Run the daemon:
 
 ```bash
 export FIDO2_RELAY_URL=wss://relay.example.com/connection/websocket
-export FIDO2_RELAY_TOKEN=<jwt>          # omit for anonymous
+export FIDO2_RELAY_TOKEN=<jwt>          # omit to use the embedded token
 python -m fido_daemon.cli -c ~/.config/fido-daemon/config.toml
 ```
 
@@ -141,7 +144,7 @@ for the running session):
 export FIDO2_CHANNEL_ID=<derived-32hex-id>
 export FIDO2_STATIC_KEY_PATH=<path-to-static-key>   # optional
 export FIDO2_RELAY_URL=wss://relay.example.com/connection/websocket
-export FIDO2_RELAY_TOKEN=<jwt>          # omit for anonymous
+export FIDO2_RELAY_TOKEN=<jwt>          # omit to use the embedded token
 python -m fido_daemon.cli
 ```
 

@@ -150,7 +150,7 @@ Source of truth for security requirements: `agents.md`.
 
 **Objective:** carry sealed payloads to the daemon over a self-hosted **Centrifugo** broker, authenticate with a connection JWT, and keep the E2EE sealing/opening unchanged.
 
-> The relay is an untrusted Centrifugo broker. Both peers subscribe and publish to the channel `fidobridge.<channel_id>`; the `PROTOCOL.md` §3 `WireMessage` envelope is the publication payload (the relay only ever sees ciphertext). The connection JWT is read from the `pass` CLI at build time and embedded as `BuildConfig.RELAY_TOKEN` (dev convenience); it is attached on initial connect and on every reconnect via the SDK's `getToken` callback and is never logged or exposed.
+> The relay is an untrusted Centrifugo broker. Both peers subscribe and publish to the channel `fidobridge:<channel_id>`; the `PROTOCOL.md` §3 `WireMessage` envelope is the publication payload (the relay only ever sees ciphertext). The connection JWT is read from the `pass` CLI at build time and embedded as `BuildConfig.RELAY_TOKEN` (dev convenience); it is attached on initial connect and on every reconnect via the SDK's `getToken` callback and is never logged or exposed.
 
 ### TDD
 - **Tests first** (`RelayClientTest` with a fake `RelayTransport` — no live broker):
@@ -161,7 +161,7 @@ Source of truth for security requirements: `agents.md`.
   5. Replay: inbound plaintext whose `id` was already seen in the last 512 processed messages → dropped + answered `error`/`operationDenied` without user interaction, per `PROTOCOL.md` §3.2.
   6. Disconnect → state `DISCONNECTED` + `disconnections` emitted (signal to abort in-flight requests).
 - **Implement:**
-  - `RelayTransport` (thin abstraction) + `CentrifugoTransport` (centrifuge-java SDK: connect with token via `setToken`/`setTokenGetter`, subscribe to `fidobridge.<channel_id>`, publish/consume `byte[]`).
+  - `RelayTransport` (thin abstraction) + `CentrifugoTransport` (centrifuge-java SDK: connect with token via `setToken`/`setTokenGetter`, subscribe to `fidobridge:<channel_id>`, publish/consume `byte[]`).
   - `RelayClient` (E2EE layer over the transport: seal/open, replay, security alerts).
   - Build-time token injection: `relayTokenFromPass()` reads `pass show fidobridge/relay-token` into `BuildConfig.RELAY_TOKEN` (overridable via `FIDO_RELAY_PASS_ENTRY`).
   - `ReplayCache` (LRU, N=512) checked against the plaintext `id` before processing.
@@ -321,7 +321,7 @@ synthetic CTAP2 requests and consumes the real app responses.
 ```
 
 - **MockDaemon:** connects to Centrifugo over WebSocket, subscribes to
-  `fidobridge.<channel_id>`, seals and publishes synthetic `getAssertion` or
+  `fidobridge:<channel_id>`, seals and publishes synthetic `getAssertion` or
   `makeCredential` requests, then waits for and validates the sealed response.
 - **Android App:** the real `RelayClient` + `Ctap2Processor` running in an
   instrumented test (or on-device), receiving the request, signing with TEE
@@ -334,7 +334,7 @@ synthetic CTAP2 requests and consumes the real app responses.
 
 1. **`androidTest/.../harness/MockDaemon.kt`** — Kotlin WebSocket client that:
    - Connects to the local Centrifugo with the test JWT.
-   - Subscribes to `fidobridge.<channel_id>`.
+   - Subscribes to `fidobridge:<channel_id>`.
    - Seals a canned `getAssertion` or `makeCredential` `WireMessage` using the
      same `AesGcmCipher` from production code and publishes it.
    - Listens for the response publication, opens it, and asserts the plaintext

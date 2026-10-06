@@ -161,7 +161,7 @@ object. The relay only sees this envelope.
   `channel_id = lowercase hex( SHA-256( channel_hex_utf8 )[0:16] )` — i.e. the
   first 16 bytes of SHA-256 over the 32-char lowercase hex channel string from
   the URI, encoded as 32 lowercase hex chars. It is used for both the
-  `channel_id` envelope field and WebSocket routing. Derivation is pinned;
+  `channel_id` envelope field and the relay topic (see §3.3). Derivation is pinned;
   do not substitute another hash/encoding.
 - **Handshake routing:** the initiator (phone) publishes only `ik1`; the
   responder (daemon) publishes only `ik2`. Each peer ignores publications whose
@@ -179,6 +179,24 @@ object. The relay only sees this envelope.
 - **Auth failure:** any Noise authentication failure (handshake or transport)
   aborts the message, flags the connection, and logs a security alert. The
   connection may be dropped.
+
+### 3.3 Relay topic (WebSocket routing)
+
+Both peers subscribe and publish on exactly one relay topic per pairing:
+
+    relay-topic = "fidobridge:" channel-id     ; e.g. fidobridge:a1b2…0f
+
+- The topic is the **colon-delimited** form `fidobridge:<channel_id>` — the
+  `fidobridge` prefix is a Centrifugo channel namespace, so the relay accepts
+  only topics with that prefix and refuses any other (non-namespaced) channel.
+- The topic is the only place the derived `channel_id` reaches the relay as
+  routing state; the raw 128-bit id and the pairing URI never appear on the
+  wire.
+- The `fidobridge:log:<channel_id>` diagnostic topic (optional, phone-only)
+  is reserved for troubleshooting lines and lives under the same namespace;
+  it is not part of the Noise request/response flow.
+- Both peers MUST derive the topic identically from the frozen `channel_id`;
+  there is no dynamic topic routing.
 
 ---
 

@@ -53,7 +53,7 @@ device**.
   - `BiometricSigner` — signs only inside TEE after a successful `BiometricPrompt`.
 - **M4** `networking/` (Centrifugo):
   - `CentrifugoTransport` — wraps the official `io.github.centrifugal:centrifuge-java`
-    SDK; subscribes to `fidobridge.<channel_id>`; connection JWT attached on connect and
+    SDK; subscribes to `fidobridge:<channel_id>`; connection JWT attached on connect and
     re-attached on reconnect via `setToken`/`setTokenGetter`; never logs the token.
   - `RelayClient` — the E2EE layer over a thin `RelayTransport` abstraction: Noise
     `ik1/ik2` handshake (initiator) + transport, `kind=ik1|ik2|data` wire envelopes,
@@ -150,7 +150,7 @@ steps are in [`EMULATOR_ENV.md`](../EMULATOR_ENV.md).
 ### Relay token (dev convenience)
 
 The Centrifugo connection JWT is read from the `pass` CLI at build time and embedded as
-`BuildConfig.RELAY_TOKEN`:
+`BuildConfig.RELAY_TOKEN`, used as the default when no per-pairing token is stored:
 
 ```bash
 pass insert fidobridge/relay-token   # or: pass show fidobridge/relay-token
@@ -158,7 +158,9 @@ pass insert fidobridge/relay-token   # or: pass show fidobridge/relay-token
 ```
 
 - Entry name overridable via the `FIDO_RELAY_PASS_ENTRY` env var.
-- Missing `pass`/entry → empty token → the client fails closed (unauthorized) rather
+- A token received via the pairing URI is stored in `EncryptedSharedPreferences`
+  and takes precedence over the build-time default.
+- Missing `pass`/entry → empty default → the client fails closed (unauthorized) rather
   than connecting anonymously.
 - **Warning:** an embedded token ships inside the APK and is extractable; fine for this
   dev phase, not for production.

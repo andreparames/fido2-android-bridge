@@ -130,7 +130,7 @@ with a JWT connection token from env, and apply the 30s request timeout with
 fail-safe alert behavior.
 
 > The relay is a self-hosted **Centrifugo** broker. Both peers subscribe and
-> publish to the channel `fidobridge.<channel_id>`; the PROTOCOL.md §3
+> publish to the channel `fidobridge:<channel_id>`; the PROTOCOL.md §3
 > `WireMessage` envelope is the publication payload (the relay never sees
 > plaintext). The token is a Centrifugo connection JWT supplied via
 > `FIDO2_RELAY_TOKEN`; it is attached on startup and on every reconnect, and is
@@ -148,14 +148,14 @@ fail-safe alert behavior.
 - **Tests first** (`test_relay.py`, against a fake `centrifuge.Client` /
   injected transport — no live broker in CI):
   1. Outbound `send(p)` publishes a valid `WireMessage` carrying the current
-     channel id to `fidobridge.<channel_id>` (proves encrypt-before-publish).
+     channel id to `fidobridge:<channel_id>` (proves encrypt-before-publish).
   2. An inbound publication is opened and the plaintext is returned.
   3. `receive()` raises `TagMismatchError` on a tampered publication; connection
      is flagged and the message dropped (security alert log).
   4. Request exceeds `FIDO2_REQUEST_TIMEOUT` (default 30s, injectable clock) →
      timeout error returned to the socket client.
 - **Implement:** `RelayClient` wrapping `centrifuge.Client` (connect with token,
-  subscribe to `fidobridge.<channel_id>`, publish the sealed envelope, open
+  subscribe to `fidobridge:<channel_id>`, publish the sealed envelope, open
   inbound publications) with fake clock injection for deterministic timeout
   tests. Never log the token.
 
@@ -169,7 +169,7 @@ fail-safe alert behavior.
 
 ### TDD
 - **Tests first** (`test_e2e.py`):
-  1. Integration: run `SocketServer` + `RelayClient` against a stub "phone" peer that subscribes to `fidobridge.<channel_id>`, signs a canned assertion, and publishes the sealed `assertionResult`; a socket client receives the correct reply (matched back to the pending request by its `id`).
+  1. Integration: run `SocketServer` + `RelayClient` against a stub "phone" peer that subscribes to `fidobridge:<channel_id>`, signs a canned assertion, and publishes the sealed `assertionResult`; a socket client receives the correct reply (matched back to the pending request by its `id`).
   2. `cli.main()` starts, serves one request, and shuts down cleanly on `KeyboardInterrupt`.
   3. `--socket` flag overrides the config value.
 - **Implement:** `cli.py` wiring and lifecycle management (connect + subscribe to the relay channel before binding the socket; teardown order: socket unlink → unsubscribe → relay close).
@@ -228,7 +228,7 @@ synthetic CTAP2 requests and consumes the real daemon responses.
 
 - **MockBrowser:** opens the Unix socket, writes a synthetic `authenticatorGetAssertion`
   or `authenticatorMakeCredential` CBOR payload, reads the CTAP2 response.
-- **MockPhone:** subscribes to `fidobridge.<channel_id>`, opens the sealed request,
+- **MockPhone:** subscribes to `fidobridge:<channel_id>`, opens the sealed request,
   signs a canned assertion/credential, seals the result, and publishes it back.
 - Both MockBrowser and MockPhone run in the same Python process as the test
   harness; the daemon under test is the real `fido_daemon.cli` started in a

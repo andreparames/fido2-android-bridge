@@ -24,7 +24,7 @@ import tempfile
 from pathlib import Path
 
 from fido_daemon.cli import _run
-from fido_daemon.config import Config
+from fido_daemon.config import Config, DEFAULT_RELAY_TOKEN
 from fido_daemon.ctap2 import CMD_GET_ASSERTION, CMD_MAKE_CREDENTIAL
 from fido_daemon.noise import StaticKeyStore
 from fido_daemon.pairing import derive_channel_id
@@ -99,7 +99,7 @@ def _build_config() -> Config:
         relay_url=relay_url,
         channel_id=channel_id,
         static_key_path=static_key_path,
-        relay_token=os.environ.get("FIDO2_RELAY_TOKEN", ""),
+        relay_token=os.environ.get("FIDO2_RELAY_TOKEN", DEFAULT_RELAY_TOKEN),
         request_timeout=float(os.environ.get("FIDO2_REQUEST_TIMEOUT", "5.0")),
         uhid_enabled=False,
         uhid_name="fido-daemon",

@@ -67,7 +67,7 @@ async def test_request_publishes_to_channel(broker) -> None:
     await phone.start()
 
     await relay.request(_request("req-2"))
-    assert relay.channel == f"fidobridge.{CHANNEL_ID}"
+    assert relay.channel == f"fidobridge:{CHANNEL_ID}"
     assert phone.received[0]["id"] == "req-2"
 
 

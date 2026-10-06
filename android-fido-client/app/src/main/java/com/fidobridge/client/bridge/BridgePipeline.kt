@@ -23,6 +23,7 @@ class BridgePipeline(
     private val processor: Ctap2Processor,
     private val transportFactory: (endpoint: String, channel: String, relayToken: String?) -> RelayTransport,
     private val logSink: DiagnosticLogSink? = null,
+    private val defaultRelayToken: String = "",
     private val securityFailureTracker: IntegrityFailureTracker = IntegrityFailureTracker()
 ) {
 
@@ -58,7 +59,8 @@ class BridgePipeline(
         val phonePrivate = identityStore.loadPhoneStaticPrivate()
         val daemonPublic = identityStore.loadDaemonStaticPublic()
         val channelId = identityStore.loadChannelId()
-        val relayToken = identityStore.loadRelayToken()
+        val relayToken = identityStore.loadRelayToken()?.takeIf { it.isNotEmpty() }
+            ?: defaultRelayToken.takeIf { it.isNotEmpty() }
         Log.i(TAG, "pipeline.start phoneKey=${phonePrivate != null} daemonKey=${daemonPublic != null} channelId=$channelId relay=$relayUrl")
         if (phonePrivate == null) return fail("not paired: missing phone static key")
         if (daemonPublic == null) return fail("not paired: missing daemon static key")

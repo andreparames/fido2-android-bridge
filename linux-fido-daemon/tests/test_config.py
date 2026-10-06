@@ -4,7 +4,13 @@ import os
 import pytest
 import tomlkit
 
-from fido_daemon.config import Config, clear_phone_pin, load_config_file, write_config_file
+from fido_daemon.config import (
+    DEFAULT_RELAY_TOKEN,
+    Config,
+    clear_phone_pin,
+    load_config_file,
+    write_config_file,
+)
 from fido_daemon.cli import main
 
 
@@ -65,15 +71,23 @@ def test_invalid_request_timeout_raises(monkeypatch: pytest.MonkeyPatch) -> None
         Config.from_env()
 
 
-def test_relay_token_defaults_empty(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_relay_token_defaults_embedded(monkeypatch: pytest.MonkeyPatch) -> None:
     _clear_config_env(monkeypatch)
-    assert Config.from_env().relay_token == ""
+    assert Config.from_env().relay_token == DEFAULT_RELAY_TOKEN
 
 
 def test_relay_token_reads_env(monkeypatch: pytest.MonkeyPatch) -> None:
     _clear_config_env(monkeypatch)
     monkeypatch.setenv("FIDO2_RELAY_TOKEN", "jwt-token-value")
     assert Config.from_env().relay_token == "jwt-token-value"
+
+
+def test_relay_token_env_empty_overrides_embedded(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _clear_config_env(monkeypatch)
+    monkeypatch.setenv("FIDO2_RELAY_TOKEN", "")
+    assert Config.from_env().relay_token == ""
 
 
 def test_uhid_disabled_by_default(monkeypatch: pytest.MonkeyPatch) -> None:

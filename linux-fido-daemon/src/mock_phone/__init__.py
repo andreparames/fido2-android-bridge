@@ -2,7 +2,7 @@
 
 This module acts as a stand-in for the Android app when testing the daemon
 end-to-end through a real Centrifugo broker.  It subscribes to
-``fidobridge.<channel_id>``, opens the Noise IK handshake as initiator,
+``fidobridge:<channel_id>``, opens the Noise IK handshake as initiator,
 decrypts incoming requests, signs them with a canned responder, and publishes
 the encrypted response.
 """
@@ -29,6 +29,7 @@ from fido_daemon.noise import (
     envelope_to_json,
 )
 from fido_daemon.protocol import (
+    RELAY_CHANNEL_PREFIX,
     TYPE_ASSERTION_RESULT,
     TYPE_MAKE_CREDENTIAL_RESULT,
     TYPE_ERROR,
@@ -98,7 +99,7 @@ class MockPhone:
     def __init__(self, config: HarnessConfig) -> None:
         self._config = config
         self._channel_id = config.channel_id
-        self._channel = f"fidobridge.{config.channel_id}"
+        self._channel = f"{RELAY_CHANNEL_PREFIX}{config.channel_id}"
         self._session = NoiseInitiatorSession(
             config.phone_static_private(), config.daemon_static_public()
         )

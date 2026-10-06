@@ -203,7 +203,7 @@ Env overrides: `FIDO2_RELAY_URL`, `FIDO2_STATIC_KEY_PATH`, `ANDROID_HOME`
    relay URL (`--host-relay ws://localhost:9000/connection/websocket` — the
    `10.0.2.2` address only resolves *inside* the emulator; a host process
    given it loops reconnecting). Assert it logs `connected to relay channel
-   fidobridge.<channel_id>`.
+   fidobridge:<channel_id>`.
 6. **Pair the app**: deep link (URI passed **single-quoted** through the
    device shell — `&`/`?` split it otherwise → the app reports `Missing
    pubkey`). The service starts on resume and the app immediately handshakes

@@ -1,12 +1,19 @@
 {
   "client": {
     "token": {
-      "hmac_secret_key": "${HMAC_SECRET_KEY}"
+      "hmac_secret_key": "REPLACE_WITH_64_HEX_CHARS"
     },
     "allowed_origins": []
   },
   "http_api": {
-    "key": "${API_KEY}"
+    "key": "REPLACE_WITH_64_HEX_CHARS"
+  },
+  "http_server": {
+    "tls": {
+      "enabled": true,
+      "cert_pem": "/etc/centrifugo/example.com.fullchain.pem",
+      "key_pem": "/etc/centrifugo/example.com.privkey.pem"
+    }
   },
   "admin": {
     "enabled": false

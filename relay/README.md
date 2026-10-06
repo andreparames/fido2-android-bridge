@@ -77,6 +77,13 @@ install -m 0440 -o root -g centrifugo config.json /srv/centrifugo/etc/centrifugo
 For `arm64` use `centrifugo_6.9.6_linux_arm64.tar.gz`. A `centrifugo_6.9.6_checksums.txt`
 asset is published alongside for verification.
 
+### Channels & namespace
+
+Only the `fidobridge` channel namespace is enabled; the unnamed namespace is
+fully denied, so the relay accepts exactly the topics `fidobridge:<channel_id>`
+(the pairing channel, PROTOCOL.md §3.3) and `fidobridge:log:<channel_id>`
+(diagnostic sink). Any other topic is rejected with `102: unknown channel`.
+
 ### 3. Create the service user
 
 ```bash
