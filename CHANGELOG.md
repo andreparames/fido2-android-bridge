@@ -12,6 +12,8 @@ All notable changes to this project.
 - Relay topic namespace: channels are now `fidobridge:<channel_id>` (colon,
   PROTOCOL.md §3.3); Centrifugo config restricts channels to this namespace and
   denies the unnamed namespace
+- Daemon defaults the relay connection JWT to an embedded token in code (no
+  runtime `pass` dependency); `FIDO2_RELAY_TOKEN` overrides it
 
 ## v0.3.0
 

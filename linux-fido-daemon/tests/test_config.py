@@ -1,11 +1,16 @@
 import base64
 import os
-from types import SimpleNamespace
 
 import pytest
 import tomlkit
 
-from fido_daemon.config import Config, clear_phone_pin, load_config_file, write_config_file
+from fido_daemon.config import (
+    DEFAULT_RELAY_TOKEN,
+    Config,
+    clear_phone_pin,
+    load_config_file,
+    write_config_file,
+)
 from fido_daemon.cli import main
 
 
@@ -17,24 +22,11 @@ def _clear_config_env(monkeypatch: pytest.MonkeyPatch) -> None:
         "FIDO2_STATIC_KEY_PATH",
         "FIDO2_PHONE_PUBLIC_KEY",
         "FIDO2_RELAY_TOKEN",
-        "FIDO_RELAY_PASS_ENTRY",
         "FIDO2_REQUEST_TIMEOUT",
         "FIDO2_UHID_ENABLED",
         "FIDO2_UHID_NAME",
     ):
         monkeypatch.delenv(name, raising=False)
-    monkeypatch.setattr("fido_daemon.config.subprocess.run", _no_pass)
-
-
-def _no_pass(*_args, **_kwargs) -> SimpleNamespace:
-    raise FileNotFoundError
-
-
-def _pass_returns(stdout: str, returncode: int = 0):
-    def _run(*_args, **_kwargs) -> SimpleNamespace:
-        return SimpleNamespace(returncode=returncode, stdout=stdout)
-
-    return _run
 
 
 def test_default_socket_path_uses_uid(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -79,49 +71,23 @@ def test_invalid_request_timeout_raises(monkeypatch: pytest.MonkeyPatch) -> None
         Config.from_env()
 
 
-def test_relay_token_defaults_empty(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_relay_token_defaults_embedded(monkeypatch: pytest.MonkeyPatch) -> None:
     _clear_config_env(monkeypatch)
-    monkeypatch.setattr("fido_daemon.config.subprocess.run", _no_pass)
-    assert Config.from_env().relay_token == ""
-
-
-def test_relay_token_reads_pass_store(monkeypatch: pytest.MonkeyPatch) -> None:
-    _clear_config_env(monkeypatch)
-    monkeypatch.setattr(
-        "fido_daemon.config.subprocess.run", _pass_returns("pass-jwt\n")
-    )
-    assert Config.from_env().relay_token == "pass-jwt"
-
-
-def test_relay_token_pass_entry_overridable(monkeypatch: pytest.MonkeyPatch) -> None:
-    _clear_config_env(monkeypatch)
-    calls = []
-
-    def _run(cmd, **_kwargs) -> SimpleNamespace:
-        calls.append(cmd)
-        return SimpleNamespace(returncode=0, stdout="pass-jwt\n")
-
-    monkeypatch.setattr("fido_daemon.config.subprocess.run", _run)
-    monkeypatch.setenv("FIDO_RELAY_PASS_ENTRY", "org/other-token")
-    Config.from_env()
-    assert calls == [["pass", "show", "org/other-token"]]
-
-
-def test_relay_token_pass_lookup_failure_falls_back_empty(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    _clear_config_env(monkeypatch)
-    monkeypatch.setattr("fido_daemon.config.subprocess.run", _pass_returns("", returncode=1))
-    assert Config.from_env().relay_token == ""
+    assert Config.from_env().relay_token == DEFAULT_RELAY_TOKEN
 
 
 def test_relay_token_reads_env(monkeypatch: pytest.MonkeyPatch) -> None:
     _clear_config_env(monkeypatch)
-    monkeypatch.setattr(
-        "fido_daemon.config.subprocess.run", _pass_returns("pass-jwt\n")
-    )
     monkeypatch.setenv("FIDO2_RELAY_TOKEN", "jwt-token-value")
     assert Config.from_env().relay_token == "jwt-token-value"
+
+
+def test_relay_token_env_empty_overrides_embedded(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _clear_config_env(monkeypatch)
+    monkeypatch.setenv("FIDO2_RELAY_TOKEN", "")
+    assert Config.from_env().relay_token == ""
 
 
 def test_uhid_disabled_by_default(monkeypatch: pytest.MonkeyPatch) -> None:
