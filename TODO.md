@@ -59,3 +59,21 @@ time.
 - Or state up front "run every snippet from the repo root".
 
 **Files:** `INTEGRATION_TESTING.md`.
+
+---
+
+## Done
+
+### [x] Store Android logs locally, export them as a zip, and gate relay logging by build
+
+Implemented per `ANDROID_LOGGING_PLAN.md`:
+
+- Local persistence: `DiagnosticLogStore` / `FileDiagnosticLogStore` (JSON Lines,
+  size-based rotation, always written — never dropped when the relay is down).
+- `DiagnosticLogSink` fans out to the local store and an optional
+  `RelayLogPublisher`; entries persist regardless of relay state.
+- Build split: `BuildConfig.DIAGNOSTIC_RELAY_ENABLED` (debug `true`, release
+  `false`); prod/release builds never publish diagnostics.
+- Export: `DiagnosticsExporter` zips the `.jsonl` files and writes them through
+  the Storage Access Framework (`Export logs` button on Home); `Reset app`
+  also clears the on-device store.

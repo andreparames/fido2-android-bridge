@@ -152,6 +152,8 @@ for pairing; use `input text` only for short ASCII strings (spaces → `%s`).
 **Actions & dialogs:**
 | Element | Type | Text |
 |---|---|---|
+| Diagnostics section | Text | `Diagnostics` |
+| Export logs button | OutlinedButton | `Export logs` — opens the Storage Access Framework save sheet (`application/zip`), suggested name `gatebridge-diagnostics-<epoch>.zip` |
 | Reset section | Text | `Danger zone` |
 | Reset button | OutlinedButton | `Reset app` |
 | Reset confirm | AlertDialog | title `Reset app?`, body `This erases your pairing key and all stored credentials. This can't be undone.`, buttons `Cancel` / `Reset` |
@@ -253,6 +255,19 @@ failures). Covered by unit tests (`IntegrityFailureTrackerTest`,
 `BridgePipelineTest`). If you can inject tampered frames via the relay, expect
 the `Approvals are paused` banner with `Acknowledge`/`Reconnect`; approvals are
 dropped while it is active, and `Acknowledge` returns to the normal state.
+
+### F10 — Export diagnostics
+1. On Home, scroll to the `Diagnostics` section and tap `Export logs`.
+2. The system save sheet appears (`application/zip`); pick a location (e.g.
+   Downloads) and confirm.
+3. Assert the app shows `Diagnostics exported.` and the saved file unzips to
+   `diagnostics.jsonl` (and `diagnostics.1.jsonl` after rotation) whose lines are
+   `{"ts":<millis>,"message":"..."}`.
+4. With no log lines yet, `Export logs` → `No logs to export yet.` and no file
+   is written.
+5. Logs persist locally regardless of relay state: with the relay unreachable,
+   trigger app activity then export — entries are still present. Release/prod
+   builds never publish diagnostics to the relay; debug builds may.
 
 ---
 

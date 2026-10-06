@@ -7,8 +7,13 @@ import com.fidobridge.client.ctap.Ctap2Processor
 import com.fidobridge.client.ctap.CredentialStore
 import com.fidobridge.client.ctap.KeyGenerator
 import com.fidobridge.client.ctap.PersistentCredentialStore
+import com.fidobridge.client.networking.CentrifugoLogPublisher
 import com.fidobridge.client.networking.CentrifugoTransport
 import com.fidobridge.client.networking.DiagnosticLogSink
+import com.fidobridge.client.networking.DiagnosticLogStore
+import com.fidobridge.client.networking.DiagnosticsExporter
+import com.fidobridge.client.networking.FileDiagnosticLogStore
+import com.fidobridge.client.networking.RelayLogPublisher
 import com.fidobridge.client.networking.RelayTransport
 import com.fidobridge.client.notifications.ForegroundStateProvider
 import com.fidobridge.client.notifications.ProcessForegroundStateProvider
@@ -29,6 +34,7 @@ import dagger.Provides
 import dagger.hilt.InstallIn
 import dagger.hilt.android.qualifiers.ApplicationContext
 import dagger.hilt.components.SingletonComponent
+import java.io.File
 import javax.inject.Singleton
 
 @Module
@@ -77,8 +83,10 @@ object DataModule {
         identityStore: IdentityStore,
         credentialStore: CredentialStore,
         keystoreManager: KeystoreManager,
-        requestLog: RequestLog
-    ): AppResetManager = AppResetManager(identityStore, credentialStore, keystoreManager, requestLog)
+        requestLog: RequestLog,
+        diagnosticLogStore: DiagnosticLogStore
+    ): AppResetManager =
+        AppResetManager(identityStore, credentialStore, keystoreManager, requestLog, diagnosticLogStore)
 
     @Provides
     @Singleton
@@ -87,6 +95,30 @@ object DataModule {
     @Provides
     @Singleton
     fun provideForegroundStateProvider(): ForegroundStateProvider = ProcessForegroundStateProvider()
+
+    @Provides
+    @Singleton
+    fun provideDiagnosticLogStore(@ApplicationContext context: Context): DiagnosticLogStore =
+        FileDiagnosticLogStore(File(context.filesDir, "diagnostics"))
+
+    @Provides
+    @Singleton
+    fun provideRelayLogPublisher(): RelayLogPublisher = CentrifugoLogPublisher()
+
+    @Provides
+    @Singleton
+    fun provideDiagnosticLogSink(
+        store: DiagnosticLogStore,
+        publisher: RelayLogPublisher
+    ): DiagnosticLogSink =
+        DiagnosticLogSink(store, publisher, BuildConfig.DIAGNOSTIC_RELAY_ENABLED)
+
+    @Provides
+    @Singleton
+    fun provideDiagnosticsExporter(
+        store: DiagnosticLogStore,
+        @ApplicationContext context: Context
+    ): DiagnosticsExporter = DiagnosticsExporter(store, context.contentResolver)
 
     @Provides
     @Singleton

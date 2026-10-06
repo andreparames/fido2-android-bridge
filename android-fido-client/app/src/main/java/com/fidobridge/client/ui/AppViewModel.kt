@@ -1,9 +1,12 @@
 package com.fidobridge.client.ui
 
+import android.net.Uri
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.fidobridge.client.bridge.BridgePipeline
 import com.fidobridge.client.bridge.BridgeState
+import com.fidobridge.client.networking.DiagnosticLogStore
+import com.fidobridge.client.networking.DiagnosticsExporter
 import com.fidobridge.client.pairing.AppResetManager
 import com.fidobridge.client.pairing.PairingRepository
 import com.fidobridge.client.ui.model.RequestLog
@@ -21,7 +24,9 @@ class AppViewModel @Inject constructor(
     private val requestLog: RequestLog,
     private val pipeline: BridgePipeline,
     private val appResetManager: AppResetManager,
-    private val userMessageBus: UserMessageBus
+    private val userMessageBus: UserMessageBus,
+    private val diagnosticLogStore: DiagnosticLogStore,
+    private val diagnosticsExporter: DiagnosticsExporter
 ) : ViewModel() {
 
     val isPaired: Boolean = pairingRepository.isPaired
@@ -47,6 +52,21 @@ class AppViewModel @Inject constructor(
             if (!ok) {
                 userMessageBus.post("Reset incomplete — some data may remain. Try again.")
             }
+            onComplete(ok)
+        }
+    }
+
+    fun hasDiagnostics(): Boolean = diagnosticLogStore.sizeBytes() > 0
+
+    fun exportDiagnostics(uri: Uri, onComplete: (Boolean) -> Unit = {}) {
+        viewModelScope.launch {
+            if (diagnosticLogStore.sizeBytes() == 0L) {
+                userMessageBus.post("No logs to export yet.")
+                onComplete(false)
+                return@launch
+            }
+            val ok = withContext(Dispatchers.IO) { diagnosticsExporter.exportTo(uri) }
+            userMessageBus.post(if (ok) "Diagnostics exported." else "Could not export diagnostics.")
             onComplete(ok)
         }
     }

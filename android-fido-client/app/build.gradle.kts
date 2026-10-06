@@ -51,6 +51,8 @@ android {
     buildTypes {
         debug {
             signingConfig = signingConfigs.getByName("debug")
+            // Debug builds publish diagnostics to the relay log channel.
+            buildConfigField("boolean", "DIAGNOSTIC_RELAY_ENABLED", "true")
         }
         release {
             isMinifyEnabled = false
@@ -58,6 +60,8 @@ android {
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro"
             )
+            // Prod/release builds never publish diagnostics; logs stay on-device.
+            buildConfigField("boolean", "DIAGNOSTIC_RELAY_ENABLED", "false")
         }
     }
 
