@@ -27,7 +27,7 @@ import logging
 from collections.abc import Callable
 
 import centrifuge
-from centrifuge import Client, SubscriptionEventHandler
+from centrifuge import Client, SubscriptionEventHandler, SubscriptionState
 
 from fido_daemon.noise import (
     KIND_DATA,
@@ -132,26 +132,31 @@ class RelayClient:
     async def _subscribe_with_backoff(self) -> None:
         """Poll ``subscribe()`` until the managed subscribe proxy allows it.
 
-        A denial raises ``SubscribeDeniedError``; retry with a capped, injected
-        backoff (defaults to ``DEFAULT_SUBSCRIBE_BACKOFF``). Any other error
+        The Centrifugo SDK resolves subscribe results asynchronously: a denial
+        moves the subscription to ``UNSUBSCRIBED`` (the fake broker raises
+        ``SubscribeDeniedError``), allowance to ``SUBSCRIBED``. The loop re-arms
+        the subscribe with a capped, injected backoff until the state is
+        ``SUBSCRIBED``. Any error other than ``SubscribeDeniedError``
         propagates so classic-style failures are not masked.
         """
         attempt = 0
         while True:
             try:
                 await self._sub.subscribe()
+            except SubscribeDeniedError:
+                pass
+            if getattr(self._sub, "state", None) == SubscriptionState.SUBSCRIBED:
                 logger.info("subscribed to managed channel %s", self.channel)
                 return
-            except SubscribeDeniedError:
-                index = min(attempt, len(self._subscribe_backoff) - 1)
-                delay = self._subscribe_backoff[index]
-                attempt += 1
-                logger.info(
-                    "subscribe denied for %s; retrying in %.1fs",
-                    self.channel,
-                    delay,
-                )
-                await asyncio.sleep(delay)
+            index = min(attempt, len(self._subscribe_backoff) - 1)
+            delay = self._subscribe_backoff[index]
+            attempt += 1
+            logger.info(
+                "subscribe denied for %s; retrying in %.1fs",
+                self.channel,
+                delay,
+            )
+            await asyncio.sleep(delay)
 
     async def request(self, plaintext: bytes, timeout: float | None = None) -> bytes:
         """Encrypt + publish `plaintext` and await the response echoing its id.

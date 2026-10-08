@@ -10,7 +10,12 @@ import asyncio
 import json
 import secrets
 
-from centrifuge import Publication, PublicationContext, SubscriptionEventHandler
+from centrifuge import (
+    Publication,
+    PublicationContext,
+    SubscriptionEventHandler,
+    SubscriptionState,
+)
 
 from fido_daemon.noise import (
     KIND_DATA,
@@ -59,13 +64,16 @@ class FakeSubscription:
         self.events = None
         self.published: list[str] = []
         self.subscribed = False
+        self.state = SubscriptionState.UNSUBSCRIBED
         self.subscribe_attempts = 0
 
     async def subscribe(self) -> None:
         self.subscribe_attempts += 1
         if self._broker.deny_subscribe:
+            self.state = SubscriptionState.UNSUBSCRIBED
             raise SubscribeDeniedError(f"subscription denied for {self.channel}")
         self.subscribed = True
+        self.state = SubscriptionState.SUBSCRIBED
         self._broker.add(self)
 
     async def publish(self, data: str) -> None:

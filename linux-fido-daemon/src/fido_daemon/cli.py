@@ -166,6 +166,30 @@ def build_request_handler(relay: RelayClient, config: Config):
     return handle_ctap2_command
 
 
+def _build_relay(
+    config: Config,
+    static_private: bytes,
+    *,
+    on_phone_identified=None,
+    client_factory=None,
+) -> RelayClient:
+    """Construct the relay client with the relay mode matching `config`.
+
+    Managed mode (host ``relay.gatebridge.app``) polls the subscribe until the
+    backend proxy allows; classic mode uses the one-shot JWT subscribe.
+    """
+    return RelayClient(
+        config.relay_url,
+        config.channel_id,
+        static_private,
+        token=config.relay_token,
+        phone_public_key=config.phone_public_key,
+        on_phone_identified=on_phone_identified,
+        client_factory=client_factory,
+        managed=is_managed_relay(config.relay_url),
+    )
+
+
 async def _run(config: Config, *, client_factory=None) -> None:
     static_private = StaticKeyStore.load(Path(config.static_key_path))
 
@@ -178,12 +202,9 @@ async def _run(config: Config, *, client_factory=None) -> None:
                 "no config file set; phone static key pin lasts only for this session"
             )
 
-    relay = RelayClient(
-        config.relay_url,
-        config.channel_id,
+    relay = _build_relay(
+        config,
         static_private,
-        token=config.relay_token,
-        phone_public_key=config.phone_public_key,
         on_phone_identified=_persist_phone_key,
         client_factory=client_factory,
     )
