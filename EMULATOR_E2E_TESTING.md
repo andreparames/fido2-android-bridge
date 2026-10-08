@@ -18,7 +18,7 @@ end-to-end by **`uiautomator2`** (Python) over adb.
 Companion docs: `INTEGRATION_TESTING.md` (the host-JVM harness this replaces
 for UI coverage), `UI_TESTER_GUIDE.md` (screens, elements, adb recipes —
 authoritative for assertions), `EMULATOR_ENV.md` (emulator/SDK install state),
-`PROTOCOL.md`, `agents.md`.
+`PROTOCOL.md`, `AGENTS.md`.
 
 **Priority:** A (orchestrator) and C (docs) are the deliverable. B (CI job)
 is a future, optional extra.
@@ -139,13 +139,17 @@ python -m emulator_harness <scenario> [--apk PATH] [--emulator avd-name]
                              [--relay ws://10.0.2.2:9000/connection/websocket]
                              [--host-relay ws://localhost:9000/...]
                              [--timeout 300] [--count N] [--reject-indices 3]
-                             [--skip-clear] [--skip-reset] [--keep-running]
-  scenario: get-assertion | make-credential | multi | reset | all
+                             [--skip-clear] [--skip-export] [--skip-reset]
+                             [--keep-running]
+  scenario: get-assertion | make-credential | multi | export | reset | all
 ```
 
 `multi` sends `--count` (default 5) get-assertions and rejects the 1-based
 indices in `--reject-indices` (default `3`); `all` chains make-credential →
-clear → get-assertion → multi → reset.
+clear → get-assertion → multi → export → reset. `export` drives the Home
+"Export logs" button, accepts the Storage Access Framework save sheet, pulls
+the produced zip, and validates its JSONL contents (`--skip-export` omits it
+from `all`).
 
 Env overrides: `FIDO2_RELAY_URL`, `FIDO2_STATIC_KEY_PATH`, `ANDROID_HOME`
 (reuse the daemon's `HarnessConfig` conventions).
@@ -227,18 +231,29 @@ Env overrides: `FIDO2_RELAY_URL`, `FIDO2_STATIC_KEY_PATH`, `ANDROID_HOME`
     acted on deterministically; between request-steps the app is restarted so
     it performs a fresh Noise handshake with the next `mock_daemon`.
 11. **Clear requests**: tap `Clear`, assert the list empties immediately
-    (`No requests yet` — the undo snackbar was removed upstream).
-12. **Reset → re-pair**: scroll to the danger zone, tap `Reset app`, confirm
-    `Reset`, assert the pairing screen (match the subtitle — the title is not
-    exposed to accessibility), then pair again with fresh material and assert
-    Home.
-13. **Screenshots at every step** are captured with the emulator console
-    (`adb emu screenrecord screenshot`), which grabs the raw framebuffer on
-    the host and therefore sees FLAG_SECURE surfaces that `screencap` renders
-    black (e.g. the `BiometricPrompt`).
-14. **Cleanup**: the orchestrator stops `mock_daemon` after every request
-    step; `--keep-running` only skips `d.app_stop(...)` and the emulator
-    shutdown (when the harness launched it).
+   (`No requests yet` — the undo snackbar was removed upstream).
+12. **Export diagnostics**: scroll to the `Diagnostics` section, tap
+   `Export logs`, assert the `Diagnostics exported.` dialog appears and dismiss
+   it with `OK`. The Storage Access Framework save sheet is accepted as-is (the
+   app's suggested `gatebridge-diagnostics-<epoch>.zip` name, default
+   Downloads). Snapshot the device before the tap, diff the exported
+   `gatebridge-diagnostics-*.zip` paths afterwards, `adb pull` the new file,
+   and validate it: it must contain a non-empty `diagnostics.jsonl` (and
+   `diagnostics.1.jsonl` after rotation) whose lines are well-formed
+   `{"ts":<millis>,"message":"..."}` JSON. No new file → failure. The
+   no-logs path (`No logs to export yet.`) is unit-covered
+   (`AppViewModelTest`), not exercised here (a paired app always has entries).
+13. **Reset → re-pair**: scroll to the danger zone, tap `Reset app`, confirm
+   `Reset`, assert the pairing screen (match the subtitle — the title is not
+   exposed to accessibility), then pair again with fresh material and assert
+   Home.
+14. **Screenshots at every step** are captured with the emulator console
+   (`adb emu screenrecord screenshot`), which grabs the raw framebuffer on
+   the host and therefore sees FLAG_SECURE surfaces that `screencap` renders
+   black (e.g. the `BiometricPrompt`).
+15. **Cleanup**: the orchestrator stops `mock_daemon` after every request
+   step; `--keep-running` only skips `d.app_stop(...)` and the emulator
+   shutdown (when the harness launched it).
 
 ### A.5 Assertions (authoritative elements from `UI_TESTER_GUIDE.md` §4)
 
@@ -249,6 +264,7 @@ Env overrides: `FIDO2_RELAY_URL`, `FIDO2_STATIC_KEY_PATH`, `ANDROID_HOME`
 | Approve | Request row | `d(descriptionContains="accepted")` (merged row `content-desc`) |
 | Reject | Request row | `d(descriptionContains="rejected")` |
 | Clear | Home | `d(text="No requests yet")` (clears immediately, no undo) |
+| Export | Home → SAF sheet → dialog | `d(text="Export logs")` → `d(textMatches="(?i)^save$")` → `d(text="Diagnostics exported.")`; pulled `gatebridge-diagnostics-*.zip` holds non-empty, well-formed `diagnostics*.jsonl` |
 | Reset | Pairing screen | subtitle `Scan the pairing code from your computer to connect.` (title is not exposed) |
 | Re-pair | HomeScreen | `d(text="Recent requests")` |
 | State | daemon log | `make-credential: OK`, `get-assertion: OK (N accepted, M rejected)`, exit 0, no `SECURITY ALERT` |
@@ -282,6 +298,14 @@ the emulator (software-backed); that stays device-only (Phase 12 note).
   rejected row is visible immediately.
 - **POST_NOTIFICATIONS** is pre-granted via `pm grant` after `pm clear`
   (which revokes it) — tapping the system dialog races its animation.
+- **SAF save sheet** is AOSP DocumentsUI (`com.android.documentsui`): the
+  confirm button is rendered all-caps (`SAVE`), so match it case-insensitively
+  (`d(textMatches="(?i)^save$")`, falling back to `descriptionMatches`) and
+  keep the app's suggested filename (no filename typing). The new zip is found
+  by diffing `gatebridge-diagnostics-*.zip` paths under `/sdcard/Download`/
+  `Downloads`/`Documents` before/after the tap, pulled with `adb pull`, and
+  validated with Python's `zipfile`. The emulator exposes only local providers,
+  so the default destination is deterministic.
 - **Screenshots of FLAG_SECURE surfaces** need the emulator console
   (`adb emu screenrecord screenshot`); `screencap` renders them black.
 - **Pairing screen title** (`Connect your phone`) is not exposed to
@@ -326,9 +350,12 @@ high (~5 GB SDK, slow emulator boot, atx-agent install); gate it on
    exit 0, no `SECURITY ALERT` lines.
 2. `uiautomator2` dumps/screenshots (saved per step) show: paired Home screen,
    prompt with `example.com`, `Accepted` badge.
-3. `adb logcat -d | grep -iE "fido|pipeline|bridge"` shows Connected → prompt
+3. The export step pulls a non-empty `gatebridge-diagnostics-*.zip` into the
+   artifact dir that unzips to `diagnostics.jsonl` (and `diagnostics.1.jsonl`
+   after rotation) with well-formed `{"ts":<millis>,"message":"..."}` lines.
+4. `adb logcat -d | grep -iE "fido|pipeline|bridge"` shows Connected → prompt
    → sign.
-4. The orchestrator exits 0 and cleans up (`d.app_stop`, `mock_daemon`
+5. The orchestrator exits 0 and cleans up (`d.app_stop`, `mock_daemon`
    stopped).
 
 ## Cleanup

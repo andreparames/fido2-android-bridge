@@ -2,7 +2,7 @@
 
 This plan builds the `android-fido-client` using a strict **Test-Driven Development** workflow. Every phase follows the Red → Green → Refactor cycle: write a failing test, implement the minimum to pass, then refactor. No phase is considered done until its tests pass.
 
-Source of truth for security requirements: `agents.md`.
+Source of truth for security requirements: `AGENTS.md`.
 
 ---
 
@@ -114,7 +114,7 @@ Source of truth for security requirements: `agents.md`.
 
 ## 6. Hardware-Backed Keystore Manager (M3)
 
-**Objective:** generate and use an EC P-256 key locked to biometrics, using the exact spec from `agents.md`.
+**Objective:** generate and use an EC P-256 key locked to biometrics, using the exact spec from `AGENTS.md`.
 
 ### TDD
 - **Tests first** (`KeystoreManagerTest`, instrumented — device/emulator with KeyStore):
@@ -178,7 +178,7 @@ Source of truth for security requirements: `agents.md`.
 
 ### TDD
 - **Tests first** (`Ctap2ProcessorTest`, `AuthenticatorDataBuilderTest`, `CoseKeyTest`):
-  1. **Assertion:** builds `authenticatorData = rpIdHash(32) || flags(0x05) || signCount(4)` — flags `0x05` = UP (0x01) + UV (0x04); UV is unconditional because biometrics are mandatory per `agents.md` — `signCount` always `0` — produces a valid signature over `authenticatorData || clientDataHash`, returns `{credentialId, authenticatorData, signature, userHandle}`. See `PROTOCOL.md` §5.3.
+  1. **Assertion:** builds `authenticatorData = rpIdHash(32) || flags(0x05) || signCount(4)` — flags `0x05` = UP (0x01) + UV (0x04); UV is unconditional because biometrics are mandatory per `AGENTS.md` — `signCount` always `0` — produces a valid signature over `authenticatorData || clientDataHash`, returns `{credentialId, authenticatorData, signature, userHandle}`. See `PROTOCOL.md` §5.3.
   2. **MakeCredential:** builds `authenticatorData` with `attestedCredentialData` (AAGUID + credentialId + COSE P-256 public key) and flags `0x45` (UP + UV + AT), per `PROTOCOL.md` §5.4, and signs `authenticatorData || clientDataHash`.
   3. **MakeCredential result** includes `attestationObject` = CBOR `{ "fmt": "none", "attStmt": {}, "authData": <authenticatorData> }` (empty `attStmt`, no other `fmt`), per `PROTOCOL.md` §5.4.
   4. `rpId` mismatch vs registered credential → `CTAP2_ERR_OPERATION_DENIED` (0x27).
@@ -204,11 +204,11 @@ Source of truth for security requirements: `agents.md`.
 > `KeystoreKeyGenerator`, `PersistentCredentialStore`, StrongBox→TEE fallback in
 > `KeystoreManager`, `FidoBridgeService` + `MainActivity` wiring, `RELAY_URL`
 > BuildConfig. 59 JVM unit tests pass, `lint` + `assembleDebug` green. Remaining
-> (device-only DoD, `agents.md` §6): `isInsideSecureHardware == true` and real
+> (device-only DoD, `AGENTS.md` §6): `isInsideSecureHardware == true` and real
 > `BiometricPrompt` verification via `connectedDebugAndroidTest`, plus the
 > manual `https://webauthn.io` E2E (blocked on daemon socket→Centrifugo wiring).
 
-**Objective:** satisfy `agents.md` §6 Definition of Done by wiring the proven
+**Objective:** satisfy `AGENTS.md` §6 Definition of Done by wiring the proven
 layers into a running app: `FidoBridgeService` → `BridgePipeline` →
 `RelayClient` → `Ctap2Processor` → real `BiometricSigner` → publish response.
 
@@ -223,7 +223,7 @@ layers into a running app: `FidoBridgeService` → `BridgePipeline` →
   `SHA-256(publicKey.encoded)` credential id.
 
 ### Core design decision: BiometricPrompt needs an Activity, the pipeline runs in a Service
-`agents.md` §3 says the user opens the app before a login sequence, so the
+`AGENTS.md` §3 says the user opens the app before a login sequence, so the
 Activity is foreground. Decouple via a singleton **`BiometricPromptCoordinator`**:
 - `requests: Flow<SigningRequest>` where `SigningRequest(crypto, title=rpId,
   subtitle, onResult)`.

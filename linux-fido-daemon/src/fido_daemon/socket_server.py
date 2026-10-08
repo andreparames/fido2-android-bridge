@@ -1,7 +1,7 @@
 """Unix domain socket server for local CTAP2/WebAuthn requests.
 
 Binds strictly inside the runtime user directory (/run/user/<UID>/) with
-0600 permissions per agents.md §4, and cleanly unlinks the socket on exit.
+0600 permissions per AGENTS.md §4, and cleanly unlinks the socket on exit.
 """
 
 from __future__ import annotations

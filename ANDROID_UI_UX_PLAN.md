@@ -5,7 +5,7 @@ mobile-app-designer review of the target UI. Scope: a useful HomeScreen (waiting
 status + recent request history + clear/reset actions), threshold-based handling
 of GCM-tag failures, and pairing-screen polish. No changes to the wire protocol.
 
-Source of truth for security requirements: `agents.md` and `PROTOCOL.md`.
+Source of truth for security requirements: `AGENTS.md` and `PROTOCOL.md`.
 
 ---
 

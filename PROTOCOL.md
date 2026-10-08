@@ -12,7 +12,7 @@ with each other:
 Out of scope: the local Unix socket, CTAP2 CBOR decoding, and any
 daemon-internal detail. See `ANDROID_PLAN.md` and `DAEMON_PLAN.md` for those.
 
-Security posture (from `agents.md`): the relay is **untrusted**; every payload
+Security posture (from `AGENTS.md`): the relay is **untrusted**; every payload
 is protected by the **Noise Protocol Framework** before touching the network;
 private keys never leave the phone's TEE/StrongBox.
 
@@ -329,7 +329,7 @@ implicit first-only pick across multiple credentials.
 
 - `authenticatorData` is `rpIdHash(32) ‖ flags(0x05) ‖ signCount(4)` — flags
   `0x05` = UP (0x01) + UV (0x04). UV is always set:
-  the KeyStore spec in `agents.md` requires biometric authentication for
+  the KeyStore spec in `AGENTS.md` requires biometric authentication for
   *every* signature, so user verification is unconditional. Consequently
   `option.uv=false` in a request cannot be honored and is treated as `true`
   (never fail-safe to a weaker assertion). `signCount` is always `0`
