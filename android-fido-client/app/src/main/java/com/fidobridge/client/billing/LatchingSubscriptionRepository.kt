@@ -45,7 +45,7 @@ class LatchingSubscriptionRepository(
     override suspend fun queryProducts(): Result<List<SubscriptionProduct>> =
         delegate.queryProducts()
 
-    override suspend fun launchPurchase(activity: Activity, productId: String) =
+    override suspend fun launchPurchase(activity: Activity, productId: String): Result<Unit> =
         delegate.launchPurchase(activity, productId)
 
     override suspend fun restorePurchases() = delegate.restorePurchases()

@@ -18,7 +18,8 @@ data class SubscribeUiState(
     val products: List<SubscriptionProduct> = emptyList(),
     val loading: Boolean = true,
     val billingUnavailable: Boolean = false,
-    val error: Boolean = false
+    val error: Boolean = false,
+    val purchaseFailed: Boolean = false
 )
 
 @HiltViewModel
@@ -61,7 +62,9 @@ class SubscribeViewModel @Inject constructor(
 
     fun buy(activity: Activity, productId: String) {
         viewModelScope.launch {
-            repository.launchPurchase(activity, productId)
+            repository.launchPurchase(activity, productId).onFailure {
+                _uiState.value = _uiState.value.copy(purchaseFailed = true)
+            }
         }
     }
 

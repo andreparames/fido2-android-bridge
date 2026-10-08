@@ -175,9 +175,10 @@ fun relayUrlOss(): String =
 // must never be uploaded to Play. Both flavors share an applicationId, so fail
 // configuration early instead of silently producing a dangerous artifact.
 fun requireOssNotManaged(url: String) {
-    val host = runCatching {
-        URI(url.trim()).host?.lowercase()?.trimEnd('.')
-    }.getOrNull()
+    val uri = runCatching { URI(url.trim()) }
+        .getOrElse { throw IllegalArgumentException("oss relay URL is not a valid URI: $url", it) }
+    val host = uri.host?.lowercase()?.trimEnd('.')
+    require(!host.isNullOrEmpty()) { "oss relay URL has no host: $url" }
     require(host != "relay.gatebridge.app") {
         "oss flavor must not target the managed relay (relay.gatebridge.app): $url"
     }

@@ -17,7 +17,8 @@ class AlwaysEntitledSubscriptionRepository @Inject constructor() : SubscriptionR
     override suspend fun queryProducts(): Result<List<SubscriptionProduct>> =
         Result.success(emptyList())
 
-    override suspend fun launchPurchase(activity: Activity, productId: String) = Unit
+    override suspend fun launchPurchase(activity: Activity, productId: String): Result<Unit> =
+        Result.success(Unit)
 
     override suspend fun restorePurchases() = Unit
 }

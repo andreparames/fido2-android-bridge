@@ -84,6 +84,10 @@ fun SubscribeScreen(
                     }
                 }
                 else -> {
+                    if (uiState.purchaseFailed) {
+                        Text(stringResource(R.string.subscribe_purchase_error))
+                        Spacer(Modifier.height(8.dp))
+                    }
                     uiState.products.forEach { product ->
                         ProductCard(
                             product = product,

@@ -17,9 +17,13 @@ import dagger.hilt.android.qualifiers.ApplicationContext
 import javax.inject.Inject
 import javax.inject.Singleton
 import kotlin.coroutines.resume
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
@@ -36,6 +40,9 @@ class PlayBillingSubscriptionRepository @Inject constructor(
     private var productDetails: List<ProductDetails> = emptyList()
 
     private val connectionMutex = Mutex()
+
+    /** Repository-owned scope for listener callbacks (which are not suspend). */
+    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
 
     /**
      * Created lazily on first use so app cold start does not pay for BillingClient
@@ -199,14 +206,19 @@ class PlayBillingSubscriptionRepository @Inject constructor(
         return Result.success(mapped)
     }
 
-    override suspend fun launchPurchase(activity: Activity, productId: String) {
-        val details = productDetails.firstOrNull { it.productId == productId } ?: return
+    override suspend fun launchPurchase(activity: Activity, productId: String): Result<Unit> {
+        val details = productDetails.firstOrNull { it.productId == productId }
+            ?: return Result.failure(
+                IllegalStateException("no product details for $productId")
+            )
         val offer = details.subscriptionOfferDetails
             ?.firstOrNull { offer ->
                 offer.pricingPhases.pricingPhaseList.any { it.billingPeriod == ProductIds.TRIAL_PERIOD }
             }
             ?: details.subscriptionOfferDetails?.firstOrNull()
-            ?: return
+            ?: return Result.failure(
+                IllegalStateException("no subscription offer for $productId")
+            )
         val params = BillingFlowParams.newBuilder()
             .setProductDetailsParamsList(
                 listOf(
@@ -217,7 +229,18 @@ class PlayBillingSubscriptionRepository @Inject constructor(
                 )
             )
             .build()
-        billingClient.launchBillingFlow(activity, params)
+        // launchBillingFlow synchronously reports the launch request only; the
+        // purchase outcome arrives later via onPurchasesUpdated.
+        val result = billingClient.launchBillingFlow(activity, params)
+        return if (result.responseCode == BillingClient.BillingResponseCode.OK) {
+            Result.success(Unit)
+        } else {
+            Result.failure(
+                IllegalStateException(
+                    "billing launch failed: ${result.responseCode} ${result.debugMessage}"
+                )
+            )
+        }
     }
 
     override suspend fun restorePurchases() {
@@ -256,15 +279,17 @@ class PlayBillingSubscriptionRepository @Inject constructor(
                             .build()
                         billingClient.acknowledgePurchase(ack) { }
                     }
-                } else {
-                    _entitlement.value = Entitlement.NotEntitled
                 }
+                // A PENDING purchase, or an empty/null list, must not revoke an
+                // existing entitlement; leave the current state as-is.
             }
 
             BillingClient.BillingResponseCode.USER_CANCELED -> Unit
 
             BillingClient.BillingResponseCode.ITEM_ALREADY_OWNED -> {
-                _entitlement.value = Entitlement.Entitled
+                // Resolve from the real purchase so productId/purchaseToken are
+                // populated for managed channel activation.
+                scope.launch { refresh() }
             }
 
             BillingClient.BillingResponseCode.BILLING_UNAVAILABLE,

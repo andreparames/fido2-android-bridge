@@ -7,6 +7,6 @@ interface SubscriptionRepository {
     val entitlement: StateFlow<Entitlement>
     suspend fun refresh()
     suspend fun queryProducts(): Result<List<SubscriptionProduct>>
-    suspend fun launchPurchase(activity: Activity, productId: String)
+    suspend fun launchPurchase(activity: Activity, productId: String): Result<Unit>
     suspend fun restorePurchases()
 }

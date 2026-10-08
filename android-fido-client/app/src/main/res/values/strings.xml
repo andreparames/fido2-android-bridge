@@ -8,6 +8,7 @@
     <string name="subscribe_manage">Manage subscription in Play</string>
     <string name="subscribe_billing_unavailable">Google Play Billing is unavailable on this device. Open the Play Store and try again.</string>
     <string name="subscribe_error">Could not load subscription products.</string>
+    <string name="subscribe_purchase_error">Could not start the purchase flow. Please try again.</string>
     <string name="subscription_required">Your Gatebridge subscription is not active. Renew in Google Play to use the managed relay.</string>
     <string name="loading_entitlement">Checking subscription…</string>
 </resources>
