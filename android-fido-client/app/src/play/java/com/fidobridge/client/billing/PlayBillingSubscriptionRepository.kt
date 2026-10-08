@@ -14,6 +14,9 @@ import com.android.billingclient.api.PurchasesUpdatedListener
 import com.android.billingclient.api.QueryProductDetailsParams
 import com.android.billingclient.api.QueryPurchasesParams
 import dagger.hilt.android.qualifiers.ApplicationContext
+import java.time.Instant
+import java.time.Period
+import java.time.ZoneOffset
 import javax.inject.Inject
 import javax.inject.Singleton
 import kotlin.coroutines.resume
@@ -119,14 +122,53 @@ class PlayBillingSubscriptionRepository @Inject constructor(
             }
         if (active != null) {
             acknowledgeIfRequired()
-            _entitlement.value = Entitlement(
-                status = EntitlementStatus.ENTITLED,
-                productId = active.products.firstOrNull(),
-                isTrial = false,
-                purchaseToken = active.purchaseToken
-            )
+            _entitlement.value = entitlementFor(active)
         } else {
             _entitlement.value = Entitlement.NotEntitled
+        }
+    }
+
+    private fun entitlementFor(purchase: Purchase): Entitlement {
+        val productId = purchase.products.firstOrNull()
+        return Entitlement(
+            status = EntitlementStatus.ENTITLED,
+            productId = productId,
+            isTrial = isInTrial(purchase, productId),
+            purchaseToken = purchase.purchaseToken
+        )
+    }
+
+    /**
+     * Best-effort client-side trial window: the product has a free (zero-price)
+     * [ProductIds.TRIAL_PERIOD] phase and the purchase is still inside it. The
+     * verified server session (`/v1/play/session`) remains authoritative and
+     * overrides this via [applyServerTrial].
+     */
+    private fun isInTrial(purchase: Purchase, productId: String?): Boolean {
+        if (productId == null) return false
+        val details = productDetails.firstOrNull { it.productId == productId } ?: return false
+        val trialPhase = details.subscriptionOfferDetails
+            ?.asSequence()
+            ?.flatMap { it.pricingPhases.pricingPhaseList.asSequence() }
+            ?.firstOrNull {
+                it.billingPeriod == ProductIds.TRIAL_PERIOD && it.priceAmountMicros == 0L
+            }
+            ?: return false
+        val endsAt = Instant.ofEpochMilli(purchase.purchaseTime)
+            .atZone(ZoneOffset.UTC)
+            .plus(Period.parse(trialPhase.billingPeriod))
+            .toInstant()
+        return Instant.now().isBefore(endsAt)
+    }
+
+    /**
+     * Applies the server-authoritative trial flag from a verified Play session
+     * without altering the rest of the (already-entitled) state.
+     */
+    fun applyServerTrial(isTrial: Boolean) {
+        val current = _entitlement.value
+        if (current.isEntitled && current.isTrial != isTrial) {
+            _entitlement.value = current.copy(isTrial = isTrial)
         }
     }
 
@@ -268,11 +310,7 @@ class PlayBillingSubscriptionRepository @Inject constructor(
                         ProductIds.isLegal(it.products.firstOrNull() ?: "")
                 }
                 if (purchased != null) {
-                    _entitlement.value = Entitlement(
-                        status = EntitlementStatus.ENTITLED,
-                        productId = purchased.products.firstOrNull(),
-                        purchaseToken = purchased.purchaseToken
-                    )
+                    _entitlement.value = entitlementFor(purchased)
                     if (!purchased.isAcknowledged) {
                         val ack = AcknowledgePurchaseParams.newBuilder()
                             .setPurchaseToken(purchased.purchaseToken)

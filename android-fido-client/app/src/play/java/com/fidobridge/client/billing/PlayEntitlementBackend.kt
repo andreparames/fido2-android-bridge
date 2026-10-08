@@ -32,7 +32,8 @@ import okhttp3.RequestBody.Companion.toRequestBody
 @Singleton
 class PlayEntitlementBackend @Inject constructor(
     @ApplicationContext private val context: Context,
-    private val subscriptionRepository: SubscriptionRepository
+    private val subscriptionRepository: SubscriptionRepository,
+    private val playSubscriptionRepository: PlayBillingSubscriptionRepository
 ) : EntitlementBackend {
 
     private val json = Json { ignoreUnknownKeys = true }
@@ -57,12 +58,14 @@ class PlayEntitlementBackend @Inject constructor(
                 )
             }
             runCatching {
-                val sessionToken = createSession(productId, purchaseToken)
-                activateChannel(sessionToken, channel)
+                val session = createSession(productId, purchaseToken)
+                val result = activateChannel(session.token, channel)
+                playSubscriptionRepository.applyServerTrial(session.isTrial)
+                result
             }
         }
 
-    private fun createSession(productId: String, purchaseToken: String): String {
+    private fun createSession(productId: String, purchaseToken: String): PlaySession {
         val body = buildJsonObject {
             put("productId", productId)
             put("purchaseToken", purchaseToken)
@@ -73,11 +76,14 @@ class PlayEntitlementBackend @Inject constructor(
         ).jsonObject
         val entitled = root["entitled"]?.jsonPrimitive?.booleanOrNull == true
         val token = root["sessionToken"]?.jsonPrimitive?.contentOrNull
+        val isTrial = root["isTrial"]?.jsonPrimitive?.booleanOrNull == true
         if (!entitled || token.isNullOrEmpty()) {
             throw IllegalStateException("play session denied: ${root["reason"]?.jsonPrimitive?.contentOrNull}")
         }
-        return token
+        return PlaySession(token, isTrial)
     }
+
+    private data class PlaySession(val token: String, val isTrial: Boolean)
 
     private fun activateChannel(sessionToken: String, channel: String): ActivateResult {
         val body = buildJsonObject { put("channel", channel) }
