@@ -28,6 +28,7 @@ from fido_daemon.pairing import Pairing, derive_channel_id
 from fido_daemon.pairing_uri import format_pairing_uri
 from fido_daemon.protocol import CTAP2_ERR_INVALID_COMMAND, CTAP2_ERR_OPERATION_DENIED
 from fido_daemon.relay import RelayClient
+from fido_daemon.relay_mode import is_managed_relay
 from fido_daemon.socket_server import SocketServer
 from fido_daemon.uhid_device import UhidDevice
 
@@ -58,11 +59,14 @@ def _run_pair(no_qr: bool = False, config_path: str | None = None) -> int:
     key_path = Path(config.static_key_path)
     static_private = StaticKeyStore.load_or_create(key_path)
     static_public = StaticKeyStore.public_key(static_private)
-    # Carry the relay token so the Android client can connect without a rebuild.
+    managed = is_managed_relay(config.relay_url)
+    # Classic mode carries the relay token so the Android client can connect
+    # without a rebuild. Managed mode omits it: the subscribe proxy is the
+    # gate, and the token is not handed to the client.
     from fido_daemon.pairing import PairingGenerator
 
     pairing = PairingGenerator.generate(static_public)
-    if config.relay_token:
+    if config.relay_token and not managed:
         pairing = Pairing(
             static_public=static_public,
             channel_hex=pairing.channel_hex,
@@ -80,7 +84,7 @@ def _run_pair(no_qr: bool = False, config_path: str | None = None) -> int:
         write_config_file(
             config_path,
             channel_id=channel_id,
-            relay_token=config.relay_token or None,
+            relay_token=None if managed else config.relay_token or None,
         )
         print(f"\nConfig written to {config_path}", file=sys.stderr)
     return 0
@@ -162,6 +166,30 @@ def build_request_handler(relay: RelayClient, config: Config):
     return handle_ctap2_command
 
 
+def _build_relay(
+    config: Config,
+    static_private: bytes,
+    *,
+    on_phone_identified=None,
+    client_factory=None,
+) -> RelayClient:
+    """Construct the relay client with the relay mode matching `config`.
+
+    Managed mode (host ``relay.gatebridge.app``) polls the subscribe until the
+    backend proxy allows; classic mode uses the one-shot JWT subscribe.
+    """
+    return RelayClient(
+        config.relay_url,
+        config.channel_id,
+        static_private,
+        token=config.relay_token,
+        phone_public_key=config.phone_public_key,
+        on_phone_identified=on_phone_identified,
+        client_factory=client_factory,
+        managed=is_managed_relay(config.relay_url),
+    )
+
+
 async def _run(config: Config, *, client_factory=None) -> None:
     static_private = StaticKeyStore.load(Path(config.static_key_path))
 
@@ -174,12 +202,9 @@ async def _run(config: Config, *, client_factory=None) -> None:
                 "no config file set; phone static key pin lasts only for this session"
             )
 
-    relay = RelayClient(
-        config.relay_url,
-        config.channel_id,
+    relay = _build_relay(
+        config,
         static_private,
-        token=config.relay_token,
-        phone_public_key=config.phone_public_key,
         on_phone_identified=_persist_phone_key,
         client_factory=client_factory,
     )
