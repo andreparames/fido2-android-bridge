@@ -65,6 +65,12 @@ billing-ktx = { group = "com.android.billingclient", name = "billing-ktx", versi
 
 Do **not** add billing as a plain `implementation` — it must be flavor-scoped (below).
 
+> **Implementation note (Android client, Kotlin 2.0.21):** pin `billing-ktx` to
+> **8.0.0**. `billing-ktx:8.1.0` is compiled with Kotlin metadata 2.2 and fails
+> against the project's 2.0.x compiler ("incompatible version of Kotlin"); 8.0.0
+> is the newest KTX that builds on the current toolchain. Revisit after a Kotlin
+> upgrade.
+
 ### 2.2 `android-fido-client/app/build.gradle.kts`
 
 Add flavor dimension and product flavors. Keep `applicationId = "com.fidobridge.client"` in `defaultConfig`. Move/keep `RELAY_URL` per flavor.

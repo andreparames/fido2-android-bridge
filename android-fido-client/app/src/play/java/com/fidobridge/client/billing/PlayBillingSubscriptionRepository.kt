@@ -13,6 +13,9 @@ import com.android.billingclient.api.Purchase
 import com.android.billingclient.api.PurchasesUpdatedListener
 import com.android.billingclient.api.QueryProductDetailsParams
 import com.android.billingclient.api.QueryPurchasesParams
+import com.android.billingclient.api.acknowledgePurchase
+import com.android.billingclient.api.queryProductDetails
+import com.android.billingclient.api.queryPurchasesAsync
 import dagger.hilt.android.qualifiers.ApplicationContext
 import java.time.Instant
 import java.time.Period
@@ -183,20 +186,13 @@ class PlayBillingSubscriptionRepository @Inject constructor(
                 }
             )
             .build()
-        return suspendCancellableCoroutine { cont ->
-            billingClient.queryProductDetailsAsync(params) { result, details ->
-                if (cont.isActive) {
-                    cont.resume(
-                        if (result.responseCode == BillingClient.BillingResponseCode.OK) {
-                            Result.success(details.productDetailsList)
-                        } else {
-                            Result.failure(
-                                IllegalStateException("product details failed: ${result.responseCode}")
-                            )
-                        }
-                    )
-                }
-            }
+        val result = billingClient.queryProductDetails(params)
+        return if (result.billingResult.responseCode == BillingClient.BillingResponseCode.OK) {
+            Result.success(result.productDetailsList ?: emptyList())
+        } else {
+            Result.failure(
+                IllegalStateException("product details failed: ${result.billingResult.responseCode}")
+            )
         }
     }
 
@@ -204,20 +200,13 @@ class PlayBillingSubscriptionRepository @Inject constructor(
         val params = QueryPurchasesParams.newBuilder()
             .setProductType(BillingClient.ProductType.SUBS)
             .build()
-        return suspendCancellableCoroutine { cont ->
-            billingClient.queryPurchasesAsync(params) { result, purchases ->
-                if (cont.isActive) {
-                    cont.resume(
-                        if (result.responseCode == BillingClient.BillingResponseCode.OK) {
-                            Result.success(purchases)
-                        } else {
-                            Result.failure(
-                                IllegalStateException("purchases query failed: ${result.responseCode}")
-                            )
-                        }
-                    )
-                }
-            }
+        val result = billingClient.queryPurchasesAsync(params)
+        return if (result.billingResult.responseCode == BillingClient.BillingResponseCode.OK) {
+            Result.success(result.purchasesList ?: emptyList())
+        } else {
+            Result.failure(
+                IllegalStateException("purchases query failed: ${result.billingResult.responseCode}")
+            )
         }
     }
 
@@ -297,7 +286,7 @@ class PlayBillingSubscriptionRepository @Inject constructor(
                 val ack = AcknowledgePurchaseParams.newBuilder()
                     .setPurchaseToken(purchase.purchaseToken)
                     .build()
-                billingClient.acknowledgePurchase(ack) { }
+                billingClient.acknowledgePurchase(ack)
             }
         }
     }
@@ -315,7 +304,7 @@ class PlayBillingSubscriptionRepository @Inject constructor(
                         val ack = AcknowledgePurchaseParams.newBuilder()
                             .setPurchaseToken(purchased.purchaseToken)
                             .build()
-                        billingClient.acknowledgePurchase(ack) { }
+                        scope.launch { billingClient.acknowledgePurchase(ack) }
                     }
                 }
                 // A PENDING purchase, or an empty/null list, must not revoke an

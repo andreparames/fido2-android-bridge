@@ -156,7 +156,7 @@ dependencies {
     implementation(libs.noise.java)
     implementation(libs.androidx.fragment)
 
-    "playImplementation"(libs.billing)
+    "playImplementation"(libs.billing.ktx)
 
     debugImplementation(libs.androidx.compose.ui.tooling)
 
