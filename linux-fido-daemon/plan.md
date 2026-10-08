@@ -1,8 +1,8 @@
-# DAEMON_PLAN.md — Linux FIDO2 Daemon Build Plan (TDD)
+# Linux FIDO2 Daemon Build Plan (TDD)
 
 This plan builds the `linux-fido-daemon` using a strict **Test-Driven Development** workflow. Every phase follows the Red → Green → Refactor cycle: write a failing test, implement the minimum to pass, then refactor. No phase is considered done until its tests pass.
 
-Source of truth for security requirements: `agents.md`. Mirror of `ANDROID_PLAN.md` for the daemon side of the bridge.
+Source of truth for security requirements: `AGENTS.md`. Mirror of `android-fido-client/plans/plan.md` for the daemon side of the bridge.
 
 ---
 
@@ -117,7 +117,7 @@ Source of truth for security requirements: `agents.md`. Mirror of `ANDROID_PLAN.
 - **Implement:**
   - `ctap2.py`: decode CBOR (via `fido2` / `cbor2`) → frozen JSON dataclasses.
   - `protocol.py`: versioned JSON constants for the daemon↔phone schema.
-- **Refactor:** freeze schemas as versioned constants mirrored by `ANDROID_PLAN.md` §9.
+- **Refactor:** freeze schemas as versioned constants mirrored by `android-fido-client/plans/plan.md` §9.
 
 **Done when:** CTAP2 parse + schema tests pass.
 
@@ -180,7 +180,13 @@ fail-safe alert behavior.
 
 ## 8. systemd + Definition of Done Verification (M3)
 
-**Objective:** satisfy `agents.md` §6 for the daemon side.
+> **STATUS: DONE** — `systemd/fido-daemon.service` (user unit) ships with the
+> deb/rpm packages; the socket is created at
+> `/run/user/<UID>/fido2-bridge.sock` with `0600` and unlinked on clean shutdown
+> (unit-tested in `test_socket_server.py`). The daemon↔relay path is validated
+> end-to-end by the Phase 9 integration harness and the emulator E2E harness.
+
+**Objective:** satisfy `AGENTS.md` §6 for the daemon side.
 
 > Secrets (`FIDO2_SESSION_KEY_B64`, `FIDO2_RELAY_TOKEN`) are supplied via a
 > `0600` `EnvironmentFile=` (or `systemd --user` environment), never baked into
@@ -190,7 +196,7 @@ fail-safe alert behavior.
 1. `systemd/fido-daemon.service` installed at `~/.config/systemd/user/`; `systemctl --user enable --now fido-daemon`.
 2. Socket exists at `/run/user/<UID>/fido2-bridge.sock` with `0600` perms (`ls -l`).
 3. `systemctl --user stop fido-daemon` unlinks the socket (no stale file).
-4. Manual E2E with a stub phone + `https://webauthn.io` per `agents.md` §6.3.
+4. Manual E2E with a stub phone + `https://webauthn.io` per `AGENTS.md` §6.3.
 
 ### Final commands
 ```bash
@@ -384,7 +390,7 @@ relay.py (unchanged) ── AES-256-GCM ──> phone
   tests).
 - With `FIDO2_UHID_ENABLED=1`: `ls /dev/hidraw*` shows the virtual device,
   `udevadm info` reports usage page `0xF1D0`, and `https://webauthn.io`
-  authenticates with the phone (manual, per `agents.md` §6.3).
+  authenticates with the phone (manual, per `AGENTS.md` §6.3).
 
 ---
 

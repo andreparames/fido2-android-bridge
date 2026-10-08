@@ -1,11 +1,11 @@
-# ANDROID_UI_UX_PLAN.md — HomeScreen, Request History & Reset (UI/UX)
+# HomeScreen, Request History & Reset (UI/UX)
 
 This plan reworks the Android client's user-facing surfaces, folding in a senior
 mobile-app-designer review of the target UI. Scope: a useful HomeScreen (waiting
 status + recent request history + clear/reset actions), threshold-based handling
 of GCM-tag failures, and pairing-screen polish. No changes to the wire protocol.
 
-Source of truth for security requirements: `agents.md` and `PROTOCOL.md`.
+Source of truth for security requirements: `AGENTS.md` and `PROTOCOL.md`.
 
 ---
 

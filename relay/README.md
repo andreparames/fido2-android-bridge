@@ -43,7 +43,7 @@ The script generates secrets, deploys Centrifugo, and prints everything you
 need to configure the daemon and Android app (relay URL, connection JWT,
 session key instructions).
 
-See also `ANDROID_PLAN.md` §12 and `DAEMON_PLAN.md` for the full client setup.
+See also `android-fido-client/plans/plan.md` §12 and `linux-fido-daemon/plan.md` for the full client setup.
 
 ## Self-hosted setup
 

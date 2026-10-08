@@ -1,6 +1,6 @@
 """Daemon configuration: socket path, relay URL, static key path, timeouts.
 
-All values are overridable via environment variables, honoring agents.md
+All values are overridable via environment variables, honoring AGENTS.md
 `FIDO2_REMOTE_SOCKET` and keeping secrets out of the process CLI args.
 
 A TOML config file (``-c/--config``) can store the pairing-derived values

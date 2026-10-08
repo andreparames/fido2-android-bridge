@@ -103,13 +103,13 @@ fido-daemon --uhid
 - The relay server never sees plaintext — it only forwards opaque Noise handshake and transport messages.
 - Noise authentication failures (e.g. a replayed or tampered frame) are treated as security alerts and the connection is dropped.
 
-See [`PROTOCOL.md`](PROTOCOL.md) for the full wire format specification and [`agents.md`](agents.md) for the security requirements.
+See [`PROTOCOL.md`](PROTOCOL.md) for the full wire format specification and [`AGENTS.md`](AGENTS.md) for the security requirements.
 
 ## Development
 
 Both components are built with strict **Test-Driven Development**. See:
-- [`DAEMON_PLAN.md`](DAEMON_PLAN.md) — Linux daemon build plan
-- [`ANDROID_PLAN.md`](ANDROID_PLAN.md) — Android client build plan
+- [`linux-fido-daemon/plan.md`](linux-fido-daemon/plan.md) — Linux daemon build plan
+- [`android-fido-client/plans/plan.md`](android-fido-client/plans/plan.md) — Android client build plan
 
 ```bash
 # Daemon tests

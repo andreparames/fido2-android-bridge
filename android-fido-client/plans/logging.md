@@ -1,4 +1,4 @@
-# ANDROID_LOGGING_PLAN — Local diagnostics persistence + export
+# Local diagnostics persistence + export
 
 Covers the three TODOs added to `TODO.md`:
 
@@ -105,7 +105,7 @@ interface DiagnosticLogStore {
 - `debug { buildConfigField("boolean", "DIAGNOSTIC_RELAY_ENABLED", "true") }`
 - `release { buildConfigField("boolean", "DIAGNOSTIC_RELAY_ENABLED", "false") }`
 - `DataModule` passes the flag into the sink. (A future `productFlavors` split
-  for the Play/OSS tracks in `playstore/BILLING_PLAN.md` can refine this; not a
+  for the Play/OSS tracks in `playstore/plans/billing.md` can refine this; not a
   dependency here.)
 
 ### 3.4 Export (UI + ViewModel)
@@ -130,7 +130,7 @@ interface DiagnosticLogStore {
 - Add `DiagnosticLogStore` to `AppResetManager`, call `clear()` in `reset()`, and
   fold its result into the returned success value (other cleanup still runs);
   update `DataModule.provideAppResetManager`.
-- Update `playstore/PLAN.md` §Technical facts / privacy wording to state that
+- Update `playstore/plan.md` §Technical facts / privacy wording to state that
   Reset app clears on-device diagnostics (already-exported files remain).
 
 ---
@@ -187,7 +187,7 @@ Per the repo rule ("no implementation code precedes its failing test"):
 | `ui/AppViewModel.kt` | `checkDiagnosticsAvailable` + `exportDiagnostics` |
 | `ui/home/HomeScreen.kt` | Export logs button + SAF launcher |
 | `pairing/AppResetManager.kt` | clear diagnostics on reset, in the result |
-| `playstore/PLAN.md`, `playstore/privacy-policy.md` | accurate local-persistence wording |
+| `playstore/plan.md`, `playstore/legal/privacy-policy.md` | accurate local-persistence wording |
 | `UI_TESTER_GUIDE.md` | export button + expected file |
 | tests | `FileDiagnosticLogStoreTest`, `DiagnosticLogSinkTest`, `DiagnosticsExporterTest`, `AppResetManagerTest`, `AppViewModelTest` |
 

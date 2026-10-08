@@ -484,7 +484,7 @@ environment approved once.
 
 ---
 
-## 10. Verification (maps to agents.md §6 Definition of Done)
+## 10. Verification (maps to AGENTS.md §6 Definition of Done)
 
 Matrix: `debian:12`/`debian:13`, `ubuntu:24.04`, `ubuntu:22.04`, `fedora:41`,
 `rockylinux:10`, amd64 + arm64. For each:

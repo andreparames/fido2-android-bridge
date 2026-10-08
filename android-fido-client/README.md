@@ -21,15 +21,15 @@ sees ciphertext.
 | Doc | Purpose |
 |-----|---------|
 | [`PROTOCOL.md`](../PROTOCOL.md) | **Single source of truth** for wire formats: pairing URI, WireMessage envelope, plaintext message schema, `channel_id` derivation, error codes. Do not change these constants without bumping `PROTOCOL_VERSION`. |
-| [`agents.md`](../agents.md) | Security requirements, Definition of Done, hardware-key spec. |
-| [`ANDROID_PLAN.md`](../ANDROID_PLAN.md) | The TDD build plan this codebase follows (Red → Green → Refactor). |
-| [`DAEMON_PLAN.md`](../DAEMON_PLAN.md) | The daemon-side mirror plan (also Centrifugo). |
+| [`AGENTS.md`](../AGENTS.md) | Security requirements, Definition of Done, hardware-key spec. |
+| [`plans/plan.md`](plans/plan.md) | The TDD build plan this codebase follows (Red → Green → Refactor). |
+| [`../linux-fido-daemon/plan.md`](../linux-fido-daemon/plan.md) | The daemon-side mirror plan (also Centrifugo). |
 
 ---
 
 ## Current status
 
-Built via strict TDD through **M1–M5** of `ANDROID_PLAN.md`, plus the Centrifugo
+Built via strict TDD through **M1–M5** of `plans/plan.md`, plus the Centrifugo
 transport migration. Unit-testable layers are done and green (48 unit tests,
 `lint`, `assembleDebug`). Device-dependent pieces compile but are **not yet run on a
 device**.
@@ -69,7 +69,7 @@ device**.
     (`0x26`, `0x27`, `0x7F`).
 
 ### Not yet done / requires hardware
-- **Phase 10 / DoD** (`agents.md` §6): the full loop — inbound JSON → `BiometricPrompt`
+- **Phase 10 / DoD** (`AGENTS.md` §6): the full loop — inbound JSON → `BiometricPrompt`
   (showing `rpId`) → sign → response — and the manual `https://webauthn.io` E2E. The
   service wiring (`FidoBridgeService` → `RelayClient` → `Ctap2Processor` →
   `BiometricSigner`) and a StrongBox→TEE fallback still need to be built; only a
@@ -144,7 +144,7 @@ Plugin 8.5.2 / Gradle 8.7 (wrapped).
 ```
 
 For the headless-emulator E2E (real APK + live Centrifugo + `mock-daemon`), see
-`ANDROID_PLAN.md` Phase 12; the exact emulator/SDK install state and cleanup
+`plans/plan.md` Phase 12; the exact emulator/SDK install state and cleanup
 steps are in [`EMULATOR_ENV.md`](../EMULATOR_ENV.md).
 
 ### Relay token (dev convenience)
@@ -215,7 +215,7 @@ runs ([docs](https://docs.github.com/en/actions/using-workflows/triggering-a-wor
 
 ---
 
-## Security invariants (from `agents.md`)
+## Security invariants (from `AGENTS.md`)
 
 - Private keys never leave TEE/StrongBox; every signature requires biometric auth.
 - AES-256-GCM on all wire data; fresh 12-byte nonce per message; never reused.
