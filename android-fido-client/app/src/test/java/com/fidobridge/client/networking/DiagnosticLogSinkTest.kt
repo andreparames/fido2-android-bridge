@@ -1,9 +1,15 @@
 package com.fidobridge.client.networking
 
 import java.io.OutputStream
+import java.util.Collections
+import java.util.concurrent.CountDownLatch
 import java.util.concurrent.Executor
+import java.util.concurrent.Executors
+import java.util.concurrent.TimeUnit
+import java.util.concurrent.atomic.AtomicReference
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -107,6 +113,54 @@ class DiagnosticLogSinkTest {
     }
 
     @Test
+    fun `stop keeps waiting for the drain when the caller is interrupted`() {
+        val appendStarted = CountDownLatch(1)
+        val release = CountDownLatch(1)
+        val entries = Collections.synchronizedList(mutableListOf<DiagnosticLogEntry>())
+        val store = object : DiagnosticLogStore {
+            override fun append(entry: DiagnosticLogEntry) {
+                appendStarted.countDown()
+                release.await()
+                entries += entry
+            }
+            override fun readAll(): String = ""
+            override fun exportZipTo(output: OutputStream) = Unit
+            override fun clear(): Boolean = true
+            override fun sizeBytes(): Long = entries.size.toLong()
+        }
+        val executor = Executors.newSingleThreadExecutor()
+        val sink = DiagnosticLogSink(store, RecordingPublisher(), relayEnabled = false, writer = executor)
+        val failure = AtomicReference<Throwable?>()
+        try {
+            sink.log("first")
+            assertTrue(appendStarted.await(2, TimeUnit.SECONDS))
+
+            val stopper = Thread {
+                try {
+                    sink.stop()
+                } catch (t: Throwable) {
+                    failure.set(t)
+                }
+            }
+            stopper.start()
+            Thread.sleep(200)
+            stopper.interrupt()
+            Thread.sleep(200)
+            assertTrue("stop returned before queued writes drained", stopper.isAlive)
+
+            release.countDown()
+            stopper.join(2_000)
+            assertFalse("stop did not finish after the drain", stopper.isAlive)
+            assertNull(failure.get())
+        } finally {
+            release.countDown()
+            executor.shutdownNow()
+        }
+
+        assertEquals(listOf("first"), entries.map { it.message })
+    }
+
+    @Test
     fun `stop refuses writes that arrive afterwards`() {
         val store = RecordingStore()
         val sink = DiagnosticLogSink(store, RecordingPublisher(), relayEnabled = false, writer = direct)
@@ -117,7 +171,6 @@ class DiagnosticLogSinkTest {
 
         assertEquals(listOf("before"), store.entries.map { it.message })
     }
-
     @Test
     fun `start re-enables logging after stop`() {
         val store = RecordingStore()

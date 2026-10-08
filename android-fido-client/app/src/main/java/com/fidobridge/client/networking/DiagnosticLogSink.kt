@@ -27,19 +27,23 @@ class DiagnosticLogSink(
     }
 ) {
 
+    private val lock = Any()
+
     @Volatile
     private var accepting = true
 
     fun start(channelId: String, relayUrl: String, relayToken: String?) {
-        accepting = true
+        synchronized(lock) { accepting = true }
         if (!relayEnabled) return
         runCatching { publisher.start(channelId, relayUrl, relayToken) }
     }
 
     fun log(message: String) {
-        if (!accepting) return
         val entry = DiagnosticLogEntry.now(message)
-        writer.execute { runCatching { store.append(entry) } }
+        synchronized(lock) {
+            if (!accepting) return
+            writer.execute { runCatching { store.append(entry) } }
+        }
         if (relayEnabled) {
             runCatching {
                 publisher.publish(DiagnosticLogEntry.encode(entry).toByteArray(Charsets.UTF_8))
@@ -53,18 +57,24 @@ class DiagnosticLogSink(
      * clears the store.
      */
     fun stop() {
-        accepting = false
-        drain()
+        val drained = CountDownLatch(1)
+        synchronized(lock) {
+            accepting = false
+            runCatching { writer.execute { drained.countDown() } }
+        }
+        awaitDrain(drained)
         if (relayEnabled) runCatching { publisher.stop() }
     }
 
-    private fun drain() {
-        val drained = CountDownLatch(1)
-        runCatching { writer.execute { drained.countDown() } }
-        try {
-            drained.await()
-        } catch (e: InterruptedException) {
-            Thread.currentThread().interrupt()
+    private fun awaitDrain(drained: CountDownLatch) {
+        var interrupted = false
+        while (drained.count > 0L) {
+            try {
+                drained.await()
+            } catch (e: InterruptedException) {
+                interrupted = true
+            }
         }
+        if (interrupted) Thread.currentThread().interrupt()
     }
 }
