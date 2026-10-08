@@ -26,7 +26,6 @@ import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
 import com.fidobridge.client.BuildConfig
 import com.fidobridge.client.R
-import com.fidobridge.client.billing.EntitlementStatus
 import com.fidobridge.client.networking.FidoBridgeService
 import com.fidobridge.client.ui.home.HomeScreen
 import com.fidobridge.client.ui.pairing.PairingScreen
@@ -49,12 +48,10 @@ fun FidoBridgeApp() {
 
         // The entitlement gate decides which surface is shown; the NavHost below
         // keeps a static start destination so navigation is deterministic.
-        when {
-            // oss has no billing: never present the Subscribe gate (billing.md §5.4).
-            !BuildConfig.PLAY_BILLING_REQUIRED -> MainNavHost(appViewModel)
-            entitlement.status == EntitlementStatus.LOADING -> LoadingScreen()
-            entitlement.status == EntitlementStatus.ENTITLED -> MainNavHost(appViewModel)
-            else -> SubscribeScreen(onEntitled = { appViewModel.refreshEntitlement() })
+        when (surfaceFor(BuildConfig.PLAY_BILLING_REQUIRED, entitlement.status)) {
+            AppSurface.LOADING -> LoadingScreen()
+            AppSurface.MAIN -> MainNavHost(appViewModel)
+            AppSurface.SUBSCRIBE -> SubscribeScreen(onEntitled = { appViewModel.refreshEntitlement() })
         }
 
         userMessage?.let { message ->
