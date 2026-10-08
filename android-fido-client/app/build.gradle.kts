@@ -37,12 +37,6 @@ android {
         vectorDrawables {
             useSupportLibrary = true
         }
-
-        buildConfigField(
-            "String",
-            "RELAY_TOKEN",
-            "\"${escapeForBuildConfig(relayToken())}\""
-        )
     }
 
     flavorDimensions += "distribution"
@@ -58,6 +52,13 @@ android {
                 "RELAY_URL",
                 "\"${escapeForBuildConfig(url)}\""
             )
+            // Self-host/dev convenience only: a shared connection JWT read from
+            // the `pass` store at build time. Never embedded in the Play flavor.
+            buildConfigField(
+                "String",
+                "RELAY_TOKEN",
+                "\"${escapeForBuildConfig(relayToken())}\""
+            )
         }
         create("play") {
             dimension = "distribution"
@@ -66,6 +67,10 @@ android {
                 "RELAY_URL",
                 "\"${escapeForBuildConfig(relayUrlPlay())}\""
             )
+            // Managed relay connects anonymously/low-priv; the Centrifugo
+            // connection JWT is server-side only (MANAGED_RELAY_PLAN §5), so no
+            // relay token is embedded in the Play APK.
+            buildConfigField("String", "RELAY_TOKEN", "\"\"")
             // Gatebridge entitlement API used by the managed (Play) relay path.
             buildConfigField(
                 "String",
