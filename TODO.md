@@ -60,6 +60,48 @@ time.
 
 **Files:** `INTEGRATION_TESTING.md`.
 
+### [ ] Make `LatchingSubscriptionRepository` entitlement delivery lossless (deferred)
+
+**Source:** CodeRabbit review, PR #25 — `billing/LatchingSubscriptionRepository.kt`
+("Capture entitlement upgrades before they can be conflated"). Deferred by mutual
+agreement and recorded by CodeRabbit as an accepted limitation, **not fixed**.
+
+**Problem:** the latch observes `delegate.entitlement` (a `StateFlow`, which
+conflates) on a separate collector. If the delegate ever writes `ENTITLED` and
+then a non-entitled value within one logical update before the collector runs,
+the latch could miss the upgrade and never become entitled. Today the only
+producer (`PlayBillingSubscriptionRepository`) writes `_entitlement.value` at
+most once per `refresh()` / `onPurchasesUpdated`, and `refresh()` now reconciles
+synchronously for the service-startup path, so the window is not reachable. The
+risk returns if a producer ever performs multiple writes per update.
+
+**Fix direction:**
+- Move the latch to the producer (make the Play repository monotonic), or
+- deliver entitlement changes through a lossless `SharedFlow`/`Channel` instead
+  of collecting the conflating `StateFlow`.
+
+**Files:** `billing/LatchingSubscriptionRepository.kt`,
+`play/billing/PlayBillingSubscriptionRepository.kt`,
+`billing/SubscriptionRepository.kt`.
+
+### [ ] Gate the master release on the play-flavor CI checks
+
+**Source:** PR #25 — `CI (play flavor)` is a separate, path-filtered workflow
+(`.github/workflows/android-play.yml`), so `release-llm` does not `needs:` it and
+a play-only failure cannot block a release.
+
+**Problem:** the play checks (`lintPlayDebug`, `testPlayDebugUnitTest`) run only
+when play-specific/flavor-conditional files change and are not required by the
+release pipeline, so a broken `play` variant could merge/release uncaught.
+
+**Fix direction:**
+- Add `CI (play flavor)` as a required status check in branch protection, or
+- add a `workflow_run`-based gate (or fold the play jobs back into `ci.yml` with
+  a change-detection job) so `release-llm` waits on it.
+
+**Files:** `.github/workflows/android-play.yml`, `.github/workflows/ci.yml`,
+repository branch-protection settings.
+
 ---
 
 ## Done
