@@ -48,3 +48,8 @@ def test_other_hosts_are_classic(url: str) -> None:
 @pytest.mark.parametrize("url", ["", "not a url", "://", "wss://", None])
 def test_unparsable_urls_are_classic(url) -> None:
     assert is_managed_relay(url) is False
+
+
+@pytest.mark.parametrize("url", ["wss://[", "http://[", "http://[::1", "ws://[::1"])
+def test_malformed_bracket_urls_are_classic(url: str) -> None:
+    assert is_managed_relay(url) is False

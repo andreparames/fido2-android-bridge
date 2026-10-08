@@ -18,8 +18,12 @@ def is_managed_relay(url: str | None) -> bool:
     """Return True if `url` targets the managed relay host (fail closed)."""
     if not url:
         return False
-    parsed = urlparse(url)
-    hostname = parsed.hostname
+    try:
+        hostname = urlparse(url).hostname
+    except ValueError:
+        # Malformed URLs (e.g. unbalanced IPv6 brackets) must not crash the
+        # daemon: treat them as classic.
+        return False
     if hostname is None:
         return False
     return hostname.lower() == MANAGED_RELAY_HOST
