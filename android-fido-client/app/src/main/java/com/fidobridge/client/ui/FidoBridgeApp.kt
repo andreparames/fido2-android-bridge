@@ -24,6 +24,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
+import com.fidobridge.client.BuildConfig
 import com.fidobridge.client.R
 import com.fidobridge.client.billing.EntitlementStatus
 import com.fidobridge.client.networking.FidoBridgeService
@@ -48,9 +49,11 @@ fun FidoBridgeApp() {
 
         // The entitlement gate decides which surface is shown; the NavHost below
         // keeps a static start destination so navigation is deterministic.
-        when (entitlement.status) {
-            EntitlementStatus.LOADING -> LoadingScreen()
-            EntitlementStatus.ENTITLED -> MainNavHost(appViewModel)
+        when {
+            // oss has no billing: never present the Subscribe gate (billing.md §5.4).
+            !BuildConfig.PLAY_BILLING_REQUIRED -> MainNavHost(appViewModel)
+            entitlement.status == EntitlementStatus.LOADING -> LoadingScreen()
+            entitlement.status == EntitlementStatus.ENTITLED -> MainNavHost(appViewModel)
             else -> SubscribeScreen(onEntitled = { appViewModel.refreshEntitlement() })
         }
 

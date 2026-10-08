@@ -76,7 +76,8 @@ object DataModule {
     ): ManagedPairingGate = ManagedPairingGate(
         relayUrl = BuildConfig.RELAY_URL,
         subscriptionRepository = subscriptionRepository,
-        entitlementBackend = entitlementBackend
+        entitlementBackend = entitlementBackend,
+        managedFlavor = BuildConfig.MANAGED_RELAY == "true"
     )
 
     @Provides

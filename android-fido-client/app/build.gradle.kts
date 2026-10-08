@@ -59,6 +59,8 @@ android {
                 "RELAY_TOKEN",
                 "\"${escapeForBuildConfig(relayToken())}\""
             )
+            buildConfigField("String", "MANAGED_RELAY", "\"false\"")
+            buildConfigField("boolean", "PLAY_BILLING_REQUIRED", "false")
         }
         create("play") {
             dimension = "distribution"
@@ -77,6 +79,8 @@ android {
                 "GATEBRIDGE_API_URL",
                 "\"${escapeForBuildConfig(gatebridgeApiUrlPlay())}\""
             )
+            buildConfigField("String", "MANAGED_RELAY", "\"true\"")
+            buildConfigField("boolean", "PLAY_BILLING_REQUIRED", "true")
         }
     }
 

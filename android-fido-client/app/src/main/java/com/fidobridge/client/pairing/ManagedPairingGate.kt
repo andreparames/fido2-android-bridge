@@ -17,9 +17,11 @@ import com.fidobridge.client.relay.RelayModeDetector
 class ManagedPairingGate(
     relayUrl: String,
     private val subscriptionRepository: SubscriptionRepository,
-    private val entitlementBackend: EntitlementBackend
+    private val entitlementBackend: EntitlementBackend,
+    managedFlavor: Boolean
 ) {
-    val mode: RelayMode = RelayModeDetector.detect(relayUrl)
+    val mode: RelayMode =
+        if (managedFlavor) RelayModeDetector.detect(relayUrl) else RelayMode.CLASSIC
 
     val isManaged: Boolean get() = mode == RelayMode.MANAGED
 

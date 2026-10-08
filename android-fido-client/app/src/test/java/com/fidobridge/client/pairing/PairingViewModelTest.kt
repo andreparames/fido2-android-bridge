@@ -48,7 +48,8 @@ class PairingViewModelTest {
     private fun classicGate() = ManagedPairingGate(
         relayUrl = "ws://localhost:9000/connection/websocket",
         subscriptionRepository = com.fidobridge.client.billing.AlwaysEntitledSubscriptionRepository(),
-        entitlementBackend = com.fidobridge.client.billing.FakeEntitlementBackend()
+        entitlementBackend = com.fidobridge.client.billing.FakeEntitlementBackend(),
+        managedFlavor = false
     )
 
     private fun awaitTerminalState(vm: PairingViewModel) {
@@ -166,7 +167,8 @@ class PairingViewModelTest {
                     purchaseToken = "tok"
                 )
             ),
-            entitlementBackend = backend
+            entitlementBackend = backend,
+            managedFlavor = true
         )
         val vm = viewModel(store, gate = gate)
 
@@ -185,7 +187,8 @@ class PairingViewModelTest {
         val gate = ManagedPairingGate(
             relayUrl = "wss://relay.gatebridge.app/connection/websocket",
             subscriptionRepository = FakeSubscriptionRepository(Entitlement.NotEntitled),
-            entitlementBackend = backend
+            entitlementBackend = backend,
+            managedFlavor = true
         )
         val vm = viewModel(store, gate = gate)
 

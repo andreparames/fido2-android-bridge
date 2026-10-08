@@ -26,7 +26,8 @@ class ManagedPairingGateTest {
     ) = ManagedPairingGate(
         relayUrl = "ws://localhost:9000/connection/websocket",
         subscriptionRepository = repository,
-        entitlementBackend = backend
+        entitlementBackend = backend,
+        managedFlavor = false
     )
 
     private fun managedGate(
@@ -35,13 +36,29 @@ class ManagedPairingGateTest {
     ) = ManagedPairingGate(
         relayUrl = "wss://relay.gatebridge.app/connection/websocket",
         subscriptionRepository = repository,
-        entitlementBackend = backend
+        entitlementBackend = backend,
+        managedFlavor = true
     )
 
     @Test
     fun `classic pairing authorizes without touching the backend`() = runTest {
         val backend = FakeEntitlementBackend()
         val gate = classicGate(backend = backend)
+
+        assertTrue(!gate.isManaged)
+        assertTrue(gate.authorize(managedInfo).isSuccess)
+        assertTrue(backend.calls.isEmpty())
+    }
+
+    @Test
+    fun `classic flavor never treats the managed host as managed`() = runTest {
+        val backend = FakeEntitlementBackend()
+        val gate = ManagedPairingGate(
+            relayUrl = "wss://relay.gatebridge.app/connection/websocket",
+            subscriptionRepository = FakeSubscriptionRepository(),
+            entitlementBackend = backend,
+            managedFlavor = false
+        )
 
         assertTrue(!gate.isManaged)
         assertTrue(gate.authorize(managedInfo).isSuccess)
