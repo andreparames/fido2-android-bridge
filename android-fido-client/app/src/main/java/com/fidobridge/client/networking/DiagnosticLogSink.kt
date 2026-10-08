@@ -1,78 +1,80 @@
 package com.fidobridge.client.networking
 
-import android.util.Log
-import io.github.centrifugal.centrifuge.Client
-import io.github.centrifugal.centrifuge.ConnectionTokenEvent
-import io.github.centrifugal.centrifuge.ConnectionTokenGetter
-import io.github.centrifugal.centrifuge.ConnectedEvent
-import io.github.centrifugal.centrifuge.EventListener
-import io.github.centrifugal.centrifuge.Options
-import io.github.centrifugal.centrifuge.PublishResult
-import io.github.centrifugal.centrifuge.ResultCallback
-import io.github.centrifugal.centrifuge.Subscription
-import io.github.centrifugal.centrifuge.SubscriptionEventListener
-import io.github.centrifugal.centrifuge.TokenCallback
-import io.github.centrifugal.centrifuge.UnauthorizedException
-import com.fidobridge.client.protocol.Protocol
-import kotlinx.serialization.Serializable
-import kotlinx.serialization.encodeToString
-import kotlinx.serialization.json.Json
-import javax.inject.Inject
-import javax.inject.Singleton
+import java.util.concurrent.CountDownLatch
+import java.util.concurrent.Executor
+import java.util.concurrent.Executors
 
-@Singleton
-class DiagnosticLogSink @Inject constructor() {
+/**
+ * Fans diagnostic entries out to two destinations:
+ *
+ * 1. The local [DiagnosticLogStore] — **always**, and never dropped, so logs
+ *    survive a relay outage and can be exported. Writes are serialized on
+ *    [writer] so they never run on the caller's (often main) thread and local
+ *    persistence failures can never break the authentication/security path.
+ * 2. The relay log channel via [RelayLogPublisher] — only when [relayEnabled],
+ *    which is `true` for debug builds and `false` for release/prod builds.
+ *
+ * [stop] refuses new writes and drains everything already queued, so a caller
+ * (e.g. app reset) can clear the store afterwards without a late write
+ * recreating it. [start] re-enables logging for a reconnect.
+ */
+class DiagnosticLogSink(
+    private val store: DiagnosticLogStore,
+    private val publisher: RelayLogPublisher,
+    private val relayEnabled: Boolean,
+    private val writer: Executor = Executors.newSingleThreadExecutor { runnable ->
+        Thread(runnable, "diagnostic-log-writer").apply { isDaemon = true }
+    }
+) {
 
-    @Serializable
-    private data class Entry(val ts: Long, val message: String)
+    private val lock = Any()
 
-    private val json = Json
-    private var client: Client? = null
-    private var sub: Subscription? = null
+    @Volatile
+    private var accepting = true
 
     fun start(channelId: String, relayUrl: String, relayToken: String?) {
-        if (client != null) return
-        val token = relayToken ?: ""
-        val opts = Options().apply {
-            this.token = token
-            tokenGetter = object : ConnectionTokenGetter() {
-                override fun getConnectionToken(event: ConnectionTokenEvent, cb: TokenCallback) {
-                    if (token.isEmpty()) cb.Done(UnauthorizedException(), "") else cb.Done(null, token)
-                }
-            }
-        }
-        val c = Client(relayUrl, opts, object : EventListener() {
-            override fun onConnected(client: Client, event: ConnectedEvent) {
-                Log.i(TAG, "diagnostic log sink connected")
-                sub?.subscribe()
-            }
-        })
-        client = c
-        sub = c.newSubscription("${Protocol.RELAY_CHANNEL_PREFIX}log:$channelId", object : SubscriptionEventListener() {})
-        c.connect()
+        synchronized(lock) { accepting = true }
+        if (!relayEnabled) return
+        runCatching { publisher.start(channelId, relayUrl, relayToken) }
     }
 
     fun log(message: String) {
-        val s = sub
-        if (s == null) {
-            Log.w(TAG, "diagnostic log not connected, dropping: $message")
-            return
+        val entry = DiagnosticLogEntry.now(message)
+        synchronized(lock) {
+            if (!accepting) return
+            writer.execute { runCatching { store.append(entry) } }
         }
-        val payload = json.encodeToString(Entry(System.currentTimeMillis(), message))
-        s.publish(payload.toByteArray(), object : ResultCallback<PublishResult> {
-            override fun onDone(e: Throwable?, result: PublishResult?) {
-                if (e != null) Log.w(TAG, "diagnostic publish failed: ${e.message}")
+        if (relayEnabled) {
+            runCatching {
+                publisher.publish(DiagnosticLogEntry.encode(entry).toByteArray(Charsets.UTF_8))
             }
-        })
+        }
     }
 
+    /**
+     * Refuses further writes and waits for every already-queued write to finish
+     * before tearing down the relay, so nothing can be appended after the caller
+     * clears the store.
+     */
     fun stop() {
-        client?.disconnect()
-        client = null
-        sub = null
+        val drained = CountDownLatch(1)
+        synchronized(lock) {
+            accepting = false
+            runCatching { writer.execute { drained.countDown() } }
+        }
+        awaitDrain(drained)
+        if (relayEnabled) runCatching { publisher.stop() }
     }
 
-    companion object {
-        private const val TAG = "FidoBridgeLog"
+    private fun awaitDrain(drained: CountDownLatch) {
+        var interrupted = false
+        while (drained.count > 0L) {
+            try {
+                drained.await()
+            } catch (e: InterruptedException) {
+                interrupted = true
+            }
+        }
+        if (interrupted) Thread.currentThread().interrupt()
     }
 }

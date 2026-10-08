@@ -1,5 +1,7 @@
 package com.fidobridge.client.ui.home
 
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.infiniteRepeatable
@@ -67,6 +69,11 @@ fun HomeScreen(
     val bridgeState by viewModel.bridgeState.collectAsStateWithLifecycle()
     val colors = semanticColors()
     var showResetDialog by remember { mutableStateOf(false) }
+    val exportLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.CreateDocument("application/zip")
+    ) { uri ->
+        if (uri != null) viewModel.exportDiagnostics(uri)
+    }
 
     Scaffold { innerPadding ->
         Box(
@@ -112,6 +119,18 @@ fun HomeScreen(
                         }
                     }
                 }
+
+                DiagnosticsSection(
+                    onExportClick = {
+                        viewModel.checkDiagnosticsAvailable { available ->
+                            if (available) {
+                                exportLauncher.launch("gatebridge-diagnostics-${System.currentTimeMillis()}.zip")
+                            } else {
+                                viewModel.notifyNoDiagnostics()
+                            }
+                        }
+                    }
+                )
 
                 ResetSection(onResetClick = { showResetDialog = true })
             }
@@ -394,6 +413,25 @@ private fun OutcomeBadge(outcome: RequestOutcome, colors: SemanticColors) {
         )
         Spacer(Modifier.width(4.dp))
         Text(requestOutcomeLabel(outcome), style = MaterialTheme.typography.labelMedium, color = content)
+    }
+}
+
+@Composable
+private fun DiagnosticsSection(onExportClick: () -> Unit) {
+    Spacer(Modifier.height(16.dp))
+    HorizontalDivider()
+    Spacer(Modifier.height(16.dp))
+    Text(
+        "Diagnostics",
+        style = MaterialTheme.typography.labelSmall,
+        color = MaterialTheme.colorScheme.onSurfaceVariant,
+        modifier = Modifier.padding(bottom = 8.dp)
+    )
+    OutlinedButton(
+        onClick = onExportClick,
+        modifier = Modifier.fillMaxWidth()
+    ) {
+        Text("Export logs")
     }
 }
 

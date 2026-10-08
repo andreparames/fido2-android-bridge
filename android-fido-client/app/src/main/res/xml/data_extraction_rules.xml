@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Diagnostics are app-private and must not leave the device via device-to-device
+  transfer (android:allowBackup="false" disables cloud backup but not D2D on some
+  OEM implementations). Exclude the on-device diagnostics directory from transfer;
+  user-initiated exports via the Storage Access Framework are unaffected.
+-->
+<data-extraction-rules>
+    <device-transfer>
+        <exclude domain="file" path="diagnostics/" />
+    </device-transfer>
+</data-extraction-rules>
