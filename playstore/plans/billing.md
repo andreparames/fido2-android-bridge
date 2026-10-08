@@ -336,7 +336,7 @@ val startDestination = when (entitlement.status) {
   - `"FIDO Bridge error"` → `"Gatebridge"`.
   - Add subscription-expired message, e.g. "Your Gatebridge subscription is not active. Renew in Google Play to use the managed relay."
   - App label/strings: Gatebridge in user-facing copy; `applicationId` unchanged.
-- **Home banner:** when entitlement drops mid-session (`ENTITLED` → `NOT_ENTITLED`), show a non-blocking banner on HOME linking to Subscribe; pipeline stops per §6.
+- **Home banner:** entitlement is session-latched (§6.1), so it does not drop mid-session; a cold start that resolves to `NOT_ENTITLED`/`BILLING_UNAVAILABLE`/`ERROR` routes to Subscribe per §5.2. The HOME banner is reserved for relay/connection errors.
 
 ### 5.4 oss vs play UI
 
@@ -352,7 +352,7 @@ val startDestination = when (entitlement.status) {
 Inject `SubscriptionRepository` or `EntitlementGate` into `BridgePipeline` (constructor + `DataModule.provideBridgePipeline`).
 
 - **play:** if not `ENTITLED` at `start()` / `startInternal()`, do **not** create transport. `fail("subscription required")` (or equivalent `BridgeState.Error`) before any relay connect. Diagnostic lines on play/release are local-only (no relay publish); do not log tokens.
-- **On expiry while connected:** collect `repository.entitlement` in pipeline scope. Transition to `NOT_ENTITLED` (or `BILLING_UNAVAILABLE` past grace) → `stop()` + surface error to UI. Do not keep a live relay session for a known-not-entitled user.
+- **Session-latched entitlement:** the app-facing `SubscriptionRepository` is wrapped by `LatchingSubscriptionRepository`, which never transitions `ENTITLED → non-ENTITLED` within the lifetime of the app process (in-memory only, so a cold start re-evaluates). Transient Play states (a `PENDING` purchase callback, `BILLING_UNAVAILABLE`, `ERROR`) must not tear down a running session. A genuine expiry is enforced server-side by the managed Centrifugo subscribe proxy (`managed-relay.md` §4.3/§5); the client does not stop a live relay mid-session.
 - **oss:** `AlwaysEntitled` → pipeline behaves as today (no billing branch taken at runtime beyond the gate always true).
 
 ### 6.2 FidoBridgeService
@@ -473,7 +473,7 @@ Implementer / product owner (not the coding agent in a unit-test session) must c
 - **No Play Billing on oss.** No code path on oss grants hosted-relay entitlement via sideload, fake purchase, or client flag.
 - **No external checkout for managed tier** in the Play app. Do not deep-link to non-Play payments for hosted relay access.
 - **Never log** `purchaseToken` or full JWT relay tokens. Logging of `productId`, coarse status, and product price strings is fine.
-- **Fail closed:** if billing query fails after grace (unknown purchase state), pipeline **stops**. Do not default to entitled on error.
+- **Fail closed at startup:** a cold start with an unknown or failed billing state does not start the pipeline, and client state never defaults to entitled on error. Once a session is established as `ENTITLED`, the in-memory latch holds it until the process ends (§6.1); the server subscribe proxy remains the authoritative gate.
 - **Pairing URI / relay token secrecy:** server-issued pairing material goes only into `EncryptedSharedPreferences` via `IdentityStore` / `EncryptedIdentityStore`. Not into log files, crash breadcrumbs, or plain `SharedPreferences`.
 - **applicationId** stays `com.fidobridge.client`.
 - **Client entitlement ≠ production relay auth.** Server must enforce subscription/trial on channel/token issuance (§7).

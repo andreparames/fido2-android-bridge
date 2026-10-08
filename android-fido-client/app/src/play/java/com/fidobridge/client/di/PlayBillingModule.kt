@@ -1,5 +1,6 @@
 package com.fidobridge.client.di
 
+import com.fidobridge.client.billing.BaseSubscriptionRepository
 import com.fidobridge.client.billing.EntitlementBackend
 import com.fidobridge.client.billing.PlayBillingSubscriptionRepository
 import com.fidobridge.client.billing.PlayEntitlementBackend
@@ -16,6 +17,7 @@ abstract class PlayBillingModule {
 
     @Binds
     @Singleton
+    @BaseSubscriptionRepository
     abstract fun bindSubscriptionRepository(
         impl: PlayBillingSubscriptionRepository
     ): SubscriptionRepository

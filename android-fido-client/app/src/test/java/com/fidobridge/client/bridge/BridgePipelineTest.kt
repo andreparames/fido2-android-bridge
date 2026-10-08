@@ -188,22 +188,6 @@ class BridgePipelineTest {
     }
 
     @Test
-    fun `entitlement loss while connected stops the relay and surfaces an error`() = runBlocking {
-        val transport = FakeRelayTransport()
-        val subscription = FakeSubscriptionRepository(Entitlement.Entitled)
-        val pipeline = newPipeline(transport, pairedStore(), subscription = subscription)
-
-        pipeline.start()
-        awaitConnected(pipeline)
-
-        subscription.setEntitlement(Entitlement.NotEntitled)
-
-        withTimeout(5000) { while (pipeline.state.value !is BridgeState.Error) delay(10) }
-        assertEquals("subscription required", (pipeline.state.value as BridgeState.Error).message)
-        pipeline.stop()
-    }
-
-    @Test
     fun `single integrity failure stays quiet`() = runBlocking {
         val transport = FakeRelayTransport()
         val tracker = IntegrityFailureTracker(threshold = 2)

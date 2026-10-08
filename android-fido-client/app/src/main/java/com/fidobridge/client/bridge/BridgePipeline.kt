@@ -38,7 +38,6 @@ class BridgePipeline(
     private var statusJob: Job? = null
     private var alertJob: Job? = null
     private var disconnectJob: Job? = null
-    private var entitlementJob: Job? = null
 
     fun start() {
         startInternal(preserveSecurityAlert = false)
@@ -131,21 +130,9 @@ class BridgePipeline(
             }
         }
 
-        // Play gate: never keep a live relay session for a user whose
-        // entitlement lapsed mid-session (billing.md §6.1). The StateFlow
-        // replays the current value first, which is ENTITLED here because the
-        // check above already passed.
-        entitlementJob = scope.launch {
-            subscriptionRepository.entitlement.collect { entitlement ->
-                if (!entitlement.isEntitled && client != null) {
-                    Log.w(TAG, "entitlement lost; stopping pipeline")
-                    logSink?.log("entitlement lost; stopping pipeline")
-                    stop()
-                    _state.value = BridgeState.Error(SUBSCRIPTION_REQUIRED)
-                }
-            }
-        }
-
+        // Entitlement is session-latched (LatchingSubscriptionRepository): once
+        // this pipeline starts entitled it is never torn down for a transient
+        // Play state; the server subscribe proxy remains authoritative.
         Log.i(TAG, "pipeline connecting to ${Protocol.relayChannel(channelId)}")
         relay.connect()
     }
@@ -155,7 +142,6 @@ class BridgePipeline(
         statusJob?.cancel()
         alertJob?.cancel()
         disconnectJob?.cancel()
-        entitlementJob?.cancel()
         client?.close()
         client = null
         logSink?.stop()

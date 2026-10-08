@@ -1,6 +1,7 @@
 package com.fidobridge.client.di
 
 import com.fidobridge.client.billing.AlwaysEntitledSubscriptionRepository
+import com.fidobridge.client.billing.BaseSubscriptionRepository
 import com.fidobridge.client.billing.EntitlementBackend
 import com.fidobridge.client.billing.NoOpEntitlementBackend
 import com.fidobridge.client.billing.SubscriptionRepository
@@ -16,6 +17,7 @@ abstract class OssBillingModule {
 
     @Binds
     @Singleton
+    @BaseSubscriptionRepository
     abstract fun bindSubscriptionRepository(
         impl: AlwaysEntitledSubscriptionRepository
     ): SubscriptionRepository

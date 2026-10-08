@@ -2,7 +2,9 @@ package com.fidobridge.client.di
 
 import android.content.Context
 import com.fidobridge.client.BuildConfig
+import com.fidobridge.client.billing.BaseSubscriptionRepository
 import com.fidobridge.client.billing.EntitlementBackend
+import com.fidobridge.client.billing.LatchingSubscriptionRepository
 import com.fidobridge.client.billing.SubscriptionRepository
 import com.fidobridge.client.bridge.BridgePipeline
 import com.fidobridge.client.ctap.Ctap2Processor
@@ -53,6 +55,18 @@ object DataModule {
     @Singleton
     fun providePairingRepository(identityStore: IdentityStore): PairingRepository =
         PairingRepository(identityStore)
+
+    /**
+     * App-facing repository wraps the flavor-bound [SubscriptionRepository] with a
+     * process-lifetime latch: once entitled, never downgraded until cold start
+     * (billing.md §6.1). The flavor module binds the raw delegate under
+     * [BaseSubscriptionRepository].
+     */
+    @Provides
+    @Singleton
+    fun provideSubscriptionRepository(
+        @BaseSubscriptionRepository delegate: SubscriptionRepository
+    ): SubscriptionRepository = LatchingSubscriptionRepository(delegate)
 
     @Provides
     @Singleton
