@@ -1,39 +1,31 @@
 name: CI (play flavor)
 
-# The oss/play split means most PRs never touch Play-only code. Run the play
-# variant checks only when a path that can affect the play build changes:
-# the play source set, shared main/test code compiled into it, or the Android
-# build configuration. oss-only changes (src/oss) and non-Android changes do not
-# trigger this workflow.
+# Run the play-variant checks only when files that contain play-specific code
+# change: the play source set and the shared files that branch on the flavor
+# conditionals (PLAY_BILLING_REQUIRED / MANAGED_RELAY), plus the flavor build
+# config. The oss jobs in ci.yml already compile and test the shared main/test
+# code, so other changes do not need a play build.
 on:
   pull_request:
     paths:
       - "android-fido-client/app/src/play/**"
-      - "android-fido-client/app/src/main/**"
-      - "android-fido-client/app/src/test/**"
       - "android-fido-client/app/src/testPlay/**"
+      - "android-fido-client/app/src/main/java/com/fidobridge/client/di/DataModule.kt"
+      - "android-fido-client/app/src/main/java/com/fidobridge/client/ui/AppSurface.kt"
+      - "android-fido-client/app/src/main/java/com/fidobridge/client/ui/FidoBridgeApp.kt"
+      - "android-fido-client/app/src/main/java/com/fidobridge/client/ui/subscribe/SubscribeScreen.kt"
       - "android-fido-client/app/build.gradle.kts"
-      - "android-fido-client/app/proguard-rules.pro"
-      - "android-fido-client/build.gradle.kts"
-      - "android-fido-client/settings.gradle.kts"
-      - "android-fido-client/gradle/**"
-      - "android-fido-client/gradlew"
-      - "android-fido-client/gradlew.bat"
   push:
     branches:
       - master
     paths:
       - "android-fido-client/app/src/play/**"
-      - "android-fido-client/app/src/main/**"
-      - "android-fido-client/app/src/test/**"
       - "android-fido-client/app/src/testPlay/**"
+      - "android-fido-client/app/src/main/java/com/fidobridge/client/di/DataModule.kt"
+      - "android-fido-client/app/src/main/java/com/fidobridge/client/ui/AppSurface.kt"
+      - "android-fido-client/app/src/main/java/com/fidobridge/client/ui/FidoBridgeApp.kt"
+      - "android-fido-client/app/src/main/java/com/fidobridge/client/ui/subscribe/SubscribeScreen.kt"
       - "android-fido-client/app/build.gradle.kts"
-      - "android-fido-client/app/proguard-rules.pro"
-      - "android-fido-client/build.gradle.kts"
-      - "android-fido-client/settings.gradle.kts"
-      - "android-fido-client/gradle/**"
-      - "android-fido-client/gradlew"
-      - "android-fido-client/gradlew.bat"
   workflow_dispatch:
 
 concurrency:
