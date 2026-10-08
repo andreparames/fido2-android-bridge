@@ -1,0 +1,67 @@
+name: CI (play flavor)
+
+# The oss/play split means most PRs never touch Play-only code. Run the play
+# variant checks only when a path that can affect the play build changes:
+# the play source set, shared main/test code compiled into it, or the Android
+# build configuration. oss-only changes (src/oss) and non-Android changes do not
+# trigger this workflow.
+on:
+  pull_request:
+    paths:
+      - "android-fido-client/app/src/play/**"
+      - "android-fido-client/app/src/main/**"
+      - "android-fido-client/app/src/test/**"
+      - "android-fido-client/app/src/testPlay/**"
+      - "android-fido-client/app/build.gradle.kts"
+      - "android-fido-client/app/proguard-rules.pro"
+      - "android-fido-client/build.gradle.kts"
+      - "android-fido-client/settings.gradle.kts"
+      - "android-fido-client/gradle/**"
+      - "android-fido-client/gradlew"
+      - "android-fido-client/gradlew.bat"
+  push:
+    branches:
+      - master
+    paths:
+      - "android-fido-client/app/src/play/**"
+      - "android-fido-client/app/src/main/**"
+      - "android-fido-client/app/src/test/**"
+      - "android-fido-client/app/src/testPlay/**"
+      - "android-fido-client/app/build.gradle.kts"
+      - "android-fido-client/app/proguard-rules.pro"
+      - "android-fido-client/build.gradle.kts"
+      - "android-fido-client/settings.gradle.kts"
+      - "android-fido-client/gradle/**"
+      - "android-fido-client/gradlew"
+      - "android-fido-client/gradlew.bat"
+  workflow_dispatch:
+
+concurrency:
+  group: ci-android-play-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  android-static-play:
+    name: Android lint play (lintPlayDebug)
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/setup-android
+      - name: Lint play debug build
+        working-directory: android-fido-client
+        run: ./gradlew lintPlayDebug
+
+  android-unit-play:
+    name: Android unit tests play (testPlayDebugUnitTest)
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/setup-android
+      - name: Run play unit tests
+        working-directory: android-fido-client
+        run: ./gradlew testPlayDebugUnitTest
