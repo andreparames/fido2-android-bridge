@@ -23,6 +23,7 @@ from fido_daemon.noise import (
     envelope_to_json,
 )
 from fido_daemon.protocol import RELAY_CHANNEL_PREFIX
+from fido_daemon.relay import SubscribeDeniedError
 
 CHANNEL_ID = "0123456789abcdef0123456789abcdef"
 RELAY_URL = "ws://localhost:8000/connection/websocket"
@@ -37,6 +38,7 @@ class FakeBroker:
 
     def __init__(self) -> None:
         self._subscribers: dict[str, list["FakeSubscription"]] = {}
+        self.deny_subscribe = False
 
     def new_client(self) -> "FakeClient":
         return FakeClient(self)
@@ -57,8 +59,12 @@ class FakeSubscription:
         self.events = None
         self.published: list[str] = []
         self.subscribed = False
+        self.subscribe_attempts = 0
 
     async def subscribe(self) -> None:
+        self.subscribe_attempts += 1
+        if self._broker.deny_subscribe:
+            raise SubscribeDeniedError(f"subscription denied for {self.channel}")
         self.subscribed = True
         self._broker.add(self)
 

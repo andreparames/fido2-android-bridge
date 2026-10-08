@@ -43,6 +43,15 @@ from fido_daemon.protocol import RELAY_CHANNEL_PREFIX
 
 logger = logging.getLogger(__name__)
 
+# Default managed-mode subscribe backoff (seconds), repeated for the tail.
+# Sized for a pairing UX: start fast, cap at 5s so a just-activated channel
+# is joined quickly while an unactivated one does not hammer the broker.
+DEFAULT_SUBSCRIBE_BACKOFF = (1.0, 2.0, 4.0, 5.0)
+
+
+class SubscribeDeniedError(RuntimeError):
+    """Raised when the relay rejects a channel subscription (proxy deny)."""
+
 
 class _RelaySubscriptionHandler(SubscriptionEventHandler):
     def __init__(self, relay: "RelayClient") -> None:
@@ -63,6 +72,8 @@ class RelayClient:
         client_factory: Callable[[], Client] | None = None,
         phone_public_key: bytes | None = None,
         on_phone_identified: Callable[[bytes], None] | None = None,
+        managed: bool = False,
+        subscribe_backoff: tuple[float, ...] = DEFAULT_SUBSCRIBE_BACKOFF,
     ) -> None:
         self._url = url
         self._channel_id = channel_id
@@ -71,6 +82,8 @@ class RelayClient:
         self._on_phone_identified = on_phone_identified
         self._token = token
         self._client_factory = client_factory or self._build_client
+        self._managed = managed
+        self._subscribe_backoff = subscribe_backoff
         self._client: Client | None = None
         self._sub: centrifuge.Subscription | None = None
         self._pending: dict[str, asyncio.Future] = {}
@@ -111,7 +124,34 @@ class RelayClient:
         self._sub = self._client.new_subscription(
             self.channel, events=_RelaySubscriptionHandler(self)
         )
-        await self._sub.subscribe()
+        if self._managed:
+            await self._subscribe_with_backoff()
+        else:
+            await self._sub.subscribe()
+
+    async def _subscribe_with_backoff(self) -> None:
+        """Poll ``subscribe()`` until the managed subscribe proxy allows it.
+
+        A denial raises ``SubscribeDeniedError``; retry with a capped, injected
+        backoff (defaults to ``DEFAULT_SUBSCRIBE_BACKOFF``). Any other error
+        propagates so classic-style failures are not masked.
+        """
+        attempt = 0
+        while True:
+            try:
+                await self._sub.subscribe()
+                logger.info("subscribed to managed channel %s", self.channel)
+                return
+            except SubscribeDeniedError:
+                index = min(attempt, len(self._subscribe_backoff) - 1)
+                delay = self._subscribe_backoff[index]
+                attempt += 1
+                logger.info(
+                    "subscribe denied for %s; retrying in %.1fs",
+                    self.channel,
+                    delay,
+                )
+                await asyncio.sleep(delay)
 
     async def request(self, plaintext: bytes, timeout: float | None = None) -> bytes:
         """Encrypt + publish `plaintext` and await the response echoing its id.
