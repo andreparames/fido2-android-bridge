@@ -12,6 +12,10 @@ class FakeSubscriptionRepository(
     private val _entitlement = MutableStateFlow(entitlement)
     override val entitlement: StateFlow<Entitlement> = _entitlement.asStateFlow()
 
+    fun setEntitlement(value: Entitlement) {
+        _entitlement.value = value
+    }
+
     override suspend fun refresh() = Unit
 
     override suspend fun queryProducts(): Result<List<SubscriptionProduct>> =
