@@ -14,6 +14,7 @@ import kotlinx.coroutines.withContext
 @HiltViewModel
 class PairingViewModel @Inject constructor(
     private val repository: PairingRepository,
+    private val pairingGate: ManagedPairingGate,
     dispatcher: PairingUriDispatcher
 ) : ViewModel() {
 
@@ -47,8 +48,16 @@ class PairingViewModel @Inject constructor(
         _uiState.value = PairingUiState.Pairing
         viewModelScope.launch {
             val result = withContext(Dispatchers.IO) {
-                repository.parseUri(uri)
-                    .onSuccess { info -> repository.pair(info) }
+                try {
+                    val info = repository.parseUri(uri).getOrThrow()
+                    pairingGate.authorize(info).getOrThrow()
+                    repository.pair(info).getOrThrow()
+                    Result.success(Unit)
+                } catch (e: kotlinx.coroutines.CancellationException) {
+                    throw e
+                } catch (e: Exception) {
+                    Result.failure(e)
+                }
             }
             _uiState.value = result.fold(
                 onSuccess = { PairingUiState.Paired },

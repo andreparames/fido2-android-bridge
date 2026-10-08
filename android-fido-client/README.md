@@ -30,8 +30,8 @@ sees ciphertext.
 ## Current status
 
 Built via strict TDD through **M1–M5** of `plans/plan.md`, plus the Centrifugo
-transport migration. Unit-testable layers are done and green (48 unit tests,
-`lint`, `assembleDebug`). Device-dependent pieces compile but are **not yet run on a
+transport migration. Unit-testable layers are done and green (`lintOssDebug`,
+`assembleOssDebug`). Device-dependent pieces compile but are **not yet run on a
 device**.
 
 ### Verified green
@@ -101,7 +101,7 @@ FIDO2_REQUEST_TIMEOUT=180 \
 FIDO2_HARNESS=1 FIDO2_CHANNEL_ID=<same-32-hex> \
 FIDO2_DAEMON_PUBLIC_B64=<daemon public key, standard base64> \
 FIDO2_RELAY_URL=ws://localhost:9000/connection/websocket \
-  ./gradlew testDebugUnitTest --tests 'com.fidobridge.client.harness.IntegrationHarnessTest'
+  ./gradlew testOssDebugUnitTest --tests 'com.fidobridge.client.harness.IntegrationHarnessTest'
 ```
 
 Both `get-assertion` and `make-credential` pass end-to-end through a live Centrifugo.
@@ -137,11 +137,17 @@ Requirements: JDK 17+, Android SDK (`sdk.dir` in `local.properties`), Android Gr
 Plugin 8.5.2 / Gradle 8.7 (wrapped).
 
 ```bash
-./gradlew testDebugUnitTest    # JVM unit tests
-./gradlew lint                 # static analysis
-./gradlew assembleDebug        # APK build
-./gradlew connectedDebugAndroidTest   # device required
+./gradlew testOssDebugUnitTest   # JVM unit tests (oss; also testPlayDebugUnitTest)
+./gradlew lintOssDebug           # static analysis (also lintPlayDebug)
+./gradlew assembleOssDebug       # oss APK (self-host)
+./gradlew assemblePlayDebug      # play APK (managed relay + Play Billing)
+./gradlew connectedOssDebugAndroidTest   # device required
 ```
+
+> The `oss`/`play` **distribution flavors** split the app: `oss` is the default
+> (self-hosted relay, no billing) and `play` adds Google Play Billing + the
+> managed relay. Gradle tasks must be variant-qualified — `testDebugUnitTest`,
+> `lintDebug`, and `assembleDebug` are ambiguous and fail.
 
 For the headless-emulator E2E (real APK + live Centrifugo + `mock-daemon`), see
 `plans/plan.md` Phase 12; the exact emulator/SDK install state and cleanup
@@ -154,7 +160,7 @@ The Centrifugo connection JWT is read from the `pass` CLI at build time and embe
 
 ```bash
 pass insert fidobridge/relay-token   # or: pass show fidobridge/relay-token
-./gradlew assembleDebug
+./gradlew assembleOssDebug
 ```
 
 - Entry name overridable via the `FIDO_RELAY_PASS_ENTRY` env var.
@@ -167,7 +173,7 @@ pass insert fidobridge/relay-token   # or: pass show fidobridge/relay-token
 
 ### Debug APK signing (stable CI/local key)
 
-Debug builds (local `assembleDebug` and the GitHub Actions `android-apk` artifact) are
+Debug builds (local `assembleOssDebug` and the GitHub Actions `android-apk` artifact) are
 signed with the committed `android-fido-client/debug.keystore`
 (`androiddebugkey` / `android` — debug-only credentials).
 
@@ -228,7 +234,7 @@ runs ([docs](https://docs.github.com/en/actions/using-workflows/triggering-a-wor
 
 ## Next steps / how to pick up
 
-1. **Device verification (M3/DoD):** run `connectedDebugAndroidTest` on a device and
+1. **Device verification (M3/DoD):** run `connectedOssDebugAndroidTest` on a device and
    confirm `KeyInfo.isInsideSecureHardware == true` and
    `Signature.sign()` without auth throws `UserNotAuthenticatedException`.
 2. **Relay endpoint config:** `CentrifugoTransport` needs a real endpoint URL

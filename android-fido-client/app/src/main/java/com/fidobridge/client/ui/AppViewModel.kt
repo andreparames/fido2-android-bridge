@@ -3,6 +3,8 @@ package com.fidobridge.client.ui
 import android.net.Uri
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.fidobridge.client.billing.Entitlement
+import com.fidobridge.client.billing.SubscriptionRepository
 import com.fidobridge.client.bridge.BridgePipeline
 import com.fidobridge.client.bridge.BridgeState
 import com.fidobridge.client.networking.DiagnosticLogStore
@@ -26,7 +28,8 @@ class AppViewModel @Inject constructor(
     private val appResetManager: AppResetManager,
     private val userMessageBus: UserMessageBus,
     private val diagnosticLogStore: DiagnosticLogStore,
-    private val diagnosticsExporter: DiagnosticsExporter
+    private val diagnosticsExporter: DiagnosticsExporter,
+    private val subscriptionRepository: SubscriptionRepository
 ) : ViewModel() {
 
     val isPaired: Boolean = pairingRepository.isPaired
@@ -36,6 +39,14 @@ class AppViewModel @Inject constructor(
     val bridgeState: StateFlow<BridgeState> = pipeline.state
 
     val userMessage: StateFlow<String?> = userMessageBus.message
+
+    val entitlement: StateFlow<Entitlement> = subscriptionRepository.entitlement
+
+    fun entitledForRelay(): Boolean = subscriptionRepository.entitlement.value.isEntitled
+
+    fun refreshEntitlement() {
+        viewModelScope.launch { subscriptionRepository.refresh() }
+    }
 
     fun dismissUserMessage() = userMessageBus.clear()
 
@@ -47,8 +58,6 @@ class AppViewModel @Inject constructor(
 
     fun reset(onComplete: (Boolean) -> Unit) {
         viewModelScope.launch {
-            // Stop the pipeline first (drains queued diagnostics off-main) so the
-            // store can be cleared without a late write recreating it.
             val ok = withContext(Dispatchers.IO) {
                 pipeline.stop()
                 appResetManager.reset()
@@ -60,7 +69,6 @@ class AppViewModel @Inject constructor(
         }
     }
 
-    /** Reports, off the main thread, whether there are logs to export. */
     fun checkDiagnosticsAvailable(onResult: (Boolean) -> Unit) {
         viewModelScope.launch {
             val available = withContext(Dispatchers.IO) { diagnosticLogStore.sizeBytes() > 0 }

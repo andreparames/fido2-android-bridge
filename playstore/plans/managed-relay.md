@@ -104,7 +104,7 @@ Implementers choose DB/schema/process layout to satisfy this behavior. Do not sh
 
 ### 4.1 `POST /v1/play/session`
 
-Turn Play purchase proof into a short-lived session with activate scope.
+Turn Play purchase proof **or an 8-digit invite code** into a short-lived session with activate scope. Accepts exactly one body shape (both/neither → `400`); invite contract: [`invite-code.md`](invite-code.md) §4.
 
 ```http
 POST /v1/play/session
@@ -115,14 +115,21 @@ Content-Type: application/json
   "packageName": "com.fidobridge.client" }
 ```
 
+```http
+POST /v1/play/session
+Content-Type: application/json
+
+{ "inviteCode": "12345678" }
+```
+
 ```json
-{ "sessionToken": "…", "expiresInSec": 900, "entitled": true, "isTrial": true }
+{ "sessionToken": "…", "expiresInSec": 900, "entitled": true, "isTrial": true, "entitlementKind": "invite_code" }
 ```
 ```json
 { "entitled": false, "reason": "no_active_subscription" }
 ```
 
-**Must:** verify with Google Play Developer API; persist whatever state you need for revoke/RTDN; never trust client-only entitlement.
+**Must:** verify with Google Play Developer API (purchase path); for the invite path match `GATEBRIDGE_INVITE_CODES` with rate limiting. Persist whatever state you need for revoke/RTDN; never trust client-only entitlement.
 
 ### 4.2 `POST /v1/channels/activate`
 

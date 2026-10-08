@@ -13,7 +13,10 @@ import androidx.biometric.BiometricManager
 import androidx.biometric.BiometricPrompt
 import androidx.core.content.ContextCompat
 import androidx.fragment.app.FragmentActivity
+import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.lifecycleScope
+import androidx.lifecycle.repeatOnLifecycle
+import com.fidobridge.client.billing.SubscriptionRepository
 import com.fidobridge.client.networking.DiagnosticLogSink
 import com.fidobridge.client.networking.FidoBridgeService
 import com.fidobridge.client.pairing.PairingRepository
@@ -54,6 +57,9 @@ class MainActivity : FragmentActivity() {
     @Inject
     lateinit var userMessageBus: UserMessageBus
 
+    @Inject
+    lateinit var subscriptionRepository: SubscriptionRepository
+
     private val notificationPermissionLauncher =
         registerForActivityResult(ActivityResultContracts.RequestPermission()) { }
 
@@ -65,6 +71,7 @@ class MainActivity : FragmentActivity() {
         handlePairingIntent(intent)
         setContent { FidoBridgeApp() }
         collectSigningRequests()
+        observeEntitlement()
     }
 
     override fun onNewIntent(intent: Intent) {
@@ -88,8 +95,23 @@ class MainActivity : FragmentActivity() {
     override fun onResume() {
         super.onResume()
         logSink.log("MainActivity#$instanceId onResume")
-        if (pairingRepository.isPaired) {
-            startForegroundService(Intent(this, FidoBridgeService::class.java))
+    }
+
+    /**
+     * Starts the bridge foreground service once a pairing exists and the current
+     * entitlement is active. Observing the flow (rather than checking only in
+     * onResume) covers the managed/Play case where entitlement resolves
+     * asynchronously after the activity reaches STARTED.
+     */
+    private fun observeEntitlement() {
+        lifecycleScope.launch {
+            repeatOnLifecycle(Lifecycle.State.STARTED) {
+                subscriptionRepository.entitlement.collect { entitlement ->
+                    if (pairingRepository.isPaired && entitlement.isEntitled) {
+                        startForegroundService(Intent(this@MainActivity, FidoBridgeService::class.java))
+                    }
+                }
+            }
         }
     }
 

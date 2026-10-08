@@ -2,6 +2,10 @@ package com.fidobridge.client.di
 
 import android.content.Context
 import com.fidobridge.client.BuildConfig
+import com.fidobridge.client.billing.BaseSubscriptionRepository
+import com.fidobridge.client.billing.EntitlementBackend
+import com.fidobridge.client.billing.LatchingSubscriptionRepository
+import com.fidobridge.client.billing.SubscriptionRepository
 import com.fidobridge.client.bridge.BridgePipeline
 import com.fidobridge.client.ctap.Ctap2Processor
 import com.fidobridge.client.ctap.CredentialStore
@@ -20,6 +24,7 @@ import com.fidobridge.client.notifications.ProcessForegroundStateProvider
 import com.fidobridge.client.pairing.AppResetManager
 import com.fidobridge.client.pairing.EncryptedIdentityStore
 import com.fidobridge.client.pairing.IdentityStore
+import com.fidobridge.client.pairing.ManagedPairingGate
 import com.fidobridge.client.pairing.PairingRepository
 import com.fidobridge.client.security.BiometricPromptCoordinator
 import com.fidobridge.client.security.BiometricSigner
@@ -50,6 +55,30 @@ object DataModule {
     @Singleton
     fun providePairingRepository(identityStore: IdentityStore): PairingRepository =
         PairingRepository(identityStore)
+
+    /**
+     * App-facing repository wraps the flavor-bound [SubscriptionRepository] with a
+     * process-lifetime latch: once entitled, never downgraded until cold start
+     * (billing.md §6.1). The flavor module binds the raw delegate under
+     * [BaseSubscriptionRepository].
+     */
+    @Provides
+    @Singleton
+    fun provideSubscriptionRepository(
+        @BaseSubscriptionRepository delegate: SubscriptionRepository
+    ): SubscriptionRepository = LatchingSubscriptionRepository(delegate)
+
+    @Provides
+    @Singleton
+    fun provideManagedPairingGate(
+        subscriptionRepository: SubscriptionRepository,
+        entitlementBackend: EntitlementBackend
+    ): ManagedPairingGate = ManagedPairingGate(
+        relayUrl = BuildConfig.RELAY_URL,
+        subscriptionRepository = subscriptionRepository,
+        entitlementBackend = entitlementBackend,
+        managedFlavor = BuildConfig.MANAGED_RELAY == "true"
+    )
 
     @Provides
     @Singleton
@@ -134,13 +163,15 @@ object DataModule {
     fun provideBridgePipeline(
         identityStore: IdentityStore,
         processor: Ctap2Processor,
-        logSink: DiagnosticLogSink
+        logSink: DiagnosticLogSink,
+        subscriptionRepository: SubscriptionRepository
     ): BridgePipeline = BridgePipeline(
         identityStore = identityStore,
         relayUrl = BuildConfig.RELAY_URL,
         processor = processor,
         defaultRelayToken = BuildConfig.RELAY_TOKEN,
         transportFactory = { endpoint, channel, relayToken -> CentrifugoTransport(endpoint, channel, relayToken) as RelayTransport },
-        logSink = logSink
+        logSink = logSink,
+        subscriptionRepository = subscriptionRepository
     )
 }

@@ -1,6 +1,7 @@
 package com.fidobridge.client.bridge
 
 import android.util.Log
+import com.fidobridge.client.billing.SubscriptionRepository
 import com.fidobridge.client.ctap.Ctap2Processor
 import com.fidobridge.client.networking.DiagnosticLogSink
 import com.fidobridge.client.networking.RelayClient
@@ -24,6 +25,7 @@ class BridgePipeline(
     private val transportFactory: (endpoint: String, channel: String, relayToken: String?) -> RelayTransport,
     private val logSink: DiagnosticLogSink? = null,
     private val defaultRelayToken: String = "",
+    private val subscriptionRepository: SubscriptionRepository,
     private val securityFailureTracker: IntegrityFailureTracker = IntegrityFailureTracker()
 ) {
 
@@ -53,6 +55,9 @@ class BridgePipeline(
 
     private fun startInternal(preserveSecurityAlert: Boolean) {
         if (client != null) return
+        if (!subscriptionRepository.entitlement.value.isEntitled) {
+            return fail(SUBSCRIPTION_REQUIRED)
+        }
         if (!preserveSecurityAlert) {
             securityFailureTracker.reset()
         }
@@ -125,6 +130,9 @@ class BridgePipeline(
             }
         }
 
+        // Entitlement is session-latched (LatchingSubscriptionRepository): once
+        // this pipeline starts entitled it is never torn down for a transient
+        // Play state; the server subscribe proxy remains authoritative.
         Log.i(TAG, "pipeline connecting to ${Protocol.relayChannel(channelId)}")
         relay.connect()
     }
@@ -171,3 +179,4 @@ sealed interface BridgeState {
 }
 
 private const val TAG = "FidoBridge"
+private const val SUBSCRIPTION_REQUIRED = "subscription required"

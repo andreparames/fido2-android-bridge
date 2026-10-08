@@ -127,6 +127,10 @@ These mirror `playstore/plans/managed-relay.md` §4 exactly. Request/response bo
 
 ### 4.1 `POST /v1/play/session`
 
+Accepts **exactly one** of two body shapes (Play purchase **or** invite code; both/neither → `400`). Full invite contract: [`invite-code.md`](invite-code.md) §4.
+
+Play purchase:
+
 ```http
 POST /v1/play/session
 Content-Type: application/json
@@ -136,15 +140,24 @@ Content-Type: application/json
   "packageName": "com.fidobridge.client" }
 ```
 
+Invite code:
+
+```http
+POST /v1/play/session
+Content-Type: application/json
+
+{ "inviteCode": "12345678" }
+```
+
 ```json
-{ "sessionToken": "…", "expiresInSec": 900, "entitled": true, "isTrial": true }
+{ "sessionToken": "…", "expiresInSec": 900, "entitled": true, "isTrial": true, "entitlementKind": "invite_code" }
 ```
 
 ```json
 { "entitled": false, "reason": "no_active_subscription" }
 ```
 
-Must: verify against the Play Developer API (server-side), persist state for revoke/RTDN, never trust client-only entitlement. Reject a `packageName`/`productId` outside the allowlist.
+Must: verify against the Play Developer API (server-side) for the purchase path; for the invite path match `GATEBRIDGE_INVITE_CODES` with rate limiting and never log raw codes. Persist state for revoke/RTDN, never trust client-only entitlement. Reject a `packageName`/`productId` outside the allowlist.
 
 ### 4.2 `POST /v1/channels/activate`
 

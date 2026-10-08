@@ -147,7 +147,7 @@ FIDO2_CHANNEL_ID=<CHANNEL_HEX from step 2> \
 FIDO2_DAEMON_PUBLIC_B64=<DAEMON_PUBLIC_B64 from step 2> \
 FIDO2_RELAY_URL=ws://localhost:9000/connection/websocket \
 FIDO2_HARNESS_TIMEOUT=200 \
-  ./gradlew testDebugUnitTest --tests 'com.fidobridge.client.harness.IntegrationHarnessTest'
+  ./gradlew testOssDebugUnitTest --tests 'com.fidobridge.client.harness.IntegrationHarnessTest'
 ```
 
 ## 5. Verify

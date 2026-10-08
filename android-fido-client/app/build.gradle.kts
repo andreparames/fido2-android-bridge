@@ -1,3 +1,5 @@
+import java.net.URI
+
 plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.kotlin.android)
@@ -35,17 +37,51 @@ android {
         vectorDrawables {
             useSupportLibrary = true
         }
+    }
 
-        buildConfigField(
-            "String",
-            "RELAY_URL",
-            "\"${escapeForBuildConfig(relayUrl())}\""
-        )
-        buildConfigField(
-            "String",
-            "RELAY_TOKEN",
-            "\"${escapeForBuildConfig(relayToken())}\""
-        )
+    flavorDimensions += "distribution"
+
+    productFlavors {
+        create("oss") {
+            dimension = "distribution"
+            isDefault = true
+            val url = relayUrlOss()
+            requireOssNotManaged(url)
+            buildConfigField(
+                "String",
+                "RELAY_URL",
+                "\"${escapeForBuildConfig(url)}\""
+            )
+            // Self-host/dev convenience only: a shared connection JWT read from
+            // the `pass` store at build time. Never embedded in the Play flavor.
+            buildConfigField(
+                "String",
+                "RELAY_TOKEN",
+                "\"${escapeForBuildConfig(relayToken())}\""
+            )
+            buildConfigField("String", "MANAGED_RELAY", "\"false\"")
+            buildConfigField("boolean", "PLAY_BILLING_REQUIRED", "false")
+        }
+        create("play") {
+            dimension = "distribution"
+            buildConfigField(
+                "String",
+                "RELAY_URL",
+                "\"${escapeForBuildConfig(relayUrlPlay())}\""
+            )
+            // Managed relay connects anonymously/low-priv; the Centrifugo
+            // connection JWT is server-side only (MANAGED_RELAY_PLAN §5), so no
+            // relay token is embedded in the Play APK.
+            buildConfigField("String", "RELAY_TOKEN", "\"\"")
+            // Gatebridge entitlement API used by the managed (Play) relay path.
+            buildConfigField(
+                "String",
+                "GATEBRIDGE_API_URL",
+                "\"${escapeForBuildConfig(gatebridgeApiUrlPlay())}\""
+            )
+            buildConfigField("String", "MANAGED_RELAY", "\"true\"")
+            buildConfigField("boolean", "PLAY_BILLING_REQUIRED", "true")
+        }
     }
 
     buildTypes {
@@ -120,6 +156,8 @@ dependencies {
     implementation(libs.noise.java)
     implementation(libs.androidx.fragment)
 
+    "playImplementation"(libs.billing.ktx)
+
     debugImplementation(libs.androidx.compose.ui.tooling)
 
     testImplementation(libs.junit)
@@ -132,8 +170,31 @@ dependencies {
     androidTestImplementation(libs.androidx.test.runner)
 }
 
-fun relayUrl(): String =
-    System.getenv("FIDO2_RELAY_URL") ?: "wss://relay.gatebridge.app/connection/websocket"
+fun relayUrlOss(): String =
+    System.getenv("FIDO2_RELAY_URL")
+        ?: "wss://localhost:9000/connection/websocket"
+
+// Guard (billing.md §1): an oss build must never target the managed relay, which
+// would let a sideloaded build reach the hosted relay without the Play gate and
+// must never be uploaded to Play. Both flavors share an applicationId, so fail
+// configuration early instead of silently producing a dangerous artifact.
+fun requireOssNotManaged(url: String) {
+    val uri = runCatching { URI(url.trim()) }
+        .getOrElse { throw IllegalArgumentException("oss relay URL is not a valid URI: $url", it) }
+    val host = uri.host?.lowercase()?.trimEnd('.')
+    require(!host.isNullOrEmpty()) { "oss relay URL has no host: $url" }
+    require(host != "relay.gatebridge.app") {
+        "oss flavor must not target the managed relay (relay.gatebridge.app): $url"
+    }
+}
+
+fun relayUrlPlay(): String =
+    System.getenv("GATEBRIDGE_MANAGED_RELAY_URL")
+        ?: "wss://relay.gatebridge.app/connection/websocket"
+
+fun gatebridgeApiUrlPlay(): String =
+    System.getenv("GATEBRIDGE_API_URL")
+        ?: "https://api.gatebridge.app"
 
 // Dev convenience: the shared Centrifugo connection JWT is read from the
 // `pass` store at build time (entry overridable via FIDO_RELAY_PASS_ENTRY).

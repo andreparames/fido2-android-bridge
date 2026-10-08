@@ -8,6 +8,9 @@ import android.content.Intent
 import android.content.pm.ServiceInfo
 import android.os.Build
 import android.os.IBinder
+import android.util.Log
+import com.fidobridge.client.billing.EntitlementStatus
+import com.fidobridge.client.billing.SubscriptionRepository
 import com.fidobridge.client.bridge.BridgePipeline
 import com.fidobridge.client.bridge.BridgeState
 import dagger.hilt.android.AndroidEntryPoint
@@ -25,12 +28,49 @@ class FidoBridgeService : Service() {
     @Inject
     lateinit var pipeline: BridgePipeline
 
+    @Inject
+    lateinit var subscriptionRepository: SubscriptionRepository
+
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
     private var stateJob: Job? = null
 
     override fun onBind(intent: Intent?): IBinder? = null
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
+        // Defense in depth (billing.md §6.2): a confirmed non-entitled state never
+        // runs the foreground relay.
+        when (subscriptionRepository.entitlement.value.status) {
+            EntitlementStatus.ENTITLED -> {
+                goForeground()
+                startBridge()
+            }
+
+            EntitlementStatus.LOADING -> {
+                // A sticky restart in a fresh process starts at LOADING. Go
+                // foreground immediately to meet the foreground-service startup
+                // deadline, resolve the entitlement, then start the relay or stop.
+                goForeground()
+                scope.launch {
+                    subscriptionRepository.refresh()
+                    if (subscriptionRepository.entitlement.value.isEntitled) {
+                        startBridge()
+                    } else {
+                        Log.w(TAG, "not entitled after refresh; stopping service")
+                        stopSelf()
+                    }
+                }
+            }
+
+            else -> {
+                Log.w(TAG, "not entitled; refusing to start foreground service")
+                stopSelf(startId)
+                return START_NOT_STICKY
+            }
+        }
+        return START_STICKY
+    }
+
+    private fun goForeground() {
         createChannel()
         val notification = buildNotification(bridgeNotificationText(BridgeState.Connecting))
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
@@ -38,9 +78,11 @@ class FidoBridgeService : Service() {
         } else {
             startForeground(NOTIFICATION_ID, notification)
         }
+    }
+
+    private fun startBridge() {
         pipeline.start()
         observeBridgeState()
-        return START_STICKY
     }
 
     override fun onDestroy() {
@@ -87,6 +129,7 @@ class FidoBridgeService : Service() {
     companion object {
         private const val CHANNEL_ID = "fidobridge_relay"
         private const val NOTIFICATION_ID = 1
+        private const val TAG = "FidoBridge"
     }
 }
 

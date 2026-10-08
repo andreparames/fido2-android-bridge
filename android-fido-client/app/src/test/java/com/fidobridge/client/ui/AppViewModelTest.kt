@@ -1,6 +1,7 @@
 package com.fidobridge.client.ui
 
 import android.net.Uri
+import com.fidobridge.client.billing.AlwaysEntitledSubscriptionRepository
 import com.fidobridge.client.bridge.BridgePipeline
 import com.fidobridge.client.bridge.BridgeState
 import com.fidobridge.client.harness.FakeCredentialStore
@@ -60,7 +61,8 @@ class AppViewModelTest {
         appResetManager,
         userMessageBus,
         diagnosticLogStore,
-        diagnosticsExporter
+        diagnosticsExporter,
+        AlwaysEntitledSubscriptionRepository()
     )
 
     @Test
@@ -132,7 +134,8 @@ class AppViewModelTest {
                 appResetManager,
                 UserMessageBus(),
                 FakeDiagnosticLogStore(),
-                mockk<DiagnosticsExporter>(relaxed = true)
+                mockk<DiagnosticsExporter>(relaxed = true),
+                AlwaysEntitledSubscriptionRepository()
             )
             val done = CountDownLatch(1)
             var result: Boolean? = null
