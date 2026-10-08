@@ -62,6 +62,7 @@ class SubscribeViewModel @Inject constructor(
 
     fun buy(activity: Activity, productId: String) {
         viewModelScope.launch {
+            _uiState.value = _uiState.value.copy(purchaseFailed = false)
             repository.launchPurchase(activity, productId).onFailure {
                 _uiState.value = _uiState.value.copy(purchaseFailed = true)
             }

@@ -20,10 +20,9 @@ import kotlinx.coroutines.launch
  * proxy remains authoritative (billing.md §6.1, managed-relay.md §4.3/§5).
  */
 class LatchingSubscriptionRepository(
-    private val delegate: SubscriptionRepository
+    private val delegate: SubscriptionRepository,
+    private val scope: CoroutineScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
 ) : SubscriptionRepository {
-
-    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
 
     private val _entitlement = MutableStateFlow(delegate.entitlement.value)
     override val entitlement: StateFlow<Entitlement> = _entitlement.asStateFlow()

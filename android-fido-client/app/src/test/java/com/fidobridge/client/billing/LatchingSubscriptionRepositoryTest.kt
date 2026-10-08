@@ -1,52 +1,44 @@
 package com.fidobridge.client.billing
 
-import kotlinx.coroutines.delay
-import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.cancel
+import kotlinx.coroutines.test.UnconfinedTestDispatcher
+import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
 import org.junit.Test
 
 class LatchingSubscriptionRepositoryTest {
 
     @Test
-    fun `once entitled it never downgrades for the process lifetime`() = runBlocking {
+    fun `once entitled it never downgrades for the process lifetime`() = runTest {
+        val scope = CoroutineScope(UnconfinedTestDispatcher(testScheduler))
         val delegate = FakeSubscriptionRepository(Entitlement.Loading)
-        val latch = LatchingSubscriptionRepository(delegate)
+        val latch = LatchingSubscriptionRepository(delegate, scope)
 
         delegate.setEntitlement(Entitlement.Entitled)
-        awaitStatus(latch, EntitlementStatus.ENTITLED)
+        assertEquals(EntitlementStatus.ENTITLED, latch.entitlement.value.status)
 
         delegate.setEntitlement(Entitlement.NotEntitled)
         delegate.setEntitlement(Entitlement.BillingUnavailable)
         delegate.setEntitlement(Entitlement.Error)
-        delay(50)
 
         assertEquals(EntitlementStatus.ENTITLED, latch.entitlement.value.status)
+        scope.cancel()
     }
 
     @Test
-    fun `upgrades before the first entitlement are observed`() = runBlocking {
+    fun `upgrades before the first entitlement are observed`() = runTest {
+        val scope = CoroutineScope(UnconfinedTestDispatcher(testScheduler))
         val delegate = FakeSubscriptionRepository(Entitlement.Loading)
-        val latch = LatchingSubscriptionRepository(delegate)
+        val latch = LatchingSubscriptionRepository(delegate, scope)
 
         assertEquals(EntitlementStatus.LOADING, latch.entitlement.value.status)
 
         delegate.setEntitlement(Entitlement.NotEntitled)
-        awaitStatus(latch, EntitlementStatus.NOT_ENTITLED)
+        assertEquals(EntitlementStatus.NOT_ENTITLED, latch.entitlement.value.status)
 
         delegate.setEntitlement(Entitlement.Entitled)
-        awaitStatus(latch, EntitlementStatus.ENTITLED)
-    }
-
-    private suspend fun awaitStatus(
-        repository: LatchingSubscriptionRepository,
-        status: EntitlementStatus
-    ) {
-        val deadline = System.currentTimeMillis() + 2_000
-        while (repository.entitlement.value.status != status &&
-            System.currentTimeMillis() < deadline
-        ) {
-            delay(10)
-        }
-        assertEquals(status, repository.entitlement.value.status)
+        assertEquals(EntitlementStatus.ENTITLED, latch.entitlement.value.status)
+        scope.cancel()
     }
 }
