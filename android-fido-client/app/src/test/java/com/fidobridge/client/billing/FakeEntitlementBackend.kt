@@ -1,6 +1,6 @@
 package com.fidobridge.client.billing
 
-/** JVM/dev stand-in until the Gatebridge API is wired for real purchases. */
+/** JVM test stand-in for the Gatebridge activate API. Records activated channels. */
 class FakeEntitlementBackend(
     private val activateResult: Result<ActivateResult> = Result.success(
         ActivateResult(channel = "", status = "active")

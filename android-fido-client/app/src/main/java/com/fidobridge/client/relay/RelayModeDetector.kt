@@ -1,5 +1,7 @@
 package com.fidobridge.client.relay
 
+import java.net.URI
+
 enum class RelayMode {
     MANAGED,
     CLASSIC
@@ -14,29 +16,17 @@ enum class RelayMode {
 object RelayModeDetector {
     const val MANAGED_HOST = "relay.gatebridge.app"
 
-    private val schemed = Regex("^(ws://|wss://|http://|https://)", RegexOption.IGNORE_CASE)
+    private val ALLOWED_SCHEMES = setOf("ws", "wss", "http", "https")
 
-    fun detect(relayUrl: String): RelayMode {
-        val host = hostOf(relayUrl) ?: return RelayMode.CLASSIC
-        return if (host == MANAGED_HOST) RelayMode.MANAGED else RelayMode.CLASSIC
-    }
+    fun detect(relayUrl: String): RelayMode =
+        if (hostOf(relayUrl) == MANAGED_HOST) RelayMode.MANAGED else RelayMode.CLASSIC
 
     /** Extracts the lowercase hostname, or null if the URL has no parseable host. */
     fun hostOf(relayUrl: String): String? {
-        val trimmed = relayUrl.trim()
-        if (trimmed.isEmpty()) return null
-        if (!schemed.containsMatchIn(trimmed)) return null
-        val authority = trimmed.substringAfter("://")
-            .substringBefore('/')
-            .substringBefore('?')
-            .substringBefore('#')
-        if (authority.isEmpty()) return null
-        val hostPort = authority.substringAfterLast('@')
-        if (hostPort.isEmpty()) return null
-        val host = when {
-            hostPort.startsWith("[") -> hostPort.substringAfter('[').substringBefore(']')
-            else -> hostPort.substringBefore(':')
-        }
+        val uri = runCatching { URI(relayUrl.trim()) }.getOrNull() ?: return null
+        if (uri.scheme?.lowercase() !in ALLOWED_SCHEMES) return null
+        // IPv6 literals come back bracketed; they can never match MANAGED_HOST.
+        val host = uri.host ?: return null
         return host.lowercase().trimEnd('.').ifEmpty { null }
     }
 }

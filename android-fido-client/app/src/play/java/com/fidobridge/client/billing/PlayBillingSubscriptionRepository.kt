@@ -37,16 +37,23 @@ class PlayBillingSubscriptionRepository @Inject constructor(
 
     private val connectionMutex = Mutex()
 
-    private val billingClient: BillingClient = BillingClient.newBuilder(context)
-        .setListener(this)
-        .enablePendingPurchases(
-            PendingPurchasesParams.newBuilder()
-                .enableOneTimeProducts()
-                .enablePrepaidPlans()
-                .build()
-        )
-        .enableAutoServiceReconnection()
-        .build()
+    /**
+     * Created lazily on first use so app cold start does not pay for BillingClient
+     * construction (and Play services binding) unless the user reaches a surface
+     * that queries entitlement/products.
+     */
+    private val billingClient: BillingClient by lazy {
+        BillingClient.newBuilder(context)
+            .setListener(this)
+            .enablePendingPurchases(
+                PendingPurchasesParams.newBuilder()
+                    .enableOneTimeProducts()
+                    .enablePrepaidPlans()
+                    .build()
+            )
+            .enableAutoServiceReconnection()
+            .build()
+    }
 
     private suspend fun ensureConnected(): BillingResult = connectionMutex.withLock {
         if (billingClient.connectionState == BillingClient.ConnectionState.CONNECTED) {
@@ -217,7 +224,8 @@ class PlayBillingSubscriptionRepository @Inject constructor(
         refresh()
     }
 
-    override suspend fun acknowledgeIfRequired() {
+    /** Play-specific: acknowledges unacknowledged purchases (Play policy). */
+    suspend fun acknowledgeIfRequired() {
         val purchases = queryPurchases().getOrDefault(emptyList())
         purchases.forEach { purchase ->
             if (purchase.purchaseState == Purchase.PurchaseState.PURCHASED && !purchase.isAcknowledged) {

@@ -9,5 +9,4 @@ interface SubscriptionRepository {
     suspend fun queryProducts(): Result<List<SubscriptionProduct>>
     suspend fun launchPurchase(activity: Activity, productId: String)
     suspend fun restorePurchases()
-    suspend fun acknowledgeIfRequired()
 }

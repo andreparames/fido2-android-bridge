@@ -20,6 +20,4 @@ class FakeSubscriptionRepository(
     override suspend fun launchPurchase(activity: Activity, productId: String) = Unit
 
     override suspend fun restorePurchases() = Unit
-
-    override suspend fun acknowledgeIfRequired() = Unit
 }

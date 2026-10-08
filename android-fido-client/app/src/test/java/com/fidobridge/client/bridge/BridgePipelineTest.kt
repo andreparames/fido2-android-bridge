@@ -41,7 +41,8 @@ class BridgePipelineTest {
     private fun newPipeline(
         transport: FakeRelayTransport,
         store: FakeIdentityStore,
-        tracker: IntegrityFailureTracker = IntegrityFailureTracker()
+        tracker: IntegrityFailureTracker = IntegrityFailureTracker(),
+        subscription: FakeSubscriptionRepository = FakeSubscriptionRepository()
     ): BridgePipeline {
         val processor = Ctap2Processor(FakeCredentialStore(), FakeKeyGenerator(), FakeSigner())
         return BridgePipeline(
@@ -49,6 +50,7 @@ class BridgePipelineTest {
             "ws://localhost:8000/connection/websocket",
             processor,
             transportFactory = { _, _, _ -> transport },
+            subscriptionRepository = subscription,
             securityFailureTracker = tracker
         )
     }
@@ -84,7 +86,7 @@ class BridgePipelineTest {
         val transport = FakeRelayTransport()
         val signer = FakeSigner()
         val processor = Ctap2Processor(FakeCredentialStore(), FakeKeyGenerator(), signer)
-        val pipeline = BridgePipeline(pairedStore(), "ws://localhost:8000/connection/websocket", processor, transportFactory = { _, _, _ -> transport })
+        val pipeline = BridgePipeline(pairedStore(), "ws://localhost:8000/connection/websocket", processor, transportFactory = { _, _, _ -> transport }, subscriptionRepository = FakeSubscriptionRepository())
         val daemon = TestRelayPeer(transport, channelId, daemonPrivate)
 
         pipeline.start()
@@ -106,7 +108,7 @@ class BridgePipelineTest {
         val transport = FakeRelayTransport()
         val signer = FakeSigner(fail = true)
         val processor = Ctap2Processor(FakeCredentialStore(), FakeKeyGenerator(), signer)
-        val pipeline = BridgePipeline(pairedStore(), "ws://localhost:8000/connection/websocket", processor, transportFactory = { _, _, _ -> transport })
+        val pipeline = BridgePipeline(pairedStore(), "ws://localhost:8000/connection/websocket", processor, transportFactory = { _, _, _ -> transport }, subscriptionRepository = FakeSubscriptionRepository())
         val daemon = TestRelayPeer(transport, channelId, daemonPrivate)
 
         pipeline.start()
@@ -129,7 +131,8 @@ class BridgePipelineTest {
         val processor = Ctap2Processor(FakeCredentialStore(), FakeKeyGenerator(), signer)
         val pipeline = BridgePipeline(
             pairedStore(), "ws://localhost:8000/connection/websocket", processor,
-            transportFactory = { _, _, _ -> transport }
+            transportFactory = { _, _, _ -> transport },
+            subscriptionRepository = FakeSubscriptionRepository()
         )
 
         pipeline.start()

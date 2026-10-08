@@ -71,6 +71,7 @@ class MainActivity : FragmentActivity() {
         handlePairingIntent(intent)
         setContent { FidoBridgeApp() }
         collectSigningRequests()
+        observeEntitlement()
     }
 
     override fun onNewIntent(intent: Intent) {
@@ -89,7 +90,6 @@ class MainActivity : FragmentActivity() {
     override fun onStart() {
         super.onStart()
         logSink.log("MainActivity#$instanceId onStart")
-        observeEntitlement()
     }
 
     override fun onResume() {

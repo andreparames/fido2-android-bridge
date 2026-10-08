@@ -2,24 +2,27 @@ package com.fidobridge.client.di
 
 import com.fidobridge.client.billing.AlwaysEntitledSubscriptionRepository
 import com.fidobridge.client.billing.EntitlementBackend
-import com.fidobridge.client.billing.FakeEntitlementBackend
+import com.fidobridge.client.billing.NoOpEntitlementBackend
 import com.fidobridge.client.billing.SubscriptionRepository
+import dagger.Binds
 import dagger.Module
-import dagger.Provides
 import dagger.hilt.InstallIn
 import dagger.hilt.components.SingletonComponent
 import javax.inject.Singleton
 
 @Module
 @InstallIn(SingletonComponent::class)
-object OssBillingModule {
+abstract class OssBillingModule {
 
-    @Provides
+    @Binds
     @Singleton
-    fun provideSubscriptionRepository(): SubscriptionRepository =
-        AlwaysEntitledSubscriptionRepository()
+    abstract fun bindSubscriptionRepository(
+        impl: AlwaysEntitledSubscriptionRepository
+    ): SubscriptionRepository
 
-    @Provides
+    @Binds
     @Singleton
-    fun provideEntitlementBackend(): EntitlementBackend = FakeEntitlementBackend()
+    abstract fun bindEntitlementBackend(
+        impl: NoOpEntitlementBackend
+    ): EntitlementBackend
 }

@@ -1,3 +1,5 @@
+import java.net.URI
+
 plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.kotlin.android)
@@ -49,10 +51,12 @@ android {
         create("oss") {
             dimension = "distribution"
             isDefault = true
+            val url = relayUrlOss()
+            requireOssNotManaged(url)
             buildConfigField(
                 "String",
                 "RELAY_URL",
-                "\"${escapeForBuildConfig(relayUrlOss())}\""
+                "\"${escapeForBuildConfig(url)}\""
             )
         }
         create("play") {
@@ -160,6 +164,19 @@ dependencies {
 fun relayUrlOss(): String =
     System.getenv("FIDO2_RELAY_URL")
         ?: "wss://localhost:9000/connection/websocket"
+
+// Guard (billing.md §1): an oss build must never target the managed relay, which
+// would let a sideloaded build reach the hosted relay without the Play gate and
+// must never be uploaded to Play. Both flavors share an applicationId, so fail
+// configuration early instead of silently producing a dangerous artifact.
+fun requireOssNotManaged(url: String) {
+    val host = runCatching {
+        URI(url.trim()).host?.lowercase()?.trimEnd('.')
+    }.getOrNull()
+    require(host != "relay.gatebridge.app") {
+        "oss flavor must not target the managed relay (relay.gatebridge.app): $url"
+    }
+}
 
 fun relayUrlPlay(): String =
     System.getenv("GATEBRIDGE_MANAGED_RELAY_URL")

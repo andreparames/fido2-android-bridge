@@ -1,5 +1,8 @@
 package com.fidobridge.client.ui.subscribe
 
+import android.app.Activity
+import android.content.Context
+import android.content.ContextWrapper
 import android.content.Intent
 import android.net.Uri
 import androidx.compose.foundation.layout.Arrangement
@@ -38,6 +41,7 @@ fun SubscribeScreen(
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
     val entitlement by viewModel.entitlement.collectAsStateWithLifecycle()
     val context = LocalContext.current
+    val activity = context.findActivity()
 
     androidx.compose.runtime.LaunchedEffect(entitlement.isEntitled) {
         if (entitlement.isEntitled) onEntitled()
@@ -83,7 +87,7 @@ fun SubscribeScreen(
                     uiState.products.forEach { product ->
                         ProductCard(
                             product = product,
-                            onBuy = { viewModel.buy(context as android.app.Activity, product.productId) }
+                            onBuy = { activity?.let { viewModel.buy(it, product.productId) } }
                         )
                         Spacer(Modifier.height(8.dp))
                     }
@@ -132,4 +136,11 @@ private fun ProductCard(
             }
         }
     }
+}
+
+/** Unwraps the host Activity from a (possibly themed) Compose context. */
+private tailrec fun Context.findActivity(): Activity? = when (this) {
+    is Activity -> this
+    is ContextWrapper -> baseContext.findActivity()
+    else -> null
 }
