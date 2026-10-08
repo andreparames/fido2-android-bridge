@@ -3,6 +3,7 @@ package com.fidobridge.client.billing
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.cancel
+import kotlinx.coroutines.test.StandardTestDispatcher
 import kotlinx.coroutines.test.UnconfinedTestDispatcher
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
@@ -40,6 +41,22 @@ class LatchingSubscriptionRepositoryTest {
         assertEquals(EntitlementStatus.NOT_ENTITLED, latch.entitlement.value.status)
 
         delegate.setEntitlement(Entitlement.Entitled)
+        assertEquals(EntitlementStatus.ENTITLED, latch.entitlement.value.status)
+        scope.cancel()
+    }
+
+    @Test
+    fun `refresh publishes the resolved delegate state before returning`() = runTest {
+        val scope = CoroutineScope(StandardTestDispatcher(testScheduler))
+        val delegate = FakeSubscriptionRepository(Entitlement.Loading).apply {
+            onRefresh = { setEntitlement(Entitlement.Entitled) }
+        }
+        val latch = LatchingSubscriptionRepository(delegate, scope)
+
+        latch.refresh()
+
+        // The async collector is still queued on the test dispatcher; the
+        // resolved state must already be visible without advancing it.
         assertEquals(EntitlementStatus.ENTITLED, latch.entitlement.value.status)
         scope.cancel()
     }

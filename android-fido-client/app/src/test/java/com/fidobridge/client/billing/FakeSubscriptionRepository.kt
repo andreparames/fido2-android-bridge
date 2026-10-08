@@ -16,12 +16,15 @@ class FakeSubscriptionRepository(
     var launchResult: Result<Unit> = Result.success(Unit)
     var restoreCount: Int = 0
     var inviteCode: String? = null
+    var onRefresh: () -> Unit = {}
 
     fun setEntitlement(value: Entitlement) {
         _entitlement.value = value
     }
 
-    override suspend fun refresh() = Unit
+    override suspend fun refresh() {
+        onRefresh()
+    }
 
     override suspend fun queryProducts(): Result<List<SubscriptionProduct>> = products
 

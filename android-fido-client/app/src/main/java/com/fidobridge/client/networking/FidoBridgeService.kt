@@ -40,7 +40,10 @@ class FidoBridgeService : Service() {
         // Defense in depth (billing.md §6.2): a confirmed non-entitled state never
         // runs the foreground relay.
         when (subscriptionRepository.entitlement.value.status) {
-            EntitlementStatus.ENTITLED -> startBridge()
+            EntitlementStatus.ENTITLED -> {
+                goForeground()
+                startBridge()
+            }
 
             EntitlementStatus.LOADING -> {
                 // A sticky restart in a fresh process starts at LOADING. Go

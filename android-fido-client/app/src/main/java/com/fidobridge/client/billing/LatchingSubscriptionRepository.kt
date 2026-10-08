@@ -29,17 +29,27 @@ class LatchingSubscriptionRepository(
 
     init {
         scope.launch {
-            delegate.entitlement.collect { incoming ->
-                // Accept upgrades and pre-entitlement transitions; never regress
-                // an already-ENTITLED state.
-                if (incoming.isEntitled || !_entitlement.value.isEntitled) {
-                    _entitlement.value = incoming
-                }
-            }
+            delegate.entitlement.collect { accept(it) }
         }
     }
 
-    override suspend fun refresh() = delegate.refresh()
+    // Accept upgrades and pre-entitlement transitions; never regress an
+    // already-ENTITLED state.
+    private fun accept(incoming: Entitlement) {
+        if (incoming.isEntitled || !_entitlement.value.isEntitled) {
+            _entitlement.value = incoming
+        }
+    }
+
+    /**
+     * Refreshes the delegate and publishes its resolved state before returning,
+     * so callers that `await refresh()` observe an app-facing resolved
+     * entitlement rather than the async collector's lagging value.
+     */
+    override suspend fun refresh() {
+        delegate.refresh()
+        accept(delegate.entitlement.value)
+    }
 
     override suspend fun queryProducts(): Result<List<SubscriptionProduct>> =
         delegate.queryProducts()
