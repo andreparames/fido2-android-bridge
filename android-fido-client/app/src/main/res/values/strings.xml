@@ -1,4 +1,13 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <string name="app_name">FIDO Bridge</string>
+    <string name="app_name">Gatebridge</string>
+    <string name="subscribe_title">Gatebridge Individual</string>
+    <string name="subscribe_subtitle">Hardware-backed remote WebAuthn. Subscription includes the managed relay.</string>
+    <string name="subscribe_trial_copy">1 month free, then %1$s</string>
+    <string name="subscribe_restore">Restore purchases</string>
+    <string name="subscribe_manage">Manage subscription in Play</string>
+    <string name="subscribe_billing_unavailable">Google Play Billing is unavailable on this device. Open the Play Store and try again.</string>
+    <string name="subscribe_error">Could not load subscription products.</string>
+    <string name="subscription_required">Your Gatebridge subscription is not active. Renew in Google Play to use the managed relay.</string>
+    <string name="loading_entitlement">Checking subscription…</string>
 </resources>

@@ -1,6 +1,8 @@
 package com.fidobridge.client.bridge
 
 import android.util.Log
+import com.fidobridge.client.billing.AlwaysEntitledSubscriptionRepository
+import com.fidobridge.client.billing.SubscriptionRepository
 import com.fidobridge.client.ctap.Ctap2Processor
 import com.fidobridge.client.networking.DiagnosticLogSink
 import com.fidobridge.client.networking.RelayClient
@@ -24,6 +26,7 @@ class BridgePipeline(
     private val transportFactory: (endpoint: String, channel: String, relayToken: String?) -> RelayTransport,
     private val logSink: DiagnosticLogSink? = null,
     private val defaultRelayToken: String = "",
+    private val subscriptionRepository: SubscriptionRepository = AlwaysEntitledSubscriptionRepository(),
     private val securityFailureTracker: IntegrityFailureTracker = IntegrityFailureTracker()
 ) {
 
@@ -53,6 +56,9 @@ class BridgePipeline(
 
     private fun startInternal(preserveSecurityAlert: Boolean) {
         if (client != null) return
+        if (!subscriptionRepository.entitlement.value.isEntitled) {
+            return fail("subscription required")
+        }
         if (!preserveSecurityAlert) {
             securityFailureTracker.reset()
         }

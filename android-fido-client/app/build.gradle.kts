@@ -38,14 +38,37 @@ android {
 
         buildConfigField(
             "String",
-            "RELAY_URL",
-            "\"${escapeForBuildConfig(relayUrl())}\""
-        )
-        buildConfigField(
-            "String",
             "RELAY_TOKEN",
             "\"${escapeForBuildConfig(relayToken())}\""
         )
+    }
+
+    flavorDimensions += "distribution"
+
+    productFlavors {
+        create("oss") {
+            dimension = "distribution"
+            isDefault = true
+            buildConfigField(
+                "String",
+                "RELAY_URL",
+                "\"${escapeForBuildConfig(relayUrlOss())}\""
+            )
+        }
+        create("play") {
+            dimension = "distribution"
+            buildConfigField(
+                "String",
+                "RELAY_URL",
+                "\"${escapeForBuildConfig(relayUrlPlay())}\""
+            )
+            // Gatebridge entitlement API used by the managed (Play) relay path.
+            buildConfigField(
+                "String",
+                "GATEBRIDGE_API_URL",
+                "\"${escapeForBuildConfig(gatebridgeApiUrlPlay())}\""
+            )
+        }
     }
 
     buildTypes {
@@ -120,6 +143,8 @@ dependencies {
     implementation(libs.noise.java)
     implementation(libs.androidx.fragment)
 
+    "playImplementation"(libs.billing)
+
     debugImplementation(libs.androidx.compose.ui.tooling)
 
     testImplementation(libs.junit)
@@ -132,8 +157,17 @@ dependencies {
     androidTestImplementation(libs.androidx.test.runner)
 }
 
-fun relayUrl(): String =
-    System.getenv("FIDO2_RELAY_URL") ?: "wss://relay.gatebridge.app/connection/websocket"
+fun relayUrlOss(): String =
+    System.getenv("FIDO2_RELAY_URL")
+        ?: "wss://localhost:9000/connection/websocket"
+
+fun relayUrlPlay(): String =
+    System.getenv("GATEBRIDGE_MANAGED_RELAY_URL")
+        ?: "wss://relay.gatebridge.app/connection/websocket"
+
+fun gatebridgeApiUrlPlay(): String =
+    System.getenv("GATEBRIDGE_API_URL")
+        ?: "https://api.gatebridge.app"
 
 // Dev convenience: the shared Centrifugo connection JWT is read from the
 // `pass` store at build time (entry overridable via FIDO_RELAY_PASS_ENTRY).

@@ -1,5 +1,7 @@
 package com.fidobridge.client.bridge
 
+import com.fidobridge.client.billing.Entitlement
+import com.fidobridge.client.billing.FakeSubscriptionRepository
 import com.fidobridge.client.crypto.NoiseSession
 import com.fidobridge.client.ctap.CredentialStore
 import com.fidobridge.client.ctap.Ctap2Processor
@@ -161,6 +163,25 @@ class BridgePipelineTest {
             while (pipeline.state.value !is BridgeState.Error) delay(10)
         }
         assertTrue(pipeline.state.value is BridgeState.Error)
+    }
+
+    @Test
+    fun `not entitled blocks pipeline startup`() = runBlocking {
+        val transport = FakeRelayTransport()
+        val pipeline = BridgePipeline(
+            pairedStore(), "ws://localhost:8000/connection/websocket",
+            Ctap2Processor(FakeCredentialStore(), FakeKeyGenerator(), FakeSigner()),
+            transportFactory = { _, _, _ -> transport },
+            subscriptionRepository = FakeSubscriptionRepository(Entitlement.NotEntitled)
+        )
+
+        pipeline.start()
+
+        withTimeout(5000) {
+            while (pipeline.state.value !is BridgeState.Error) delay(10)
+        }
+        assertTrue(pipeline.state.value is BridgeState.Error)
+        pipeline.stop()
     }
 
     @Test

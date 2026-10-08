@@ -1,5 +1,9 @@
 package com.fidobridge.client.pairing
 
+import com.fidobridge.client.billing.Entitlement
+import com.fidobridge.client.billing.EntitlementStatus
+import com.fidobridge.client.billing.FakeEntitlementBackend
+import com.fidobridge.client.billing.FakeSubscriptionRepository
 import com.fidobridge.client.crypto.NoiseSession
 import com.fidobridge.client.util.Base64
 import kotlinx.coroutines.Dispatchers
@@ -34,8 +38,18 @@ class PairingViewModelTest {
 
     private fun validUri() = "fidobridge://pair?channel=$channel&pubkey=$pubkeyEncoded"
 
-    private fun viewModel(store: FakeIdentityStore = FakeIdentityStore(), dispatcher: PairingUriDispatcher = PairingUriDispatcher()): PairingViewModel =
-        PairingViewModel(PairingRepository(store), dispatcher)
+    private fun viewModel(
+        store: FakeIdentityStore = FakeIdentityStore(),
+        dispatcher: PairingUriDispatcher = PairingUriDispatcher(),
+        gate: ManagedPairingGate = classicGate()
+    ): PairingViewModel =
+        PairingViewModel(PairingRepository(store), gate, dispatcher)
+
+    private fun classicGate() = ManagedPairingGate(
+        relayUrl = "ws://localhost:9000/connection/websocket",
+        subscriptionRepository = com.fidobridge.client.billing.AlwaysEntitledSubscriptionRepository(),
+        entitlementBackend = com.fidobridge.client.billing.FakeEntitlementBackend()
+    )
 
     private fun awaitTerminalState(vm: PairingViewModel) {
         val deadline = System.currentTimeMillis() + 5_000
@@ -137,5 +151,49 @@ class PairingViewModelTest {
         vm.clearError()
 
         assertEquals(PairingUiState.Scanning, vm.uiState.value)
+    }
+
+    @Test
+    fun `managed pairing activates the channel once before storing identity`() {
+        val store = FakeIdentityStore()
+        val backend = FakeEntitlementBackend()
+        val gate = ManagedPairingGate(
+            relayUrl = "wss://relay.gatebridge.app/connection/websocket",
+            subscriptionRepository = FakeSubscriptionRepository(
+                Entitlement(
+                    status = EntitlementStatus.ENTITLED,
+                    productId = "gatebridge_individual_monthly",
+                    purchaseToken = "tok"
+                )
+            ),
+            entitlementBackend = backend
+        )
+        val vm = viewModel(store, gate = gate)
+
+        vm.onQrResult(validUri())
+        awaitTerminalState(vm)
+
+        assertEquals(PairingUiState.Paired, vm.uiState.value)
+        assertEquals(listOf("3eb1bd439947eb762998e566ccc2e099"), backend.calls)
+        assertNotNull(store.loadChannelId())
+    }
+
+    @Test
+    fun `managed pairing without entitlement shows error and stores nothing`() {
+        val store = FakeIdentityStore()
+        val backend = FakeEntitlementBackend()
+        val gate = ManagedPairingGate(
+            relayUrl = "wss://relay.gatebridge.app/connection/websocket",
+            subscriptionRepository = FakeSubscriptionRepository(Entitlement.NotEntitled),
+            entitlementBackend = backend
+        )
+        val vm = viewModel(store, gate = gate)
+
+        vm.onQrResult(validUri())
+        awaitTerminalState(vm)
+
+        assertTrue(vm.uiState.value is PairingUiState.Error)
+        assertTrue(backend.calls.isEmpty())
+        assertEquals(null, store.loadChannelId())
     }
 }
