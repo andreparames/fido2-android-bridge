@@ -8,6 +8,8 @@ import android.content.Intent
 import android.content.pm.ServiceInfo
 import android.os.Build
 import android.os.IBinder
+import android.util.Log
+import com.fidobridge.client.billing.SubscriptionRepository
 import com.fidobridge.client.bridge.BridgePipeline
 import com.fidobridge.client.bridge.BridgeState
 import dagger.hilt.android.AndroidEntryPoint
@@ -25,12 +27,23 @@ class FidoBridgeService : Service() {
     @Inject
     lateinit var pipeline: BridgePipeline
 
+    @Inject
+    lateinit var subscriptionRepository: SubscriptionRepository
+
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
     private var stateJob: Job? = null
 
     override fun onBind(intent: Intent?): IBinder? = null
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
+        // Defense in depth (billing.md §6.2): do not run the foreground relay for
+        // a user without an active entitlement, even if the UI/start path missed
+        // the gate. The pipeline also fails closed, but never go foreground first.
+        if (!subscriptionRepository.entitlement.value.isEntitled) {
+            Log.w(TAG, "not entitled; refusing to start foreground service")
+            stopSelf(startId)
+            return START_NOT_STICKY
+        }
         createChannel()
         val notification = buildNotification(bridgeNotificationText(BridgeState.Connecting))
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
@@ -87,6 +100,7 @@ class FidoBridgeService : Service() {
     companion object {
         private const val CHANNEL_ID = "fidobridge_relay"
         private const val NOTIFICATION_ID = 1
+        private const val TAG = "FidoBridge"
     }
 }
 
