@@ -2,8 +2,10 @@ package com.fidobridge.client.di
 
 import com.fidobridge.client.billing.BaseSubscriptionRepository
 import com.fidobridge.client.billing.EntitlementBackend
+import com.fidobridge.client.billing.InviteCodeClient
 import com.fidobridge.client.billing.PlayBillingSubscriptionRepository
 import com.fidobridge.client.billing.PlayEntitlementBackend
+import com.fidobridge.client.billing.PlayInviteCodeClient
 import com.fidobridge.client.billing.SubscriptionRepository
 import dagger.Binds
 import dagger.Module
@@ -27,4 +29,10 @@ abstract class PlayBillingModule {
     abstract fun bindEntitlementBackend(
         impl: PlayEntitlementBackend
     ): EntitlementBackend
+
+    @Binds
+    @Singleton
+    abstract fun bindInviteCodeClient(
+        impl: PlayInviteCodeClient
+    ): InviteCodeClient
 }

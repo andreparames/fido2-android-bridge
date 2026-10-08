@@ -5,7 +5,8 @@ data class Entitlement(
     val productId: String? = null,
     val isTrial: Boolean = false,
     val expiryEpochMs: Long? = null,
-    val purchaseToken: String? = null
+    val purchaseToken: String? = null,
+    val inviteCode: String? = null // in-memory only; never logged or persisted
 ) {
     val isEntitled: Boolean get() = status == EntitlementStatus.ENTITLED
 

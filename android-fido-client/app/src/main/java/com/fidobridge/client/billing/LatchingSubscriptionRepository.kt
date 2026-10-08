@@ -48,4 +48,7 @@ class LatchingSubscriptionRepository(
         delegate.launchPurchase(activity, productId)
 
     override suspend fun restorePurchases() = delegate.restorePurchases()
+
+    override fun markEntitledForInvite(inviteCode: String) =
+        delegate.markEntitledForInvite(inviteCode)
 }

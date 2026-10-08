@@ -9,6 +9,13 @@
     <string name="subscribe_billing_unavailable">Google Play Billing is unavailable on this device. Open the Play Store and try again.</string>
     <string name="subscribe_error">Could not load subscription products.</string>
     <string name="subscribe_purchase_error">Could not start the purchase flow. Please try again.</string>
+    <string name="invite_code_button">Have an invite code?</string>
+    <string name="invite_code_title">Enter invite code</string>
+    <string name="invite_code_helper">For invited, demo, or partner access. Not a public free tier.</string>
+    <string name="invite_code_hint">8 digits</string>
+    <string name="invite_code_invalid">Enter exactly 8 digits.</string>
+    <string name="invite_code_failed">That invite code was not accepted.</string>
+    <string name="invite_code_activate">Activate</string>
     <string name="subscription_required">Your Gatebridge subscription is not active. Renew in Google Play to use the managed relay.</string>
     <string name="loading_entitlement">Checking subscription…</string>
 </resources>

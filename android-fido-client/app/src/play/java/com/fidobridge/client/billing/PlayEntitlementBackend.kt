@@ -50,26 +50,43 @@ class PlayEntitlementBackend @Inject constructor(
                 )
             }
             val entitlement = subscriptionRepository.entitlement.value
-            val productId = entitlement.productId
-            val purchaseToken = entitlement.purchaseToken
-            if (!entitlement.isEntitled || productId == null || purchaseToken == null) {
+            if (!entitlement.isEntitled) {
                 return@withContext Result.failure(
-                    IllegalStateException("no verified Play purchase available for activation")
+                    IllegalStateException("no active entitlement for activation")
                 )
             }
+            val request = entitlement.toSessionRequest()
+                ?: return@withContext Result.failure(
+                    IllegalStateException("no verified entitlement credential for activation")
+                )
             runCatching {
-                val session = createSession(productId, purchaseToken)
+                val session = createSession(request)
                 val result = activateChannel(session.token, channel)
                 playSubscriptionRepository.applyServerTrial(session.isTrial)
                 result
             }
         }
 
-    private fun createSession(productId: String, purchaseToken: String): PlaySession {
-        val body = buildJsonObject {
-            put("productId", productId)
-            put("purchaseToken", purchaseToken)
-            put("packageName", context.packageName)
+    /** Prefers the verified Play purchase; falls back to an invite-code grant. */
+    private fun Entitlement.toSessionRequest(): SessionRequest? {
+        val product = productId
+        val token = purchaseToken
+        val invite = inviteCode
+        return when {
+            product != null && token != null -> SessionRequest.Purchase(product, token)
+            invite != null -> SessionRequest.Invite(invite)
+            else -> null
+        }
+    }
+
+    private fun createSession(request: SessionRequest): PlaySession {
+        val body = when (request) {
+            is SessionRequest.Purchase -> buildJsonObject {
+                put("productId", request.productId)
+                put("purchaseToken", request.purchaseToken)
+                put("packageName", context.packageName)
+            }
+            is SessionRequest.Invite -> buildJsonObject { put("inviteCode", request.inviteCode) }
         }
         val root = json.parseToJsonElement(
             post("$BASE_URL/v1/play/session", body.toString(), sessionToken = null)
@@ -81,6 +98,11 @@ class PlayEntitlementBackend @Inject constructor(
             throw IllegalStateException("play session denied: ${root["reason"]?.jsonPrimitive?.contentOrNull}")
         }
         return PlaySession(token, isTrial)
+    }
+
+    private sealed interface SessionRequest {
+        data class Purchase(val productId: String, val purchaseToken: String) : SessionRequest
+        data class Invite(val inviteCode: String) : SessionRequest
     }
 
     private data class PlaySession(val token: String, val isTrial: Boolean)

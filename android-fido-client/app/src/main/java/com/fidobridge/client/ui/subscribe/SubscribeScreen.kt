@@ -14,10 +14,13 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.systemBarsPadding
 import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -26,9 +29,11 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.fidobridge.client.BuildConfig
 import com.fidobridge.client.R
 import com.fidobridge.client.billing.ProductIds
 import com.fidobridge.client.billing.SubscriptionProduct
@@ -40,6 +45,10 @@ fun SubscribeScreen(
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
     val entitlement by viewModel.entitlement.collectAsStateWithLifecycle()
+    val inviteDialogVisible by viewModel.inviteDialogVisible.collectAsStateWithLifecycle()
+    val inviteCodeInput by viewModel.inviteCodeInput.collectAsStateWithLifecycle()
+    val inviteError by viewModel.inviteError.collectAsStateWithLifecycle()
+    val inviteSubmitting by viewModel.inviteSubmitting.collectAsStateWithLifecycle()
     val context = LocalContext.current
     val activity = context.findActivity()
 
@@ -113,7 +122,62 @@ fun SubscribeScreen(
             ) {
                 Text(stringResource(R.string.subscribe_manage))
             }
+            if (BuildConfig.PLAY_BILLING_REQUIRED) {
+                TextButton(onClick = { viewModel.showInviteDialog() }) {
+                    Text(stringResource(R.string.invite_code_button))
+                }
+            }
         }
+    }
+
+    if (inviteDialogVisible) {
+        AlertDialog(
+            onDismissRequest = { if (!inviteSubmitting) viewModel.hideInviteDialog() },
+            title = { Text(stringResource(R.string.invite_code_title)) },
+            text = {
+                Column {
+                    Text(stringResource(R.string.invite_code_helper))
+                    Spacer(Modifier.height(12.dp))
+                    OutlinedTextField(
+                        value = inviteCodeInput,
+                        onValueChange = viewModel::onInviteCodeChange,
+                        singleLine = true,
+                        isError = inviteError != null,
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.NumberPassword),
+                        placeholder = { Text(stringResource(R.string.invite_code_hint)) }
+                    )
+                    val error = inviteError
+                    if (error != null) {
+                        Spacer(Modifier.height(8.dp))
+                        Text(
+                            text = stringResource(
+                                when (error) {
+                                    InviteError.INVALID -> R.string.invite_code_invalid
+                                    InviteError.FAILED -> R.string.invite_code_failed
+                                }
+                            ),
+                            color = MaterialTheme.colorScheme.error
+                        )
+                    }
+                }
+            },
+            confirmButton = {
+                TextButton(
+                    onClick = { viewModel.submitInviteCode() },
+                    enabled = !inviteSubmitting
+                ) {
+                    Text(stringResource(R.string.invite_code_activate))
+                }
+            },
+            dismissButton = {
+                TextButton(
+                    onClick = { viewModel.hideInviteDialog() },
+                    enabled = !inviteSubmitting
+                ) {
+                    Text("Cancel")
+                }
+            }
+        )
     }
 }
 

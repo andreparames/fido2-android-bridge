@@ -15,6 +15,7 @@ class FakeSubscriptionRepository(
     var products: Result<List<SubscriptionProduct>> = Result.success(emptyList())
     var launchResult: Result<Unit> = Result.success(Unit)
     var restoreCount: Int = 0
+    var inviteCode: String? = null
 
     fun setEntitlement(value: Entitlement) {
         _entitlement.value = value
@@ -29,5 +30,14 @@ class FakeSubscriptionRepository(
 
     override suspend fun restorePurchases() {
         restoreCount++
+    }
+
+    override fun markEntitledForInvite(code: String) {
+        inviteCode = code
+        _entitlement.value = Entitlement(
+            status = EntitlementStatus.ENTITLED,
+            productId = "invite_code",
+            inviteCode = code
+        )
     }
 }

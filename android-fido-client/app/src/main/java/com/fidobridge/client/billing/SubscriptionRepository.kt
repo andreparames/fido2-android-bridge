@@ -9,4 +9,7 @@ interface SubscriptionRepository {
     suspend fun queryProducts(): Result<List<SubscriptionProduct>>
     suspend fun launchPurchase(activity: Activity, productId: String): Result<Unit>
     suspend fun restorePurchases()
+
+    /** Applies an invite-code grant (in-memory only; never persisted). */
+    fun markEntitledForInvite(inviteCode: String)
 }

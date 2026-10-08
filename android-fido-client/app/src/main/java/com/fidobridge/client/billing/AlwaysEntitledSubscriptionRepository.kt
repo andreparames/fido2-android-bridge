@@ -21,4 +21,6 @@ class AlwaysEntitledSubscriptionRepository @Inject constructor() : SubscriptionR
         Result.success(Unit)
 
     override suspend fun restorePurchases() = Unit
+
+    override fun markEntitledForInvite(inviteCode: String) = Unit
 }

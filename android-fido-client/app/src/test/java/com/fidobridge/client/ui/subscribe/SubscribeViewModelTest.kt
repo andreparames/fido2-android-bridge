@@ -2,6 +2,7 @@ package com.fidobridge.client.ui.subscribe
 
 import android.app.Activity
 import com.fidobridge.client.billing.Entitlement
+import com.fidobridge.client.billing.FakeInviteCodeClient
 import com.fidobridge.client.billing.FakeSubscriptionRepository
 import com.fidobridge.client.billing.SubscriptionProduct
 import io.mockk.mockk
@@ -24,6 +25,7 @@ class SubscribeViewModelTest {
 
     private val dispatcher = StandardTestDispatcher()
     private val activity: Activity = mockk(relaxed = true)
+    private val inviteClient = FakeInviteCodeClient()
 
     @Before
     fun setUp() {
@@ -44,18 +46,21 @@ class SubscribeViewModelTest {
         offerToken = "offer"
     )
 
+    private fun viewModel(repository: FakeSubscriptionRepository) =
+        SubscribeViewModel(repository, inviteClient)
+
     @Test
     fun `loads products on init`() = runTest(dispatcher) {
         val repository = FakeSubscriptionRepository().apply {
             products = Result.success(listOf(product()))
         }
 
-        val viewModel = SubscribeViewModel(repository)
+        val subscribeViewModel = viewModel(repository)
         advanceUntilIdle()
 
-        assertEquals(1, viewModel.uiState.value.products.size)
-        assertFalse(viewModel.uiState.value.loading)
-        assertFalse(viewModel.uiState.value.error)
+        assertEquals(1, subscribeViewModel.uiState.value.products.size)
+        assertFalse(subscribeViewModel.uiState.value.loading)
+        assertFalse(subscribeViewModel.uiState.value.error)
     }
 
     @Test
@@ -64,11 +69,11 @@ class SubscribeViewModelTest {
             products = Result.failure(IllegalStateException("boom"))
         }
 
-        val viewModel = SubscribeViewModel(repository)
+        val subscribeViewModel = viewModel(repository)
         advanceUntilIdle()
 
-        assertTrue(viewModel.uiState.value.error)
-        assertFalse(viewModel.uiState.value.loading)
+        assertTrue(subscribeViewModel.uiState.value.error)
+        assertFalse(subscribeViewModel.uiState.value.loading)
     }
 
     @Test
@@ -77,11 +82,11 @@ class SubscribeViewModelTest {
             products = Result.failure(IllegalStateException("boom"))
         }
 
-        val viewModel = SubscribeViewModel(repository)
+        val subscribeViewModel = viewModel(repository)
         advanceUntilIdle()
 
-        assertTrue(viewModel.uiState.value.billingUnavailable)
-        assertFalse(viewModel.uiState.value.error)
+        assertTrue(subscribeViewModel.uiState.value.billingUnavailable)
+        assertFalse(subscribeViewModel.uiState.value.error)
     }
 
     @Test
@@ -89,18 +94,18 @@ class SubscribeViewModelTest {
         val repository = FakeSubscriptionRepository().apply {
             products = Result.success(listOf(product()))
         }
-        val viewModel = SubscribeViewModel(repository)
+        val subscribeViewModel = viewModel(repository)
         advanceUntilIdle()
 
         repository.launchResult = Result.failure(IllegalStateException("boom"))
-        viewModel.buy(activity, "gatebridge_individual_monthly")
+        subscribeViewModel.buy(activity, "gatebridge_individual_monthly")
         advanceUntilIdle()
-        assertTrue(viewModel.uiState.value.purchaseFailed)
+        assertTrue(subscribeViewModel.uiState.value.purchaseFailed)
 
         repository.launchResult = Result.success(Unit)
-        viewModel.buy(activity, "gatebridge_individual_monthly")
+        subscribeViewModel.buy(activity, "gatebridge_individual_monthly")
         advanceUntilIdle()
-        assertFalse(viewModel.uiState.value.purchaseFailed)
+        assertFalse(subscribeViewModel.uiState.value.purchaseFailed)
     }
 
     @Test
@@ -108,12 +113,64 @@ class SubscribeViewModelTest {
         val repository = FakeSubscriptionRepository().apply {
             products = Result.success(listOf(product()))
         }
-        val viewModel = SubscribeViewModel(repository)
+        val subscribeViewModel = viewModel(repository)
         advanceUntilIdle()
 
-        viewModel.restore()
+        subscribeViewModel.restore()
         advanceUntilIdle()
 
         assertEquals(1, repository.restoreCount)
+    }
+
+    @Test
+    fun `invite input keeps only digits and caps at eight`() = runTest(dispatcher) {
+        val subscribeViewModel = viewModel(FakeSubscriptionRepository())
+
+        subscribeViewModel.onInviteCodeChange("12a34-5678901")
+
+        assertEquals("12345678", subscribeViewModel.inviteCodeInput.value)
+    }
+
+    @Test
+    fun `invalid invite code is rejected without calling the client`() = runTest(dispatcher) {
+        val subscribeViewModel = viewModel(FakeSubscriptionRepository())
+        subscribeViewModel.showInviteDialog()
+        subscribeViewModel.onInviteCodeChange("123")
+
+        subscribeViewModel.submitInviteCode()
+        advanceUntilIdle()
+
+        assertEquals(InviteError.INVALID, subscribeViewModel.inviteError.value)
+        assertTrue(inviteClient.codes.isEmpty())
+        assertTrue(subscribeViewModel.inviteDialogVisible.value)
+    }
+
+    @Test
+    fun `successful invite submission closes the dialog`() = runTest(dispatcher) {
+        val subscribeViewModel = viewModel(FakeSubscriptionRepository())
+        subscribeViewModel.showInviteDialog()
+        subscribeViewModel.onInviteCodeChange("12345678")
+
+        subscribeViewModel.submitInviteCode()
+        advanceUntilIdle()
+
+        assertEquals(listOf("12345678"), inviteClient.codes)
+        assertFalse(subscribeViewModel.inviteDialogVisible.value)
+        assertEquals("", subscribeViewModel.inviteCodeInput.value)
+        assertFalse(subscribeViewModel.inviteSubmitting.value)
+    }
+
+    @Test
+    fun `failed invite submission surfaces an error`() = runTest(dispatcher) {
+        inviteClient.result = Result.failure(IllegalStateException("denied"))
+        val subscribeViewModel = viewModel(FakeSubscriptionRepository())
+        subscribeViewModel.showInviteDialog()
+        subscribeViewModel.onInviteCodeChange("12345678")
+
+        subscribeViewModel.submitInviteCode()
+        advanceUntilIdle()
+
+        assertEquals(InviteError.FAILED, subscribeViewModel.inviteError.value)
+        assertTrue(subscribeViewModel.inviteDialogVisible.value)
     }
 }

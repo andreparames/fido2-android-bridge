@@ -175,6 +175,19 @@ class PlayBillingSubscriptionRepository @Inject constructor(
         }
     }
 
+    /**
+     * Applies an invite-code grant (playstore/plans/invite-code.md). In-memory
+     * only; the code is never persisted or logged.
+     */
+    override fun markEntitledForInvite(inviteCode: String) {
+        _entitlement.value = Entitlement(
+            status = EntitlementStatus.ENTITLED,
+            productId = INVITE_PRODUCT_ID,
+            purchaseToken = null,
+            inviteCode = inviteCode
+        )
+    }
+
     private suspend fun queryProductDetails(): Result<List<ProductDetails>> {
         val params = QueryProductDetailsParams.newBuilder()
             .setProductList(
@@ -328,5 +341,9 @@ class PlayBillingSubscriptionRepository @Inject constructor(
                 _entitlement.value = Entitlement.Error
             }
         }
+    }
+
+    companion object {
+        const val INVITE_PRODUCT_ID = "invite_code"
     }
 }
