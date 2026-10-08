@@ -1,4 +1,4 @@
-# ANDROID_LOGGING_PLAN — Local diagnostics persistence + export
+# Local diagnostics persistence + export
 
 Covers the three TODOs added to `TODO.md`:
 

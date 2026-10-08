@@ -179,7 +179,7 @@ config, base64 codec, Noise sessions/envelope, pairing URI, socket server,
 CTAP2 parse/encode, relay (handshake, token, correlation, tamper, TOFU pin,
 timeout), and an end-to-end `getAssertion` loop.
 
-For integration testing with a live Centrifugo, see Phase 9 of `DAEMON_PLAN.md`.
+For integration testing with a live Centrifugo, see Phase 9 of `plan.md`.
 The harness (`tests/harness/`) provides `MockBrowser` and `MockPhone` to
 validate the real relay path without a browser or Android device. See
 [`tests/harness/README.md`](tests/harness/README.md) for scenarios, CLI usage,
@@ -237,14 +237,14 @@ group-readable for the `uhid` group).
 
 ## Status & next steps
 
-Implemented (M1–M3 of `DAEMON_PLAN.md`): config, Noise transport + envelope
+Implemented (M1–M3 of `plan.md`): config, Noise transport + envelope
 codec, static-key pairing + `derive_channel_id`, Unix socket server, CTAP2
 interception + JSON schema, Centrifugo relay with Noise handshake, TOFU phone
 pinning, token auth + timeout, and CLI end-to-end wiring. M4 adds the `--uhid`
 virtual FIDO2 HID frontend (`ctaphid.py`, `uhid_device.py`) for browser
 WebAuthn.
 
-Phase 8 (`DAEMON_PLAN.md` §8) is done: the systemd user unit ships with the
+Phase 8 (`plan.md` §8) is done: the systemd user unit ships with the
 deb/rpm packages, and socket creation (`0600`) and unlink-on-stop are
 unit-tested. The daemon↔relay path is covered end-to-end by the Phase 9
 integration harness.

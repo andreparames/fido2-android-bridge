@@ -1,4 +1,4 @@
-"""CTAPHID framing and channel state machine (DAEMON_PLAN.md §10).
+"""CTAPHID framing and channel state machine (plan.md §10).
 
 Pure packet codec + per-channel reassembly for the virtual FIDO2 HID device.
 No I/O lives here: the browser-facing transport (``uhid_device.py``) feeds

@@ -1,4 +1,4 @@
-"""Virtual FIDO2 HID device transport over /dev/uhid (DAEMON_PLAN.md §10).
+"""Virtual FIDO2 HID device transport over /dev/uhid (plan.md §10).
 
 Presents the daemon to local browsers as a standard security key: browsers see
 a `/dev/hidraw*` node and speak 64-byte CTAPHID reports; the kernel forwards

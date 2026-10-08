@@ -6,7 +6,7 @@ on-screen elements, plus concrete adb recipes. Test via the real APK on an
 emulator/device; all assertions are done on `uiautomator` dumps / screenshots,
 not on source.
 
-Companion docs: `ANDROID_UI_UX_PLAN.md` (design intent), `EMULATOR_ENV.md`
+Companion docs: `android-fido-client/plans/ui-ux.md` (design intent), `EMULATOR_ENV.md`
 (emulator setup), `PROTOCOL.md` (pairing URI + wire format), `AGENTS.md`.
 
 ---

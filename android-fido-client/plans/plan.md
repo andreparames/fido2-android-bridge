@@ -1,4 +1,4 @@
-# ANDROID_PLAN.md — Android Client Build Plan (TDD)
+# Android Client Build Plan (TDD)
 
 This plan builds the `android-fido-client` using a strict **Test-Driven Development** workflow. Every phase follows the Red → Green → Refactor cycle: write a failing test, implement the minimum to pass, then refactor. No phase is considered done until its tests pass.
 

@@ -22,14 +22,14 @@ sees ciphertext.
 |-----|---------|
 | [`PROTOCOL.md`](../PROTOCOL.md) | **Single source of truth** for wire formats: pairing URI, WireMessage envelope, plaintext message schema, `channel_id` derivation, error codes. Do not change these constants without bumping `PROTOCOL_VERSION`. |
 | [`AGENTS.md`](../AGENTS.md) | Security requirements, Definition of Done, hardware-key spec. |
-| [`ANDROID_PLAN.md`](../ANDROID_PLAN.md) | The TDD build plan this codebase follows (Red → Green → Refactor). |
-| [`DAEMON_PLAN.md`](../DAEMON_PLAN.md) | The daemon-side mirror plan (also Centrifugo). |
+| [`plans/plan.md`](plans/plan.md) | The TDD build plan this codebase follows (Red → Green → Refactor). |
+| [`../linux-fido-daemon/plan.md`](../linux-fido-daemon/plan.md) | The daemon-side mirror plan (also Centrifugo). |
 
 ---
 
 ## Current status
 
-Built via strict TDD through **M1–M5** of `ANDROID_PLAN.md`, plus the Centrifugo
+Built via strict TDD through **M1–M5** of `plans/plan.md`, plus the Centrifugo
 transport migration. Unit-testable layers are done and green (48 unit tests,
 `lint`, `assembleDebug`). Device-dependent pieces compile but are **not yet run on a
 device**.
@@ -144,7 +144,7 @@ Plugin 8.5.2 / Gradle 8.7 (wrapped).
 ```
 
 For the headless-emulator E2E (real APK + live Centrifugo + `mock-daemon`), see
-`ANDROID_PLAN.md` Phase 12; the exact emulator/SDK install state and cleanup
+`plans/plan.md` Phase 12; the exact emulator/SDK install state and cleanup
 steps are in [`EMULATOR_ENV.md`](../EMULATOR_ENV.md).
 
 ### Relay token (dev convenience)

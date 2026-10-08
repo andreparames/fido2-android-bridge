@@ -1,4 +1,4 @@
-# ANDROID_CODEBASE.md — Android Client Codebase Inventory
+# Android Client Codebase Inventory
 
 Snapshot of `android-fido-client/` as of 2026-09-27.
 

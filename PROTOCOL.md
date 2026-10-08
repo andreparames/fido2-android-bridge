@@ -10,7 +10,7 @@ with each other:
    WebSocket relay (bidirectional).
 
 Out of scope: the local Unix socket, CTAP2 CBOR decoding, and any
-daemon-internal detail. See `ANDROID_PLAN.md` and `DAEMON_PLAN.md` for those.
+daemon-internal detail. See `android-fido-client/plans/plan.md` and `linux-fido-daemon/plan.md` for those.
 
 Security posture (from `AGENTS.md`): the relay is **untrusted**; every payload
 is protected by the **Noise Protocol Framework** before touching the network;

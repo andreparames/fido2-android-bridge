@@ -108,8 +108,8 @@ See [`PROTOCOL.md`](PROTOCOL.md) for the full wire format specification and [`AG
 ## Development
 
 Both components are built with strict **Test-Driven Development**. See:
-- [`DAEMON_PLAN.md`](DAEMON_PLAN.md) — Linux daemon build plan
-- [`ANDROID_PLAN.md`](ANDROID_PLAN.md) — Android client build plan
+- [`linux-fido-daemon/plan.md`](linux-fido-daemon/plan.md) — Linux daemon build plan
+- [`android-fido-client/plans/plan.md`](android-fido-client/plans/plan.md) — Android client build plan
 
 ```bash
 # Daemon tests

@@ -1,4 +1,4 @@
-# ANDROID_UI_UX_PLAN.md — HomeScreen, Request History & Reset (UI/UX)
+# HomeScreen, Request History & Reset (UI/UX)
 
 This plan reworks the Android client's user-facing surfaces, folding in a senior
 mobile-app-designer review of the target UI. Scope: a useful HomeScreen (waiting

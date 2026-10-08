@@ -1,8 +1,8 @@
-# DAEMON_PLAN.md — Linux FIDO2 Daemon Build Plan (TDD)
+# Linux FIDO2 Daemon Build Plan (TDD)
 
 This plan builds the `linux-fido-daemon` using a strict **Test-Driven Development** workflow. Every phase follows the Red → Green → Refactor cycle: write a failing test, implement the minimum to pass, then refactor. No phase is considered done until its tests pass.
 
-Source of truth for security requirements: `AGENTS.md`. Mirror of `ANDROID_PLAN.md` for the daemon side of the bridge.
+Source of truth for security requirements: `AGENTS.md`. Mirror of `android-fido-client/plans/plan.md` for the daemon side of the bridge.
 
 ---
 
@@ -117,7 +117,7 @@ Source of truth for security requirements: `AGENTS.md`. Mirror of `ANDROID_PLAN.
 - **Implement:**
   - `ctap2.py`: decode CBOR (via `fido2` / `cbor2`) → frozen JSON dataclasses.
   - `protocol.py`: versioned JSON constants for the daemon↔phone schema.
-- **Refactor:** freeze schemas as versioned constants mirrored by `ANDROID_PLAN.md` §9.
+- **Refactor:** freeze schemas as versioned constants mirrored by `android-fido-client/plans/plan.md` §9.
 
 **Done when:** CTAP2 parse + schema tests pass.
 

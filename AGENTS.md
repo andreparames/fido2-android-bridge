@@ -42,7 +42,7 @@ authenticator-data flags, and error codes.
    lengths, base64 encodings, flag values, error codes) as authoritative —
    do not deviate from or re-invent them.
 3. Mirror any protocol change back into `PROTOCOL.md` (bump `PROTOCOL_VERSION`
-   for breaking changes) and keep both `ANDROID_PLAN.md` / `DAEMON_PLAN.md`
+   for breaking changes) and keep both `android-fido-client/plans/plan.md` / `linux-fido-daemon/plan.md`
    fixtures and both implementations in lock-step, per §8 of `PROTOCOL.md`.
 4. Not hardcode wire formats inline; reference `PROTOCOL.md` for the canonical
    definition and keep versioned constants in a single place per peer.

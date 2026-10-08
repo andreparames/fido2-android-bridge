@@ -8,7 +8,7 @@ flow (4 accepted + 1 rejected), and reset-then-repair — all with the real
 and per-step screenshots (captured via the emulator console so secure
 surfaces are not black). Bring-up notes that changed the plan: see §A.4/A.6.
 
-This document closes the automation gap left by `ANDROID_PLAN.md`
+This document closes the automation gap left by `android-fido-client/plans/plan.md`
 §12: the manual emulator E2E proved the full loop works once, but had no
 driver, no assertions, and no repeatable harness. It specifies the
 **automated** emulator E2E where the real debug APK runs on a headless
@@ -325,7 +325,7 @@ the emulator (software-backed); that stays device-only (Phase 12 note).
 - **This doc** (`EMULATOR_E2E_TESTING.md`) is the plan + runbook: prereqs,
   install/build steps, the A.4 flow, troubleshooting, cleanup.
 - **Cross-link** `INTEGRATION_TESTING.md` ("Emulator E2E" section) and the
-  `ANDROID_PLAN.md` §12 status note to this doc, and add the new harness to
+  `android-fido-client/plans/plan.md` §12 status note to this doc, and add the new harness to
   the "Where the pieces live" list.
 - **`UI_TESTER_GUIDE.md`**: no changes required (it already catalogs every
   element the orchestrator asserts); if the harness needs a new element, add

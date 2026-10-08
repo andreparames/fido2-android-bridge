@@ -1,4 +1,4 @@
-"""CTAPHID framing + channel state machine tests (DAEMON_PLAN.md §10)."""
+"""CTAPHID framing + channel state machine tests (plan.md §10)."""
 
 import os
 

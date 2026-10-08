@@ -1,6 +1,6 @@
 # TODO
 
-Tracking follow-up work. See `ANDROID_UI_UX_PLAN.md` and `UI_TESTER_GUIDE.md` for
+Tracking follow-up work. See `android-fido-client/plans/ui-ux.md` and `UI_TESTER_GUIDE.md` for
 context, and the CodeRabbit review on PR #1 for the source of these items.
 
 ---
@@ -66,7 +66,7 @@ time.
 
 ### [x] Store Android logs locally, export them as a zip, and gate relay logging by build
 
-Implemented per `ANDROID_LOGGING_PLAN.md`:
+Implemented per `android-fido-client/plans/logging.md`:
 
 - Local persistence: `DiagnosticLogStore` / `FileDiagnosticLogStore` (JSON Lines,
   size-based rotation, always written — never dropped when the relay is down).

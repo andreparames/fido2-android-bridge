@@ -1,4 +1,4 @@
-"""UHID transport tests (DAEMON_PLAN.md §10). A socketpair stands in for the
+"""UHID transport tests (plan.md §10). A socketpair stands in for the
 kernel's /dev/uhid end so no root is required."""
 
 import asyncio
