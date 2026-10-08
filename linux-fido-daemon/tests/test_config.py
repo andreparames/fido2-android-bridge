@@ -160,6 +160,7 @@ def test_pair_cli_writes_config_file_and_static_key(
     monkeypatch: pytest.MonkeyPatch, tmp_path, capsys: pytest.CaptureFixture
 ) -> None:
     _clear_config_env(monkeypatch)
+    monkeypatch.setenv("FIDO2_RELAY_URL", "ws://localhost:8000/connection/websocket")
     monkeypatch.setenv("FIDO2_RELAY_TOKEN", "test-jwt")
     key_path = tmp_path / "keys" / "static_key.pem"
     monkeypatch.setenv("FIDO2_STATIC_KEY_PATH", str(key_path))

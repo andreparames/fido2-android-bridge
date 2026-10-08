@@ -28,6 +28,7 @@ from fido_daemon.pairing import Pairing, derive_channel_id
 from fido_daemon.pairing_uri import format_pairing_uri
 from fido_daemon.protocol import CTAP2_ERR_INVALID_COMMAND, CTAP2_ERR_OPERATION_DENIED
 from fido_daemon.relay import RelayClient
+from fido_daemon.relay_mode import is_managed_relay
 from fido_daemon.socket_server import SocketServer
 from fido_daemon.uhid_device import UhidDevice
 
@@ -58,11 +59,14 @@ def _run_pair(no_qr: bool = False, config_path: str | None = None) -> int:
     key_path = Path(config.static_key_path)
     static_private = StaticKeyStore.load_or_create(key_path)
     static_public = StaticKeyStore.public_key(static_private)
-    # Carry the relay token so the Android client can connect without a rebuild.
+    managed = is_managed_relay(config.relay_url)
+    # Classic mode carries the relay token so the Android client can connect
+    # without a rebuild. Managed mode omits it: the subscribe proxy is the
+    # gate, and the token is not handed to the client.
     from fido_daemon.pairing import PairingGenerator
 
     pairing = PairingGenerator.generate(static_public)
-    if config.relay_token:
+    if config.relay_token and not managed:
         pairing = Pairing(
             static_public=static_public,
             channel_hex=pairing.channel_hex,
@@ -80,7 +84,7 @@ def _run_pair(no_qr: bool = False, config_path: str | None = None) -> int:
         write_config_file(
             config_path,
             channel_id=channel_id,
-            relay_token=config.relay_token or None,
+            relay_token=None if managed else config.relay_token or None,
         )
         print(f"\nConfig written to {config_path}", file=sys.stderr)
     return 0
