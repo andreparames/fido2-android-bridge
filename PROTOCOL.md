@@ -477,4 +477,4 @@ Echoed back as a `ping` with the same `id`; used for liveness/timeout probes.
 2. Update the mirrored constants in both `linux-fido-daemon` and
    `android-fido-client`.
 3. Update the cross-peer fixtures in both test suites; run all gates
-   (`pytest` + `testDebugUnitTest`) before merging.
+   (`pytest` + `testOssDebugUnitTest`) before merging.

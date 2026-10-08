@@ -44,8 +44,8 @@ paired: the Home screen shows connection state and a recent-requests history.
   if the fingerprint does not satisfy the prompt, use the PIN fallback path.)
 - Build & install (from the repo root):
   ```bash
-  (cd android-fido-client && ./gradlew assembleDebug)
-  adb install -r android-fido-client/app/build/outputs/apk/debug/app-debug.apk
+  (cd android-fido-client && ./gradlew assembleOssDebug)
+  adb install -r android-fido-client/app/build/outputs/apk/oss/debug/app-oss-debug.apk
   ```
 - **Pairing URI**: generate with the daemon CLI (prints `fidobridge://pair?...`):
   ```bash
