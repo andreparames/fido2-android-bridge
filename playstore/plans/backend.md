@@ -1,10 +1,10 @@
 # BACKEND_PLAN — Gatebridge managed-relay backend (draft)
 
-**Status:** DRAFT — design review. Not frozen. §12 decisions resolved; storage/schema remains illustrative (§4). Only the API behavior in `MANAGED_RELAY_PLAN.md` §4 is binding.
+**Status:** DRAFT — design review. Not frozen. §12 decisions resolved; storage/schema remains illustrative (§4). Only the API behavior in `playstore/plans/managed-relay.md` §4 is binding.
 **Audience:** coding agent implementing the service.
 **Grounding (read first):**
-- `playstore/MANAGED_RELAY_PLAN.md` — binding API contract (§4), managed happy path (§3), security (§9).
-- `playstore/BILLING_PLAN.md` §7 — server-side entitlement is a launch blocker; client gate is necessary but not sufficient.
+- `playstore/plans/managed-relay.md` — binding API contract (§4), managed happy path (§3), security (§9).
+- `playstore/plans/billing.md` §7 — server-side entitlement is a launch blocker; client gate is necessary but not sufficient.
 - `PROTOCOL.md` §2 — channel (`[0-9a-f]{32}`), pairing URI. Relay never sees plaintext.
 - `AGENTS.md` — security-first, no speculative crypto, fail closed.
 
@@ -21,7 +21,7 @@ One HTTP service ("Gatebridge API", public host `api.gatebridge.app`) that turns
 3. `POST /centrifugo/subscribe` — Centrifugo subscribe-proxy webhook: allow iff `C` is currently entitled/active; deny by default.
 4. RTDN handling — update entitlement state on renew/cancel/expire/refund so (2) and (3) stop allowing.
 
-**Explicit non-goals** (from `MANAGED_RELAY_PLAN.md` §4.4) — do **not** add:
+**Explicit non-goals** (from `playstore/plans/managed-relay.md` §4.4) — do **not** add:
 
 - Channel-status or phone-pubkey API.
 - Daemon authenticate/enroll API.
@@ -74,7 +74,7 @@ Alternative considered: Go (`androidpublisher/v3`, single static binary). Justif
 
 ## 3. Data model (illustrative — implementer's choice)
 
-> `MANAGED_RELAY_PLAN.md` §4 defines behavior, not a schema. Suggested minimum:
+> `playstore/plans/managed-relay.md` §4 defines behavior, not a schema. Suggested minimum:
 
 **`subscriptions`** — one row per Play entitlement.
 
@@ -123,7 +123,7 @@ Invariant (§4.2): a channel is subscribe-able iff it has a row in `channels` wi
 
 ## 4. API contract
 
-These mirror `MANAGED_RELAY_PLAN.md` §4 exactly. Request/response bodies are binding.
+These mirror `playstore/plans/managed-relay.md` §4 exactly. Request/response bodies are binding.
 
 ### 4.1 `POST /v1/play/session`
 
@@ -171,7 +171,7 @@ Allow: `{ "result": {} }` — Deny: `{ "error": { "code": 403, "message": "permi
 ### 4.4 Session token
 
 - Format: signed JWT (HS256 or EdDSA) with `sub=subscription_id`, `scope=activate`, `exp`, `iat`, `jti`.
-- TTL ≈ 900 s (`MANAGED_RELAY_PLAN.md` §13).
+- TTL ≈ 900 s (`playstore/plans/managed-relay.md` §13).
 - Verify signature + `exp` + `scope` on every `activate` call. Bad/absent/expired → `401`.
 - Never log the raw token or the `purchaseToken`.
 
@@ -237,13 +237,13 @@ Centrifugo expects exactly `{"result": {}}` for allow and `{"error": {"code": 40
 
 **Decision (§12.1, resolved):** the managed namespace separator is **colon** and the channel form is **`fidobridge:<channel_id>`**. This matches Centrifugo's default namespace separator, the already-deployed `relay/config.json`, `PROTOCOL.md` §3.3, and the CHANGELOG. `CHANNEL_PREFIX=fidobridge:`.
 
-The earlier `fidobridge.<C>` / "strip optional `fidobridge.` prefix" wording in `MANAGED_RELAY_PLAN.md` is **superseded** and has been updated to the colon form.
+The earlier `fidobridge.<C>` / "strip optional `fidobridge.` prefix" wording in `playstore/plans/managed-relay.md` is **superseded** and has been updated to the colon form.
 
 Implementation: the webhook strips the `fidobridge:` prefix **and** accepts a `fidobridge.` prefix defensively (cheap insurance against a future separator change), then validates `[0-9a-f]{32}`. The daemon/app channel strings MUST emit the colon form. Canonical references: `PROTOCOL.md` §3.3 and `relay/README.md`.
 
 ### 5.4 Connection auth and why the proxy is authoritative
 
-- Connection JWT/HMAC is server-side only; never shipped in the APK or public daemon (`MANAGED_RELAY_PLAN.md` §5, §9.1).
+- Connection JWT/HMAC is server-side only; never shipped in the APK or public daemon (`playstore/plans/managed-relay.md` §5, §9.1).
 - Anonymous or low-priv connect is allowed. Connect ≠ subscribe; the proxy is the gate.
 - Do **not** issue subscription JWTs for `fidobridge:*` and do **not** make these user-limited channels. Per Centrifugo's channel-permission model, **the subscribe proxy is skipped when a subscription token is present or the channel is user-limited** — either would bypass the backend allowlist. This is a hard requirement, not a preference.
 - The backend is the allowlist; Centrifugo keeps no dynamic channel ACL of its own.
@@ -258,7 +258,7 @@ App:    Play entitlement → POST /v1/channels/activate {channel:C}
         Noise handshake → TOFU pin (unchanged)
 ```
 
-Classic (any host ≠ `relay.gatebridge.app`) never touches this service (`MANAGED_RELAY_PLAN.md` §2, §9.4).
+Classic (any host ≠ `relay.gatebridge.app`) never touches this service (`playstore/plans/managed-relay.md` §2, §9.4).
 
 ---
 
@@ -282,7 +282,7 @@ Never derive entitlement from client-supplied fields. A Play API failure is a ha
 - Play publishes Real-time Developer Notifications to a Cloud Pub/Sub topic.
 - Receiver: `POST /rtdn` (nginx-terminated HTTPS), verify the Pub/Sub push OIDC bearer (`google-auth`) before processing.
 - Payload is a base64 `Message.data` containing a `DeveloperNotification`; decode and switch on `subscriptionNotification.notificationType` (renewed, canceled, expired, on-hold, refunded, revoked, etc.).
-- Apply to the `subscriptions` row; revoking/expiring must immediately stop `activate`/subscribe from allowing (`MANAGED_RELAY_PLAN.md` §4.5, §9.8).
+- Apply to the `subscriptions` row; revoking/expiring must immediately stop `activate`/subscribe from allowing (`playstore/plans/managed-relay.md` §4.5, §9.8).
 - **Idempotent:** Pub/Sub delivers at-least-once. Dedupe on `messageId` in `rtdn_events` before applying.
 - Until the Console/service account exist: a stub endpoint that returns 200 and logs nothing sensitive, plus `FakePlayVerifier` for tests.
 
@@ -327,7 +327,7 @@ Secrets follow the repo's existing `pass`/`0600` conventions (`relay/README.md:1
 
 ---
 
-## 11. Testing (minimum, per `MANAGED_RELAY_PLAN.md` §10)
+## 11. Testing (minimum, per `playstore/plans/managed-relay.md` §10)
 
 | Test | Asserts |
 |---|---|
@@ -348,7 +348,7 @@ All previously-open questions are now decided; the entries below are binding.
 
 | # | Decision |
 |---|---|
-| 12.1 | **Channel form:** colon — `fidobridge:<32hex>`, `CHANNEL_PREFIX=fidobridge:`. `MANAGED_RELAY_PLAN.md` updated to match (§5.3). |
+| 12.1 | **Channel form:** colon — `fidobridge:<32hex>`, `CHANNEL_PREFIX=fidobridge:`. `playstore/plans/managed-relay.md` updated to match (§5.3). |
 | 12.2 | **Session token:** signed JWT (HS256 or EdDSA), `sub=subscription_id`, `scope=activate`, TTL 900 s. No server-side session table (§4.4). |
 | 12.3 | **Rebind:** no transfer flow in v1. Different subscription → `409`; same subscription re-activating its own channel → idempotent-allow (§4.2). |
 | 12.4 | **RTDN transport:** Google Cloud Pub/Sub **push** to `POST /rtdn`; OIDC verified. No pull worker (§7). |
@@ -383,7 +383,7 @@ All previously-open questions are now decided; the entries below are binding.
 
 ### 14.1 Daemon readiness hint (`C-meta`) — deferred; keep polling for v1
 
-**Status:** **not in v1.** v1 keeps the daemon's simple "attempt the gated subscribe with backoff until allowed" (`MANAGED_RELAY_PLAN.md` §3, §5.5). The hint below only shortens *pairing latency*; it does not change who is authorized. The subscribe proxy on `fidobridge:C` remains the sole authority.
+**Status:** **not in v1.** v1 keeps the daemon's simple "attempt the gated subscribe with backoff until allowed" (`playstore/plans/managed-relay.md` §3, §5.5). The hint below only shortens *pairing latency*; it does not change who is authorized. The subscribe proxy on `fidobridge:C` remains the sole authority.
 
 **Idea:** the daemon generates `C`, shows the QR, and also subscribes to a read-only `C-meta` signaling channel. On `POST /v1/channels/activate`, the backend (via the Centrifugo Server API) publishes `{"state":"ready","channel":"<C>","epoch":…}` to `C-meta`. The daemon wakes and performs the normal gated `subscribe("fidobridge:C")`. Spoofing "ready" is harmless — the subsequent subscribe is still authoritatively checked — so the hint carries no authority.
 
@@ -392,7 +392,7 @@ All previously-open questions are now decided; the entries below are binding.
 - Backend publishes on activate: **after** the DB commit, and **best-effort** — activation must succeed even if hint delivery fails.
 - Derive the meta channel from `C` (e.g. `meta:<H(C)>`), reusing the `PROTOCOL.md` §3.2 derivation; no extra input in the activate body.
 - Revocation symmetry: also publish `revoked`/`expired` on RTDN. Authoritative enforcement still needs `expire_at` + `sub_refresh`, or a Server API `disconnect` on revoke (§5.5), since the proxy is not re-run on an existing subscription.
-- Update `PROTOCOL.md` / `MANAGED_RELAY_PLAN.md` and bump `PROTOCOL_VERSION` per `AGENTS.md` §1.1.
+- Update `PROTOCOL.md` / `playstore/plans/managed-relay.md` and bump `PROTOCOL_VERSION` per `AGENTS.md` §1.1.
 - **Never make correctness depend on the hint** — keep the subscribe poll as the fallback; a missed hint must degrade to current behavior.
 
 **Alternative considered:** backend Server API `subscribe`/`disconnect` targeting the daemon's connection directly (no meta channel; instant readiness and prompt revoke). Requires identifying the daemon's connection (connect profile `data` → assigned user), which brushes the "no daemon enroll/auth API" non-goal (§4.4).
