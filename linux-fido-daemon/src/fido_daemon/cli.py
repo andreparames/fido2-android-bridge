@@ -173,11 +173,7 @@ def _build_relay(
     on_phone_identified=None,
     client_factory=None,
 ) -> RelayClient:
-    """Construct the relay client with the relay mode matching `config`.
-
-    Managed mode (host ``relay.gatebridge.app``) polls the subscribe until the
-    backend proxy allows; classic mode uses the one-shot JWT subscribe.
-    """
+    """Construct the relay client for `config` (mode-agnostic; open subscribe)."""
     return RelayClient(
         config.relay_url,
         config.channel_id,
@@ -186,7 +182,6 @@ def _build_relay(
         phone_public_key=config.phone_public_key,
         on_phone_identified=on_phone_identified,
         client_factory=client_factory,
-        managed=is_managed_relay(config.relay_url),
     )
 
 

@@ -27,7 +27,7 @@ import logging
 from collections.abc import Callable
 
 import centrifuge
-from centrifuge import Client, SubscriptionEventHandler, SubscriptionState
+from centrifuge import Client, SubscriptionEventHandler
 
 from fido_daemon.noise import (
     KIND_DATA,
@@ -42,15 +42,6 @@ from fido_daemon.noise import (
 from fido_daemon.protocol import RELAY_CHANNEL_PREFIX
 
 logger = logging.getLogger(__name__)
-
-# Default managed-mode subscribe backoff (seconds), repeated for the tail.
-# Sized for a pairing UX: start fast, cap at 5s so a just-activated channel
-# is joined quickly while an unactivated one does not hammer the broker.
-DEFAULT_SUBSCRIBE_BACKOFF = (1.0, 2.0, 4.0, 5.0)
-
-
-class SubscribeDeniedError(RuntimeError):
-    """Raised when the relay rejects a channel subscription (proxy deny)."""
 
 
 class _RelaySubscriptionHandler(SubscriptionEventHandler):
@@ -72,8 +63,6 @@ class RelayClient:
         client_factory: Callable[[], Client] | None = None,
         phone_public_key: bytes | None = None,
         on_phone_identified: Callable[[bytes], None] | None = None,
-        managed: bool = False,
-        subscribe_backoff: tuple[float, ...] = DEFAULT_SUBSCRIBE_BACKOFF,
     ) -> None:
         self._url = url
         self._channel_id = channel_id
@@ -82,8 +71,6 @@ class RelayClient:
         self._on_phone_identified = on_phone_identified
         self._token = token
         self._client_factory = client_factory or self._build_client
-        self._managed = managed
-        self._subscribe_backoff = subscribe_backoff
         self._client: Client | None = None
         self._sub: centrifuge.Subscription | None = None
         self._pending: dict[str, asyncio.Future] = {}
@@ -124,39 +111,16 @@ class RelayClient:
         self._sub = self._client.new_subscription(
             self.channel, events=_RelaySubscriptionHandler(self)
         )
-        if self._managed:
-            await self._subscribe_with_backoff()
-        else:
-            await self._sub.subscribe()
+        await self._sub.subscribe()
 
-    async def _subscribe_with_backoff(self) -> None:
-        """Poll ``subscribe()`` until the managed subscribe proxy allows it.
+    async def wait_handshake(self) -> None:
+        """Block until the Noise handshake with the phone completes.
 
-        The Centrifugo SDK resolves subscribe results asynchronously: a denial
-        moves the subscription to ``UNSUBSCRIBED`` (the fake broker raises
-        ``SubscribeDeniedError``), allowance to ``SUBSCRIBED``. The loop re-arms
-        the subscribe with a capped, injected backoff until the state is
-        ``SUBSCRIBED``. Any error other than ``SubscribeDeniedError``
-        propagates so classic-style failures are not masked.
+        Returns once the daemon has received the phone's ``ik1`` and published
+        ``ik2``; used by callers (e.g. the review web app) that need to know the
+        phone has paired before issuing requests.
         """
-        attempt = 0
-        while True:
-            try:
-                await self._sub.subscribe()
-            except SubscribeDeniedError:
-                pass
-            if getattr(self._sub, "state", None) == SubscriptionState.SUBSCRIBED:
-                logger.info("subscribed to managed channel %s", self.channel)
-                return
-            index = min(attempt, len(self._subscribe_backoff) - 1)
-            delay = self._subscribe_backoff[index]
-            attempt += 1
-            logger.info(
-                "subscribe denied for %s; retrying in %.1fs",
-                self.channel,
-                delay,
-            )
-            await asyncio.sleep(delay)
+        await self._handshake_done.wait()
 
     async def request(self, plaintext: bytes, timeout: float | None = None) -> bytes:
         """Encrypt + publish `plaintext` and await the response echoing its id.

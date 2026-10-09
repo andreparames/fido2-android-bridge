@@ -97,16 +97,6 @@ def _config(relay_url: str, *, token: str = TOKEN) -> Config:
     )
 
 
-def test_build_relay_managed_flag_classic_url() -> None:
-    relay = _build_relay(_config(CLASSIC_URL), DAEMON_PRIVATE)
-    assert relay._managed is False
-
-
-def test_build_relay_managed_flag_managed_url() -> None:
-    relay = _build_relay(_config(MANAGED_URL), DAEMON_PRIVATE)
-    assert relay._managed is True
-
-
 def test_build_relay_forwards_channel_and_token() -> None:
     relay = _build_relay(_config(CLASSIC_URL, token=TOKEN), DAEMON_PRIVATE)
     assert relay.channel == f"fidobridge:{CHANNEL_ID}"
