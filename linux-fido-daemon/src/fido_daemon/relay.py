@@ -158,7 +158,13 @@ class RelayClient:
         async def _do() -> bytes:
             if self._sub is None:
                 raise RuntimeError("relay not connected")
-            await self._handshake_done.wait()
+            handshake_done = self._handshake_done
+            await handshake_done.wait()
+            # A waiter that resumed on a retired handshake must not encrypt with
+            # a replacement session: the channel may have been rotated while we
+            # waited (control-plane pair). Reject instead.
+            if handshake_done is not self._handshake_done or self._session is None:
+                raise RuntimeError("relay handshake was reset (channel rotated)")
             message_id = json.loads(plaintext.decode("utf-8"))["id"]
             future: asyncio.Future = asyncio.get_running_loop().create_future()
             self._pending[message_id] = future

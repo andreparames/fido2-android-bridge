@@ -81,8 +81,8 @@ Dependencies: `fido2`, `cryptography`, `noiseprotocol`, `centrifuge-python`
 ## Configuration
 
 All values are read from the environment by `Config.from_env()`, optionally
-overridden by a TOML config file (`-c/--config`) holding `channel_id`,
-`relay_token`, and the pinned `phone_public_key`.
+overridden by a TOML config file (`-c/--config`) holding `relay_token` and the
+pinned `phone_public_key`.
 
 | Variable                    | Default                                        | Purpose |
 |-----------------------------|------------------------------------------------|---------|
@@ -198,9 +198,10 @@ and how to extend.
 ### Integration harness scripts
 
 Two standalone scripts test the full Centrifugo relay path against a live
-broker. Both require a running Centrifugo instance and read the same env vars
-as the daemon (`FIDO2_RELAY_URL`, `FIDO2_CHANNEL_ID`, `FIDO2_STATIC_KEY_PATH`,
-`FIDO2_RELAY_TOKEN`).
+broker. Both require a running Centrifugo instance. They read
+`FIDO2_RELAY_URL`, `FIDO2_STATIC_KEY_PATH`, `FIDO2_RELAY_TOKEN`, and — **harness
+only**, the daemon itself does not read this — `FIDO2_CHANNEL_ID` (a channel
+chosen for the mock scenario).
 
 **Test the Android app** (acts as daemon, publishes requests):
 ```bash

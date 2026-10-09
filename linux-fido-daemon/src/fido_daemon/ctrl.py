@@ -15,6 +15,7 @@ import json
 import logging
 import os
 import socket
+import stat
 from collections.abc import Awaitable, Callable
 from typing import Any
 
@@ -32,15 +33,50 @@ class ControlServer:
         self._path = path
         self._dispatch = dispatch
         self._server: asyncio.AbstractServer | None = None
+        self._bound = False
 
     async def start(self) -> None:
         parent = os.path.dirname(self._path)
         os.makedirs(parent, exist_ok=True)
+        self._clean_stale_socket()
+        # Bind without serving, chmod 0600, then start accepting so there is no
+        # window where the socket listens with weaker permissions.
         self._server = await asyncio.start_unix_server(
-            self._on_connection, path=self._path
+            self._on_connection, path=self._path, start_serving=False
         )
         os.chmod(self._path, 0o600)
+        self._bound = True
+        await self._server.start_serving()
         logger.info("listening on control socket %s", self._path)
+
+    def _clean_stale_socket(self) -> None:
+        """Unlink a leftover socket from a dead daemon; fail closed otherwise.
+
+        If the path exists and is not a Unix socket — or is one still accepting
+        connections by another live daemon — leave it untouched and let the
+        bind fail rather than removing someone else's socket.
+        """
+        try:
+            mode = os.stat(self._path).st_mode
+        except FileNotFoundError:
+            return
+        if not stat.S_ISSOCK(mode):
+            raise OSError(
+                f"control socket path exists and is not a socket: {self._path}"
+            )
+        probe = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+        try:
+            probe.settimeout(0.5)
+            probe.connect(self._path)
+        except (ConnectionRefusedError, FileNotFoundError):
+            # Stale socket from a dead daemon: safe to reclaim.
+            os.unlink(self._path)
+        else:
+            raise OSError(
+                f"control socket is in use by another daemon: {self._path}"
+            )
+        finally:
+            probe.close()
 
     async def _on_connection(
         self, reader: asyncio.StreamReader, writer: asyncio.StreamWriter
@@ -67,10 +103,13 @@ class ControlServer:
         if self._server is not None:
             self._server.close()
             await self._server.wait_closed()
-        try:
-            os.unlink(self._path)
-        except FileNotFoundError:
-            pass
+        # Only unlink when this instance actually bound the socket, so a failed
+        # start can never remove another daemon's socket.
+        if self._bound:
+            try:
+                os.unlink(self._path)
+            except FileNotFoundError:
+                pass
 
 
 def control_request(socket_path: str, request: dict[str, Any], timeout: float = 5.0) -> dict[str, Any]:

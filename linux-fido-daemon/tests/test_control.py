@@ -3,6 +3,7 @@
 import asyncio
 import json
 import os
+import socket
 import stat
 
 import pytest
@@ -126,3 +127,36 @@ async def test_control_request_roundtrips_and_fails_after_close(tmp_path) -> Non
 
     with pytest.raises(OSError):
         await asyncio.to_thread(control_request, path, {"cmd": "pair"})
+
+@pytest.mark.asyncio
+async def test_start_reclaims_stale_socket(tmp_path) -> None:
+    """A leftover socket from a dead daemon is reclaimed; a live one is not."""
+    path = str(tmp_path / "fido2-ctrl.sock")
+    stale = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+    stale.bind(path)
+    stale.close()  # leaves the socket file behind (unbound -> refused)
+
+    server = ControlServer(path, _dispatch_strict)
+    await server.start()
+    try:
+        assert stat.S_ISSOCK(os.stat(path).st_mode)
+        assert stat.S_IMODE(os.stat(path).st_mode) == 0o600
+    finally:
+        await server.close()
+    assert not os.path.exists(path)
+
+
+@pytest.mark.asyncio
+async def test_failed_start_does_not_remove_live_socket(tmp_path) -> None:
+    path = str(tmp_path / "fido2-ctrl.sock")
+    live = ControlServer(path, _dispatch_strict)
+    await live.start()
+    try:
+        intruder = ControlServer(path, _dispatch_strict)
+        with pytest.raises(OSError):
+            await intruder.start()
+        await intruder.close()  # must not unlink live's socket
+        assert os.path.exists(path)
+    finally:
+        await live.close()
+    assert not os.path.exists(path)

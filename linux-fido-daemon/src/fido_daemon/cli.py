@@ -226,13 +226,18 @@ async def _run(config: Config, *, client_factory=None) -> None:
         client_factory=client_factory,
     )
 
+    pair_lock = asyncio.Lock()
+
     async def _dispatch_control(request: dict) -> dict:
         cmd = request.get("cmd")
         if cmd == "pair":
-            channel_hex = secrets.token_hex(16)
-            await relay.rotate_channel(channel_hex)
-            pubkey = b64url_encode(StaticKeyStore.public_key(static_private))
-            return {"channel": channel_hex, "pubkey": pubkey}
+            # Serialize rotations: two concurrent pair requests must not
+            # interleave disconnect/subscribe state across rotate_channel.
+            async with pair_lock:
+                channel_hex = secrets.token_hex(16)
+                await relay.rotate_channel(channel_hex)
+                pubkey = b64url_encode(StaticKeyStore.public_key(static_private))
+                return {"channel": channel_hex, "pubkey": pubkey}
         return {"error": "unknown_command"}
 
     handle_ctap2_command = build_request_handler(relay, config)
