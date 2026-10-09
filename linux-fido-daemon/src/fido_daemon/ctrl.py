@@ -20,8 +20,6 @@ from typing import Any
 
 logger = logging.getLogger(__name__)
 
-DEFAULT_CONTROL_SOCKET_PATH = "/run/user/{uid}/fido2-ctrl.sock"
-
 ErrorMessage = dict[str, str]
 
 

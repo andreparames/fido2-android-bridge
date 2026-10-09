@@ -5,6 +5,7 @@ from urllib.parse import parse_qsl, urlparse
 import pytest
 
 from fido_daemon.cli import main
+from fido_daemon.ctrl import ControlServer
 from fido_daemon.pairing import (
     Pairing,
     PairingGenerator,
@@ -23,10 +24,6 @@ STATIC_PUB_B64URL = base64.urlsafe_b64encode(STATIC_PUB).decode().rstrip("=")
 
 def _pairing() -> Pairing:
     return Pairing(static_public=STATIC_PUB, channel_hex=CHANNEL_HEX)
-
-
-def _cli_key_path(monkeypatch: pytest.MonkeyPatch, tmp_path) -> None:
-    monkeypatch.setenv("FIDO2_STATIC_KEY_PATH", str(tmp_path / "static_key.pem"))
 
 
 def test_generate_produces_32byte_pubkey_and_16byte_channel() -> None:
@@ -141,8 +138,27 @@ def test_parse_accepts_default_version() -> None:
 def test_pair_cli_prints_valid_uri(
     monkeypatch: pytest.MonkeyPatch, tmp_path, capsys: pytest.CaptureFixture
 ) -> None:
-    _cli_key_path(monkeypatch, tmp_path)
-    assert main(["pair"]) == 0
+    """The pair CLI builds a parseable URI from the daemon's control response."""
+    import asyncio
+
+    control_socket = str(tmp_path / "fido2-ctrl.sock")
+
+    async def dispatch(request: dict) -> dict:
+        assert request == {"cmd": "pair"}
+        return {"channel": CHANNEL_HEX, "pubkey": STATIC_PUB_B64URL}
+
+    async def run_pair() -> int:
+        server = ControlServer(control_socket, dispatch)
+        await server.start()
+        try:
+            return await asyncio.to_thread(main, ["pair", "--no-qr"])
+        finally:
+            await server.close()
+
+    monkeypatch.setenv("FIDO2_CONTROL_SOCKET", control_socket)
+    monkeypatch.setenv("FIDO2_RELAY_URL", "ws://localhost:8000/connection/websocket")
+    monkeypatch.setenv("FIDO2_RELAY_TOKEN", "")
+    assert asyncio.run(run_pair()) == 0
     out = capsys.readouterr().out
     uri = out.splitlines()[0].strip()
     assert isinstance(parse_pairing_uri(uri), ParsedPairing)

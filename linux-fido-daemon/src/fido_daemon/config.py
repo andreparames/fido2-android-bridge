@@ -21,10 +21,10 @@ from pathlib import Path
 import tomlkit
 
 DEFAULT_SOCKET_PATH = "/run/user/{uid}/fido2-bridge.sock"
+DEFAULT_CONTROL_SOCKET_PATH = "/run/user/{uid}/fido2-ctrl.sock"
 DEFAULT_RELAY_URL = "wss://relay.gatebridge.app/connection/websocket"
 DEFAULT_STATIC_KEY_PATH = "~/.config/fido-daemon/static_key.pem"
 DEFAULT_REQUEST_TIMEOUT_SECONDS = 30.0
-DEFAULT_CHANNEL_ID = ""
 DEFAULT_UHID_NAME = "fido-daemon"
 # Shared Centrifugo connection JWT, embedded in the daemon so no `pass`
 # dependency at runtime. The `pass` store is only available on the dev host;
@@ -42,13 +42,13 @@ PHONE_KEY_BYTES = 32
 class Config:
     socket_path: str
     relay_url: str
-    channel_id: str
     static_key_path: str
     relay_token: str
     request_timeout: float
     uhid_enabled: bool
     uhid_name: str
     phone_public_key: bytes | None = None
+    control_socket: str | None = None
     config_path: str | None = None
 
     @classmethod
@@ -58,8 +58,10 @@ class Config:
             socket_path=os.environ.get(
                 "FIDO2_REMOTE_SOCKET", DEFAULT_SOCKET_PATH.format(uid=uid)
             ),
+            control_socket=os.environ.get(
+                "FIDO2_CONTROL_SOCKET", DEFAULT_CONTROL_SOCKET_PATH.format(uid=uid)
+            ),
             relay_url=os.environ.get("FIDO2_RELAY_URL", DEFAULT_RELAY_URL),
-            channel_id=os.environ.get("FIDO2_CHANNEL_ID", DEFAULT_CHANNEL_ID),
             static_key_path=os.path.expanduser(
                 os.environ.get("FIDO2_STATIC_KEY_PATH", DEFAULT_STATIC_KEY_PATH)
             ),
@@ -81,7 +83,6 @@ class Config:
         return Config(
             socket_path=self.socket_path,
             relay_url=file_values.get("relay_url") or self.relay_url,
-            channel_id=file_values.get("channel_id") or self.channel_id,
             static_key_path=self.static_key_path,
             relay_token=file_values.get("relay_token") or self.relay_token,
             request_timeout=self.request_timeout,
@@ -89,6 +90,7 @@ class Config:
             uhid_name=self.uhid_name,
             phone_public_key=self.phone_public_key
             or decode_phone_key(str(file_values.get("phone_public_key") or "")),
+            control_socket=self.control_socket,
             config_path=str(path),
         )
 
@@ -121,15 +123,16 @@ def load_config_file(path: str | Path) -> dict:
 def write_config_file(
     path: str | Path,
     *,
-    channel_id: str | None = None,
     relay_token: str | None = None,
     phone_public_key: str | None = None,
 ) -> None:
-    """Create or update a TOML config file with pairing-derived values.
+    """Create or update a TOML config file with pairing-dependent values.
 
     Existing content is preserved; only the specified fields are set. The
-    static key is never written to the TOML config. `phone_public_key` is a
-    base64-encoded 32-byte phone static public key pinned by trust-on-first-use.
+    static key and the relay channel are never written to the TOML config:
+    the daemon owns the channel (control-plane pairing), and the static key
+    lives in its own file. `phone_public_key` is a base64-encoded 32-byte
+    phone static public key pinned by trust-on-first-use.
     """
     p = Path(path)
     if p.exists():
@@ -138,8 +141,6 @@ def write_config_file(
     else:
         doc = tomlkit.document()
 
-    if channel_id is not None:
-        doc["channel_id"] = channel_id
     if relay_token is not None:
         doc["relay_token"] = relay_token
     if phone_public_key is not None:

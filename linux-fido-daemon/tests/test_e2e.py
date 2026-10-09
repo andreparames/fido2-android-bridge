@@ -1,5 +1,6 @@
 import asyncio
 import base64
+import json
 import os
 
 import fido2.cbor as cbor
@@ -9,7 +10,8 @@ from fido_daemon.cli import _resolve_config, _run, build_parser
 from fido_daemon.config import Config
 from fido_daemon.ctap2 import CMD_GET_ASSERTION
 from fido_daemon.noise import StaticKeyStore
-from tests.fakes import CHANNEL_ID, RELAY_URL, NoisePhonePeer
+from fido_daemon.pairing import derive_channel_id
+from tests.fakes import RELAY_URL, NoisePhonePeer
 
 DAEMON_PRIVATE = bytes(range(32))
 PHONE_PRIVATE = bytes(range(32, 64))
@@ -46,8 +48,8 @@ async def test_e2e_get_assertion(broker, tmp_path) -> None:
     StaticKeyStore.save(key_path, DAEMON_PRIVATE)
     config = Config(
         socket_path=socket_path,
+        control_socket=str(tmp_path / "fido2-ctrl.sock"),
         relay_url=RELAY_URL,
-        channel_id=CHANNEL_ID,
         static_key_path=str(key_path),
         relay_token="",
         request_timeout=5.0,
@@ -58,13 +60,16 @@ async def test_e2e_get_assertion(broker, tmp_path) -> None:
     task = asyncio.create_task(_run(config, client_factory=broker.new_client))
 
     for _ in range(200):
-        if os.path.exists(socket_path):
+        if os.path.exists(socket_path) and os.path.exists(config.control_socket):
             break
         await asyncio.sleep(0.01)
     assert os.path.exists(socket_path)
 
+    channel_hex = await _pair(control_socket=config.control_socket)
+    channel_id = derive_channel_id(channel_hex)
+
     phone = NoisePhonePeer(
-        broker, CHANNEL_ID, DAEMON_PUBLIC, _assertion_responder, static_private=PHONE_PRIVATE
+        broker, channel_id, DAEMON_PUBLIC, _assertion_responder, static_private=PHONE_PRIVATE
     )
     await phone.start()
 
@@ -88,8 +93,24 @@ async def test_e2e_get_assertion(broker, tmp_path) -> None:
     assert not os.path.exists(socket_path)
 
 
+async def _pair(control_socket: str) -> str:
+    """Send one pair request to the control socket; return the channel hex."""
+    reader, writer = await asyncio.open_unix_connection(control_socket)
+    try:
+        writer.write(b'{"cmd": "pair"}\n')
+        await writer.drain()
+        data = await asyncio.wait_for(reader.readline(), 5.0)
+    finally:
+        writer.close()
+        await writer.wait_closed()
+    response = json.loads(data.decode())
+    if "error" in response:
+        raise AssertionError(f"pair failed: {response}")
+    return response["channel"]
+
+
 def test_socket_flag_overrides_config(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setenv("FIDO2_CHANNEL_ID", CHANNEL_ID)
+    monkeypatch.setenv("FIDO2_REMOTE_SOCKET", "/run/user/1234/fido2-bridge.sock")
     args = build_parser().parse_args(["--socket", "/tmp/custom.sock"])
     config = _resolve_config(args)
     assert config.socket_path == "/tmp/custom.sock"
