@@ -154,7 +154,7 @@ def clear_phone_pin(path: str | Path) -> None:
     """Remove the pinned ``phone_public_key`` from a TOML config file.
 
     Use this to reset trust-on-first-use so a *different* phone can pair.
-    Other fields (channel_id, relay_token, custom keys) are preserved.
+    Other fields (relay_token, custom keys) are preserved.
     No-op if the file or key does not exist.
     """
     p = Path(path)
