@@ -39,6 +39,7 @@ from fido_daemon.noise import (
     envelope_from_json,
     envelope_to_json,
 )
+from fido_daemon.pairing import derive_channel_id
 from fido_daemon.protocol import RELAY_CHANNEL_PREFIX
 
 logger = logging.getLogger(__name__)
@@ -112,6 +113,31 @@ class RelayClient:
             self.channel, events=_RelaySubscriptionHandler(self)
         )
         await self._sub.subscribe()
+
+    async def rotate_channel(self, channel_hex: str) -> None:
+        """Tear down and (re)subscribe to the channel derived from `channel_hex`.
+
+        Used by the control plane (`fido-daemon pair`): disconnect the current
+        client, cancel in-flight requests, clear the Noise session, tamper
+        flag, and any trust-on-first-use learned key, then connect and
+        subscribe to ``fidobridge:<derive_channel_id(channel_hex)>``. The
+        *configured* phone pin (``phone_public_key``) is preserved — re-pairing
+        does not reset TOFU.
+        """
+        if self._client is not None:
+            await self._client.disconnect()
+            self._client = None
+            self._sub = None
+        for future in self._pending.values():
+            future.cancel()
+        self._pending.clear()
+        self._pending_wire.clear()
+        self._session = None
+        self._tampered = False
+        self._learned_phone_key = None
+        self._handshake_done = asyncio.Event()
+        self._channel_id = derive_channel_id(channel_hex)
+        await self.connect()
 
     async def wait_handshake(self) -> None:
         """Block until the Noise handshake with the phone completes.
