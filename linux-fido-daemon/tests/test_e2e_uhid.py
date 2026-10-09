@@ -82,7 +82,6 @@ def _config(tmp_path) -> Config:
     return Config(
         socket_path="/tmp/irrelevant.sock",
         relay_url=RELAY_URL,
-        channel_id=CHANNEL_ID,
         static_key_path=str(key_path),
         relay_token="",
         request_timeout=5.0,

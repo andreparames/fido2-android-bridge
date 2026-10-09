@@ -10,6 +10,7 @@ import argparse
 import asyncio
 import json
 import logging
+import secrets
 import sys
 from pathlib import Path
 
@@ -23,9 +24,9 @@ from fido_daemon.ctap2 import (
     error_response,
     get_info_response,
 )
+from fido_daemon.ctrl import ControlServer, control_request
 from fido_daemon.noise import StaticKeyStore
-from fido_daemon.pairing import Pairing, derive_channel_id
-from fido_daemon.pairing_uri import format_pairing_uri
+from fido_daemon.pairing_uri import b64url_encode
 from fido_daemon.protocol import CTAP2_ERR_INVALID_COMMAND, CTAP2_ERR_OPERATION_DENIED
 from fido_daemon.relay import RelayClient
 from fido_daemon.relay_mode import is_managed_relay
@@ -54,39 +55,51 @@ def build_parser() -> argparse.ArgumentParser:
     return parser
 
 
-def _run_pair(no_qr: bool = False, config_path: str | None = None) -> int:
-    config = Config.from_env()
-    key_path = Path(config.static_key_path)
-    static_private = StaticKeyStore.load_or_create(key_path)
-    static_public = StaticKeyStore.public_key(static_private)
-    managed = is_managed_relay(config.relay_url)
-    # Classic mode carries the relay token so the Android client can connect
-    # without a rebuild. Managed mode omits it: the subscribe proxy is the
-    # gate, and the token is not handed to the client.
-    from fido_daemon.pairing import PairingGenerator
+def _pair_uri(config: Config, channel_hex: str, pubkey: str) -> str:
+    """Build the pairing URI from a control-plane pair response.
 
-    pairing = PairingGenerator.generate(static_public)
-    if config.relay_token and not managed:
-        pairing = Pairing(
-            static_public=static_public,
-            channel_hex=pairing.channel_hex,
-            relay_token=config.relay_token,
+    Classic mode embeds the relay token; managed mode omits it (the publish
+    proxy is the gate, and the token is not handed to the client).
+    """
+    if is_managed_relay(config.relay_url) or not config.relay_token:
+        return f"fidobridge://pair?channel={channel_hex}&pubkey={pubkey}"
+    return (
+        f"fidobridge://pair?channel={channel_hex}&pubkey={pubkey}"
+        f"&token={config.relay_token}"
+    )
+
+
+def _run_pair(no_qr: bool = False, config_path: str | None = None) -> int:
+    """Pair with the running daemon over its control socket.
+
+    The daemon rotates to a fresh channel, subscribes first, and returns the
+    channel + its static public key; the QR is built from that response. The
+    daemon must be running (it owns the channel and the subscription).
+    """
+    config = Config.from_env()
+    control_socket = config.control_socket
+    if not control_socket:
+        print("no control socket configured", file=sys.stderr)
+        return 2
+    try:
+        response = control_request(control_socket, {"cmd": "pair"})
+    except OSError as exc:
+        print(
+            f"cannot reach daemon at {control_socket} — start `fido-daemon` first "
+            f"({exc})",
+            file=sys.stderr,
         )
-    uri = format_pairing_uri(pairing)
+        return 2
+    if "error" in response:
+        print(f"pair refused by daemon: {response['error']}", file=sys.stderr)
+        return 2
+    uri = _pair_uri(config, response["channel"], response["pubkey"])
     print(uri)
     if not no_qr:
         import segno
 
         qr = segno.make(uri)
         qr.terminal()
-    if config_path:
-        channel_id = derive_channel_id(pairing.channel_hex)
-        write_config_file(
-            config_path,
-            channel_id=channel_id,
-            relay_token=None if managed else config.relay_token or None,
-        )
-        print(f"\nConfig written to {config_path}", file=sys.stderr)
     return 0
 
 
@@ -123,12 +136,14 @@ def _resolve_config(args: argparse.Namespace) -> Config:
         config = Config(
             socket_path=args.socket or config.socket_path,
             relay_url=config.relay_url,
-            channel_id=config.channel_id,
             static_key_path=config.static_key_path,
             relay_token=config.relay_token,
             request_timeout=config.request_timeout,
             uhid_enabled=config.uhid_enabled or args.uhid,
             uhid_name=config.uhid_name,
+            phone_public_key=config.phone_public_key,
+            control_socket=config.control_socket,
+            config_path=config.config_path,
         )
     return config
 
@@ -155,6 +170,9 @@ def build_request_handler(relay: RelayClient, config: Config):
         except asyncio.TimeoutError:
             logger.warning("relay request timed out")
             return error_response(CTAP2_ERR_OPERATION_DENIED)
+        except RuntimeError:
+            logger.warning("relay not ready (not paired yet); denying request")
+            return error_response(CTAP2_ERR_OPERATION_DENIED)
         try:
             response_msg = json.loads(response.decode("utf-8"))
             logger.debug("CTAP2 response: type=%s id=%s payload=%s", response_msg.get("type"), response_msg.get("id"), json.dumps(response_msg.get("payload"))[:500])
@@ -173,20 +191,19 @@ def _build_relay(
     on_phone_identified=None,
     client_factory=None,
 ) -> RelayClient:
-    """Construct the relay client with the relay mode matching `config`.
+    """Construct the relay client for `config` (open subscribe; no channel).
 
-    Managed mode (host ``relay.gatebridge.app``) polls the subscribe until the
-    backend proxy allows; classic mode uses the one-shot JWT subscribe.
+    The channel is chosen at runtime by the control plane (``fido-daemon
+    pair`` → ``rotate_channel``); nothing subscribes until that happens.
     """
     return RelayClient(
         config.relay_url,
-        config.channel_id,
+        "",
         static_private,
         token=config.relay_token,
         phone_public_key=config.phone_public_key,
         on_phone_identified=on_phone_identified,
         client_factory=client_factory,
-        managed=is_managed_relay(config.relay_url),
     )
 
 
@@ -208,7 +225,20 @@ async def _run(config: Config, *, client_factory=None) -> None:
         on_phone_identified=_persist_phone_key,
         client_factory=client_factory,
     )
-    await relay.connect()
+
+    pair_lock = asyncio.Lock()
+
+    async def _dispatch_control(request: dict) -> dict:
+        cmd = request.get("cmd")
+        if cmd == "pair":
+            # Serialize rotations: two concurrent pair requests must not
+            # interleave disconnect/subscribe state across rotate_channel.
+            async with pair_lock:
+                channel_hex = secrets.token_hex(16)
+                await relay.rotate_channel(channel_hex)
+                pubkey = b64url_encode(StaticKeyStore.public_key(static_private))
+                return {"channel": channel_hex, "pubkey": pubkey}
+        return {"error": "unknown_command"}
 
     handle_ctap2_command = build_request_handler(relay, config)
 
@@ -224,14 +254,21 @@ async def _run(config: Config, *, client_factory=None) -> None:
     uhid: UhidDevice | None = None
     if config.uhid_enabled:
         uhid = UhidDevice(name=config.uhid_name, on_message=handle_ctap2_command)
+    control: ControlServer | None = None
+    if config.control_socket:
+        control = ControlServer(config.control_socket, _dispatch_control)
     try:
         await server.start()
+        if control is not None:
+            await control.start()
         if uhid is not None:
             await uhid.start()
         await asyncio.Event().wait()
     finally:
         if uhid is not None:
             await uhid.close()
+        if control is not None:
+            await control.close()
         await server.close()
         await relay.close()
 
@@ -247,9 +284,6 @@ def main(argv: list[str] | None = None) -> int:
         format="%(asctime)s %(levelname)s %(name)s: %(message)s",
     )
     config = _resolve_config(args)
-    if not config.channel_id:
-        logger.error("not paired: run `fido-daemon pair` and configure FIDO2_CHANNEL_ID (or a config file) first")
-        return 2
     try:
         asyncio.run(_run(config))
     except KeyboardInterrupt:

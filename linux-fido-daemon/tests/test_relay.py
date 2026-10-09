@@ -10,6 +10,7 @@ from fido_daemon.noise import (
     WireEnvelope,
     envelope_to_json,
 )
+from fido_daemon.pairing import derive_channel_id
 from fido_daemon.relay import RelayClient
 from tests.fakes import CHANNEL_ID, RELAY_URL, NoisePhonePeer
 
@@ -168,3 +169,64 @@ async def test_tofu_callback_reports_learned_key(broker) -> None:
     await phone.start()
 
     assert captured == [PHONE_PUBLIC]
+
+
+async def test_rotate_channel_subscribes_new_channel_and_roundtrips(broker) -> None:
+    relay = _relay(broker)
+    await relay.connect()
+    assert relay.channel == f"fidobridge:{CHANNEL_ID}"
+
+    new_hex = "abcdef0123456789abcdef0123456789"
+    await relay.rotate_channel(new_hex)
+    assert relay.channel == f"fidobridge:{derive_channel_id(new_hex)}"
+    assert relay._sub.subscribed is True
+
+    phone = NoisePhonePeer(
+        broker,
+        derive_channel_id(new_hex),
+        DAEMON_PUBLIC,
+        _echo_responder,
+        static_private=PHONE_PRIVATE,
+    )
+    await phone.start()
+    response = await relay.request(_request("rotated-1"))
+    assert json.loads(response.decode())["id"] == "rotated-1"
+
+
+async def test_rotate_channel_cancels_in_flight_request(broker) -> None:
+    relay = _relay(broker)
+    await relay.connect()
+    phone = NoisePhonePeer(
+        broker, CHANNEL_ID, DAEMON_PUBLIC, lambda r: None, static_private=PHONE_PRIVATE
+    )
+    await phone.start()
+    await phone.wait_ready()
+
+    req = asyncio.create_task(relay.request(_request("slow-1"), timeout=10.0))
+    for _ in range(100):
+        if "slow-1" in relay._pending:
+            break
+        await asyncio.sleep(0.01)
+
+    await relay.rotate_channel("deadbeef0123456789abcdef00112233")
+
+    with pytest.raises(asyncio.CancelledError):
+        await req
+
+
+async def test_rotate_channel_preserves_configured_phone_pin(broker) -> None:
+    relay = _relay(broker, phone_public_key=PHONE_PUBLIC)
+    await relay.connect()
+    await relay.rotate_channel("9a9a9a9a9a9a9a9a9a9a9a9a9a9a9a9a")
+
+    other_private = bytes(range(100, 132))
+    other = NoisePhonePeer(
+        broker,
+        derive_channel_id("9a9a9a9a9a9a9a9a9a9a9a9a9a9a9a9a"),
+        DAEMON_PUBLIC,
+        _echo_responder,
+        static_private=other_private,
+    )
+    await other.start()
+    assert relay.tampered is True
+    assert relay._session is None

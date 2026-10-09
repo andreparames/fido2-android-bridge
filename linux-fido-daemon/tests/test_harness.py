@@ -29,8 +29,9 @@ from fido_daemon.noise import (
     envelope_from_json,
     envelope_to_json,
 )
-from tests.fakes import CHANNEL_ID, FakeBroker, RELAY_URL
-from tests.harness import HarnessConfig, MockBrowser, MockPhone
+from fido_daemon.pairing import derive_channel_id
+from tests.fakes import FakeBroker, RELAY_URL
+from tests.harness import HarnessConfig, MockBrowser, MockPhone, pair_via_control
 
 DAEMON_PRIVATE = bytes(range(32))
 CLIENT_DATA_HASH = b"\x11" * 32
@@ -78,8 +79,8 @@ def _config(socket_path: str, tmp_path) -> Config:
     StaticKeyStore.save(key_path, DAEMON_PRIVATE)
     return Config(
         socket_path=socket_path,
+        control_socket=str(tmp_path / "fido2-ctrl.sock"),
         relay_url=RELAY_URL,
-        channel_id=CHANNEL_ID,
         static_key_path=str(key_path),
         relay_token="",
         request_timeout=5.0,
@@ -91,8 +92,8 @@ def _config(socket_path: str, tmp_path) -> Config:
 def _with_timeout(config: Config, timeout: float) -> Config:
     return Config(
         socket_path=config.socket_path,
+        control_socket=config.control_socket,
         relay_url=config.relay_url,
-        channel_id=config.channel_id,
         static_key_path=config.static_key_path,
         relay_token=config.relay_token,
         request_timeout=timeout,
@@ -101,8 +102,8 @@ def _with_timeout(config: Config, timeout: float) -> Config:
     )
 
 
-async def _start_phone(broker, config, responder):
-    phone = MockPhone(broker, config, responder)
+async def _start_phone(broker, config, channel_id, responder):
+    phone = MockPhone(broker, channel_id, config, responder)
     await phone.start()
     return phone
 
@@ -116,6 +117,16 @@ async def _await_socket(socket_path: str, task) -> None:
     raise AssertionError(f"socket never appeared: {socket_path}")
 
 
+async def _await_paired(config: Config, task) -> str:
+    """Wait for both sockets, pair via the control socket, return channel_id."""
+    await _await_socket(config.socket_path, task)
+    if config.control_socket:
+        await _await_socket(config.control_socket, task)
+        channel_hex = await pair_via_control(config.control_socket)
+        return derive_channel_id(channel_hex)
+    raise AssertionError("control socket not configured")
+
+
 @integration
 async def test_harness_get_assertion(tmp_path) -> None:
     socket_path = str(tmp_path / "fido2-bridge.sock")
@@ -123,9 +134,9 @@ async def test_harness_get_assertion(tmp_path) -> None:
     broker = FakeBroker()
 
     task = asyncio.create_task(_run(config, client_factory=broker.new_client))
-    await _await_socket(socket_path, task)
+    channel_id = await _await_paired(config, task)
 
-    phone = await _start_phone(broker, config, _assertion_responder)
+    phone = await _start_phone(broker, config, channel_id, _assertion_responder)
 
     browser = MockBrowser(socket_path)
     response = await browser.send_get_assertion("example.com", CLIENT_DATA_HASH)
@@ -149,9 +160,9 @@ async def test_harness_make_credential(tmp_path) -> None:
     broker = FakeBroker()
 
     task = asyncio.create_task(_run(config, client_factory=broker.new_client))
-    await _await_socket(socket_path, task)
+    channel_id = await _await_paired(config, task)
 
-    phone = await _start_phone(broker, config, _make_credential_responder)
+    phone = await _start_phone(broker, config, channel_id, _make_credential_responder)
 
     browser = MockBrowser(socket_path)
     response = await browser.send_make_credential(
@@ -183,9 +194,9 @@ async def test_harness_timeout(tmp_path) -> None:
         return None
 
     task = asyncio.create_task(_run(config, client_factory=broker.new_client))
-    await _await_socket(socket_path, task)
+    channel_id = await _await_paired(config, task)
 
-    await _start_phone(broker, config, _no_responder)
+    await _start_phone(broker, config, channel_id, _no_responder)
 
     browser = MockBrowser(socket_path)
     response = await browser.send_get_assertion("example.com", CLIENT_DATA_HASH)
@@ -228,9 +239,9 @@ async def test_harness_tamper_detected(tmp_path) -> None:
             )
 
     task = asyncio.create_task(_run(config, client_factory=broker.new_client))
-    await _await_socket(socket_path, task)
+    channel_id = await _await_paired(config, task)
 
-    phone = TamperPhone(broker, config, _assertion_responder)
+    phone = TamperPhone(broker, channel_id, config, _assertion_responder)
     await phone.start()
 
     browser = MockBrowser(socket_path)

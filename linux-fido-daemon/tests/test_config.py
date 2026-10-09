@@ -17,8 +17,8 @@ from fido_daemon.cli import main
 def _clear_config_env(monkeypatch: pytest.MonkeyPatch) -> None:
     for name in (
         "FIDO2_REMOTE_SOCKET",
+        "FIDO2_CONTROL_SOCKET",
         "FIDO2_RELAY_URL",
-        "FIDO2_CHANNEL_ID",
         "FIDO2_STATIC_KEY_PATH",
         "FIDO2_PHONE_PUBLIC_KEY",
         "FIDO2_RELAY_TOKEN",
@@ -33,6 +33,18 @@ def test_default_socket_path_uses_uid(monkeypatch: pytest.MonkeyPatch) -> None:
     _clear_config_env(monkeypatch)
     config = Config.from_env()
     assert config.socket_path == f"/run/user/{os.getuid()}/fido2-bridge.sock"
+
+
+def test_default_control_socket_path_uses_uid(monkeypatch: pytest.MonkeyPatch) -> None:
+    _clear_config_env(monkeypatch)
+    config = Config.from_env()
+    assert config.control_socket == f"/run/user/{os.getuid()}/fido2-ctrl.sock"
+
+
+def test_control_socket_override(monkeypatch: pytest.MonkeyPatch) -> None:
+    _clear_config_env(monkeypatch)
+    monkeypatch.setenv("FIDO2_CONTROL_SOCKET", "/tmp/fido2-ctrl.sock")
+    assert Config.from_env().control_socket == "/tmp/fido2-ctrl.sock"
 
 
 def test_default_static_key_path(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -53,15 +65,6 @@ def test_remote_socket_overrides_path(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("FIDO2_REMOTE_SOCKET", "/tmp/custom.sock")
     config = Config.from_env()
     assert config.socket_path == "/tmp/custom.sock"
-
-
-def test_main_exits_2_without_channel(
-    monkeypatch: pytest.MonkeyPatch, tmp_path, caplog: pytest.LogCaptureFixture
-) -> None:
-    _clear_config_env(monkeypatch)
-    monkeypatch.setenv("FIDO2_STATIC_KEY_PATH", str(tmp_path / "static_key.pem"))
-    assert main([]) == 2
-    assert "pair" in caplog.text
 
 
 def test_invalid_request_timeout_raises(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -115,83 +118,53 @@ def test_load_config_file_returns_empty_for_missing(tmp_path) -> None:
 
 def test_load_config_file_reads_toml(tmp_path) -> None:
     cfg = tmp_path / "config.toml"
-    cfg.write_text('channel_id = "def"\n')
+    cfg.write_text('relay_token = "def"\n')
     data = load_config_file(cfg)
-    assert data["channel_id"] == "def"
+    assert data["relay_token"] == "def"
 
 
 def test_write_config_file_creates_new(tmp_path) -> None:
     cfg = tmp_path / "config.toml"
-    write_config_file(cfg, channel_id="chan1", relay_token="tok1")
+    write_config_file(cfg, relay_token="tok1", phone_public_key=base64.b64encode(b"k" * 32).decode())
     data = load_config_file(cfg)
-    assert data["channel_id"] == "chan1"
     assert data["relay_token"] == "tok1"
 
 
 def test_write_config_file_updates_existing_preserving_other_fields(tmp_path) -> None:
     cfg = tmp_path / "config.toml"
-    cfg.write_text('channel_id = "old"\nmy_custom = "preserved"\n')
-    write_config_file(cfg, channel_id="new")
+    cfg.write_text('relay_token = "old"\nmy_custom = "preserved"\n')
+    write_config_file(cfg, relay_token="new")
     data = load_config_file(cfg)
-    assert data["channel_id"] == "new"
+    assert data["relay_token"] == "new"
     assert data["my_custom"] == "preserved"
 
 
 def test_write_config_file_only_sets_specified_fields(tmp_path) -> None:
     cfg = tmp_path / "config.toml"
-    write_config_file(cfg, channel_id="chan1")
+    write_config_file(cfg, relay_token="tok1")
     data = load_config_file(cfg)
-    assert data["channel_id"] == "chan1"
-    assert "relay_token" not in data
+    assert data["relay_token"] == "tok1"
+    assert "phone_public_key" not in data
 
 
 def test_with_config_file_overrides_env(monkeypatch: pytest.MonkeyPatch, tmp_path) -> None:
     _clear_config_env(monkeypatch)
-    monkeypatch.setenv("FIDO2_CHANNEL_ID", "env-chan")
     monkeypatch.setenv("FIDO2_RELAY_TOKEN", "env-tok")
     cfg = tmp_path / "config.toml"
-    write_config_file(cfg, channel_id="file-chan")
+    write_config_file(cfg, relay_token="file-tok")
     config = Config.from_env().with_config_file(cfg)
-    assert config.channel_id == "file-chan"
-    assert config.relay_token == "env-tok"  # not overridden
-
-
-def test_pair_cli_writes_config_file_and_static_key(
-    monkeypatch: pytest.MonkeyPatch, tmp_path, capsys: pytest.CaptureFixture
-) -> None:
-    _clear_config_env(monkeypatch)
-    monkeypatch.setenv("FIDO2_RELAY_URL", "ws://localhost:8000/connection/websocket")
-    monkeypatch.setenv("FIDO2_RELAY_TOKEN", "test-jwt")
-    key_path = tmp_path / "keys" / "static_key.pem"
-    monkeypatch.setenv("FIDO2_STATIC_KEY_PATH", str(key_path))
-    cfg = tmp_path / "config.toml"
-    assert main(["-c", str(cfg), "pair", "--no-qr"]) == 0
-    data = load_config_file(cfg)
-    assert len(data["channel_id"]) == 32
-    assert data["relay_token"] == "test-jwt"
-    assert key_path.is_file()
-    assert "session_key" not in data
-
-
-def test_pair_cli_without_config_flag_does_not_write_file(
-    monkeypatch: pytest.MonkeyPatch, tmp_path, capsys: pytest.CaptureFixture
-) -> None:
-    _clear_config_env(monkeypatch)
-    monkeypatch.setenv("FIDO2_STATIC_KEY_PATH", str(tmp_path / "static_key.pem"))
-    cfg = tmp_path / "config.toml"
-    assert main(["pair", "--no-qr"]) == 0
-    assert not cfg.exists()
+    assert config.relay_token == "file-tok"
 
 
 def test_daemon_config_file_overrides_env(
     monkeypatch: pytest.MonkeyPatch, tmp_path
 ) -> None:
     _clear_config_env(monkeypatch)
-    monkeypatch.setenv("FIDO2_CHANNEL_ID", "env-chan")
+    monkeypatch.setenv("FIDO2_RELAY_TOKEN", "env-tok")
     cfg = tmp_path / "config.toml"
-    write_config_file(cfg, channel_id="file-chan")
+    write_config_file(cfg, relay_token="file-tok")
     config = Config.from_env().with_config_file(cfg)
-    assert config.channel_id == "file-chan"
+    assert config.relay_token == "file-tok"
 
 
 # --- phone static key pin (TOFU) ---
@@ -229,7 +202,7 @@ def test_phone_public_key_roundtrips_through_config_file(
     _clear_config_env(monkeypatch)
     key = bytes(range(32))
     cfg = tmp_path / "config.toml"
-    write_config_file(cfg, channel_id="chan1", phone_public_key=base64.b64encode(key).decode())
+    write_config_file(cfg, relay_token="tok1", phone_public_key=base64.b64encode(key).decode())
     config = Config.from_env().with_config_file(cfg)
     assert config.phone_public_key == key
     assert config.config_path == str(cfg)
@@ -250,11 +223,10 @@ def test_phone_public_key_env_overrides_config_file(
 def test_clear_phone_pin_removes_only_pin(tmp_path) -> None:
     key = base64.b64encode(bytes(range(32))).decode()
     cfg = tmp_path / "config.toml"
-    write_config_file(cfg, channel_id="chan1", relay_token="tok1", phone_public_key=key)
+    write_config_file(cfg, relay_token="tok1", phone_public_key=key)
     clear_phone_pin(cfg)
     data = load_config_file(cfg)
     assert "phone_public_key" not in data
-    assert data["channel_id"] == "chan1"
     assert data["relay_token"] == "tok1"
     assert Config.from_env().with_config_file(cfg).phone_public_key is None
 
@@ -269,7 +241,7 @@ def test_unpair_cli_clears_pin(
     _clear_config_env(monkeypatch)
     key = base64.b64encode(bytes(range(32))).decode()
     cfg = tmp_path / "config.toml"
-    write_config_file(cfg, channel_id="chan1", phone_public_key=key)
+    write_config_file(cfg, phone_public_key=key)
     assert main(["-c", str(cfg), "unpair", "--confirm"]) == 0
     assert "phone_public_key" not in load_config_file(cfg)
 
@@ -280,7 +252,7 @@ def test_unpair_confirms_with_yes(
     _clear_config_env(monkeypatch)
     key = base64.b64encode(bytes(range(32))).decode()
     cfg = tmp_path / "config.toml"
-    write_config_file(cfg, channel_id="chan1", phone_public_key=key)
+    write_config_file(cfg, phone_public_key=key)
     monkeypatch.setattr("builtins.input", lambda _prompt: "y")
     assert main(["-c", str(cfg), "unpair"]) == 0
     assert "phone_public_key" not in load_config_file(cfg)
@@ -292,7 +264,7 @@ def test_unpair_aborts_on_no(
     _clear_config_env(monkeypatch)
     key = base64.b64encode(bytes(range(32))).decode()
     cfg = tmp_path / "config.toml"
-    write_config_file(cfg, channel_id="chan1", phone_public_key=key)
+    write_config_file(cfg, phone_public_key=key)
     monkeypatch.setattr("builtins.input", lambda _prompt: "n")
     assert main(["-c", str(cfg), "unpair"]) == 1
     assert load_config_file(cfg)["phone_public_key"] == key

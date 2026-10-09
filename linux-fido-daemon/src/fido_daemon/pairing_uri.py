@@ -42,7 +42,7 @@ class ParsedPairing:
         return derive_channel_id(self.channel_hex)
 
 
-def _b64url_encode(data: bytes) -> str:
+def b64url_encode(data: bytes) -> str:
     return base64.urlsafe_b64encode(data).decode().rstrip("=")
 
 
@@ -61,7 +61,7 @@ def _b64url_decode(value: str) -> bytes:
 def format_pairing_uri(pairing: Pairing) -> str:
     uri = (
         f"{PAIRING_SCHEME}?channel={pairing.channel_hex}"
-        f"&pubkey={_b64url_encode(pairing.static_public)}"
+        f"&pubkey={b64url_encode(pairing.static_public)}"
     )
     if pairing.relay_token:
         uri += f"&token={pairing.relay_token}"

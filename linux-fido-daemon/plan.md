@@ -404,3 +404,44 @@ relay.py (unchanged) ── AES-256-GCM ──> phone
 | M4 | UHID CTAPHID frontend (browser WebAuthn) | ctaphid + uhid-device tests + shared handler-core refactor |
 
 Each milestone is only "done" when its tests pass — no implementation code precedes its failing test.
+
+---
+
+## 11. Control-Plane Pairing + Open Subscribe (M5)
+
+> **STATUS: DONE** — see `feature/relay-publisher-auth`. Supersedes Phase 6's
+> "fixed channel from env/TOML" model per `playstore/plans/relay-publisher-auth.md`:
+> the managed relay gates *publish* (open subscribe), so the daemon's channel
+> is chosen at runtime and it subscribes *before* showing the QR.
+
+### Objective
+
+The daemon owns the relay channel entirely through a control-plane IPC; the
+channel is no longer configured via `FIDO2_CHANNEL_ID`/TOML. `fido-daemon pair`
+talks to the running daemon, which rotates to a fresh channel, subscribes
+first, and returns the channel + static pubkey for the QR.
+
+### Changes
+
+- **`ctrl.py`** — `ControlServer`: second 0600 Unix socket
+  (`/run/user/<UID>/fido2-ctrl.sock`, `FIDO2_CONTROL_SOCKET`) with
+  newline-JSON request/response, fail closed on malformed input/unknown
+  command/handler error; sync `control_request()` for the CLI.
+- **`relay.py`** — `RelayClient.rotate_channel(channel_hex)`: disconnect,
+  cancel in-flight requests, clear Noise/tamper/TOFU-learned state, derive +
+  subscribe to the new channel. The configured phone pin is preserved
+  (re-pairing does not reset TOFU).
+- **`config.py`** — `channel_id` removed from env/TOML/`write_config_file`
+  entirely; `control_socket` added. The daemon starts unpaired.
+- **`cli.py`** — `_run` serves the control socket (pair dispatcher) and
+  denies CTAP2 requests until paired; `fido-daemon pair` drives the control
+  socket and builds the URI (`_pair_uri`: classic embeds the relay token,
+  managed omits it).
+- Tests: `test_control.py`, `rotate_channel`/`test_relay.py`, re-paired
+  e2e/uhid/harness flows, `test_pairing.py`/`test_cli.py` URI construction.
+
+### Verification
+
+- `.venv/bin/pytest` green (221 + integration harness with `FIDO2_HARNESS=1`).
+- Start daemon → pair → scan → WebAuthn (managed: app activates then publishes
+  ik1; daemon already subscribed).

@@ -41,17 +41,6 @@ class HarnessConfig:
     relay_token: str = ""
     request_timeout: float = 5.0
 
-    @classmethod
-    def from_config(cls, config: Config) -> "HarnessConfig":
-        return cls(
-            socket_path=config.socket_path,
-            channel_id=config.channel_id,
-            static_key_path=config.static_key_path,
-            relay_url=config.relay_url,
-            relay_token=config.relay_token,
-            request_timeout=config.request_timeout,
-        )
-
 
 class MockPhone(NoisePhonePeer):
     """A phone peer that subscribes to the Centrifugo channel, opens the Noise
@@ -65,13 +54,36 @@ class MockPhone(NoisePhonePeer):
     def __init__(
         self,
         broker: FakeBroker,
+        channel_id: str,
         config: Config | HarnessConfig,
         responder: Callable[[dict], dict | None],
     ) -> None:
         daemon_pub = StaticKeyStore.public_key(
             StaticKeyStore.load(Path(config.static_key_path).expanduser())
         )
-        super().__init__(broker, config.channel_id, daemon_pub, responder)
+        super().__init__(broker, channel_id, daemon_pub, responder)
+
+
+async def pair_via_control(control_socket: str, timeout: float = 5.0) -> str:
+    """Pair with the running daemon over its control socket; return the channel hex.
+
+    Mirrors ``cli._run_pair``'s request; used to bootstrap the daemon before a
+    phone peer starts in harness/e2e tests.
+    """
+    import json
+
+    reader, writer = await asyncio.open_unix_connection(control_socket)
+    try:
+        writer.write(b'{"cmd": "pair"}\n')
+        await writer.drain()
+        data = await asyncio.wait_for(reader.readline(), timeout)
+    finally:
+        writer.close()
+        await writer.wait_closed()
+    response = json.loads(data.decode())
+    if "error" in response:
+        raise AssertionError(f"pair failed: {response}")
+    return response["channel"]
 
 
 class MockBrowser:
