@@ -86,13 +86,17 @@ overridden by a TOML config file (`-c/--config`) holding `channel_id`,
 
 | Variable                    | Default                                        | Purpose |
 |-----------------------------|------------------------------------------------|---------|
-| `FIDO2_REMOTE_SOCKET`       | `/run/user/<UID>/fido2-bridge.sock`            | Unix socket path |
+| `FIDO2_REMOTE_SOCKET`       | `/run/user/<UID>/fido2-bridge.sock`            | CTAP2 Unix socket path |
+| `FIDO2_CONTROL_SOCKET`      | `/run/user/<UID>/fido2-ctrl.sock`              | control-plane Unix socket path (`fido-daemon pair`) |
 | `FIDO2_RELAY_URL`           | `wss://relay.gatebridge.app/connection/websocket` | Centrifugo WebSocket endpoint |
-| `FIDO2_CHANNEL_ID`          | `""` (required to run)                         | **derived** channel id (32 lowercase hex) |
 | `FIDO2_STATIC_KEY_PATH`     | `~/.config/fido-daemon/static_key.pem`         | daemon's long-term X25519 static key (0600) |
 | `FIDO2_PHONE_PUBLIC_KEY`    | `""`                                           | pinned phone static key (base64, 32 bytes); overrides the learned pin |
 | `FIDO2_RELAY_TOKEN`         | embedded connection JWT (in `config.py`)       | Centrifugo connection JWT |
 | `FIDO2_REQUEST_TIMEOUT`     | `30.0`                                         | Relay round-trip timeout (seconds) |
+
+The relay **channel is no longer configured via env/TOML**: the running daemon
+owns the channel, generated and subscribed by the control-plane `pair`
+command. That also means the daemon must be running before `fido-daemon pair`.
 
 `FIDO2_RELAY_TOKEN` is attached on startup and on every reconnect (via the
 SDK's `get_token` callback) and is never logged or leaked into the URL. When
@@ -106,12 +110,13 @@ that completes a valid handshake is stored in the config file
 (`phone_public_key`) and enforced on every later handshake. `FIDO2_PHONE_PUBLIC_KEY`
 (or the config value) overrides the learned key.
 
-**Reset the pin to pair a different phone** — generate a fresh pairing URI
-(which rotates the channel) and clear the stored pin:
+**Pair a new phone** — run the daemon, then ask it to rotate to a fresh
+channel; `pair` clears nothing (the phone pin persists until `unpair`):
 
 ```bash
-fido-daemon pair -c ~/.config/fido-daemon/config.toml    # new URI for the new phone
-fido-daemon unpair -c ~/.config/fido-daemon/config.toml  # clear the old phone's pin
+fido-daemon                    # start the daemon (or: systemctl --user start fido-daemon)
+fido-daemon pair               # daemon rotates the channel, subscribes, prints a URI
+fido-daemon unpair -c ~/.config/fido-daemon/config.toml   # clear the old phone's pin
 ```
 
 The new phone's key is learned and pinned on its first handshake. `unpair`
@@ -121,35 +126,40 @@ can also delete the `phone_public_key` line from the config file, or unset
 
 ## Usage
 
-Pair the daemon with the phone, writing the channel id (and relay token) to a
-config file, and printing a QR-able URI for the Android app:
+Run the daemon first; then pair over its control socket (the daemon selects
+the channel, subscribes to it before replying, and returns its static key so
+the QR needs no key file):
 
 ```bash
-fido-daemon pair -c ~/.config/fido-daemon/config.toml
+fido-daemon &
+# or: systemctl --user start fido-daemon
+fido-daemon pair
 # fidobridge://pair?channel=<32hex>&pubkey=<base64url-daemon-static-key>
 ```
 
-Run the daemon:
+Start the daemon:
 
 ```bash
 export FIDO2_RELAY_URL=wss://relay.example.com/connection/websocket
 export FIDO2_RELAY_TOKEN=<jwt>          # omit to use the embedded token
-python -m fido_daemon.cli -c ~/.config/fido-daemon/config.toml
+python -m fido_daemon.cli
 ```
+
+Until the daemon has been paired (`fido-daemon pair`), local CTAP2 requests
+are denied; pairing makes it subscribe to the fresh channel first.
 
 Or configure entirely via environment variables (the phone pin then lasts only
 for the running session):
 
 ```bash
-export FIDO2_CHANNEL_ID=<derived-32hex-id>
 export FIDO2_STATIC_KEY_PATH=<path-to-static-key>   # optional
 export FIDO2_RELAY_URL=wss://relay.example.com/connection/websocket
 export FIDO2_RELAY_TOKEN=<jwt>          # omit to use the embedded token
 python -m fido_daemon.cli
 ```
 
-Or install the user service (run `fido-daemon pair -c` first; supply secrets
-via a `0600` `EnvironmentFile`, not baked into the unit):
+Or install the user service (start it first, then `fido-daemon pair`; supply
+secrets via a `0600` `EnvironmentFile`, not baked into the unit):
 
 ```bash
 install -D -m 0644 systemd/fido-daemon.service ~/.config/systemd/user/
