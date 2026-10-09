@@ -114,3 +114,42 @@ def test_socket_flag_overrides_config(monkeypatch: pytest.MonkeyPatch) -> None:
     args = build_parser().parse_args(["--socket", "/tmp/custom.sock"])
     config = _resolve_config(args)
     assert config.socket_path == "/tmp/custom.sock"
+
+
+async def test_request_before_pairing_fails_closed(broker, tmp_path) -> None:
+    """CTAP2 requests are denied until the control plane pairs the daemon."""
+    socket_path = str(tmp_path / "fido2-bridge.sock")
+    key_path = tmp_path / "static_key.pem"
+    StaticKeyStore.save(key_path, DAEMON_PRIVATE)
+    config = Config(
+        socket_path=socket_path,
+        control_socket=str(tmp_path / "fido2-ctrl.sock"),
+        relay_url=RELAY_URL,
+        static_key_path=str(key_path),
+        relay_token="",
+        request_timeout=0.5,
+        uhid_enabled=False,
+        uhid_name="fido-daemon",
+    )
+
+    task = asyncio.create_task(_run(config, client_factory=broker.new_client))
+
+    for _ in range(200):
+        if os.path.exists(socket_path):
+            break
+        await asyncio.sleep(0.01)
+    assert os.path.exists(socket_path)
+
+    reader, writer = await asyncio.open_unix_connection(socket_path)
+    frame = bytes([CMD_GET_ASSERTION]) + cbor.encode({1: "example.com", 2: CLIENT_DATA_HASH})
+    writer.write(frame)
+    await writer.drain()
+    response = await _read_all(reader)
+    writer.close()
+    await writer.wait_closed()
+
+    assert response[0] != 0x00
+
+    task.cancel()
+    with pytest.raises(asyncio.CancelledError):
+        await task
