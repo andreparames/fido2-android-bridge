@@ -4,6 +4,22 @@ All notable changes to this project.
 
 <!-- Entries are prepended by scripts/release/bump.py on each release. -->
 
+## v0.4.0
+
+### Added
+- Daemon: managed relay mode with mode detection, token-less QR, and subscribe polling
+- Daemon: control-plane pairing and open-subscribe rework (relay-publisher-auth)
+- Android: Gatebridge Play Billing integration with managed-relay subscription gate
+- Android: local diagnostics persistence with zip export
+- Relay hardening: pass-default relay token and fidobridge channel namespace
+
+### Changed
+- Docs: reorganized (AGENTS.md rename, component plans, playstore grouping)
+
+### Fixed
+- CI: local Centrifugo now uses a fidobridge namespace
+- CI: Play debug APK build and upload on master
+
 ## v0.3.1
 
 ### Changed
