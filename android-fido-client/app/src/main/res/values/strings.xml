@@ -28,4 +28,28 @@
     <string name="invite_code_activate">Activate</string>
     <string name="subscription_required">Your Gatebridge subscription is not active. Renew in Google Play to use the managed relay.</string>
     <string name="loading_entitlement">Checking subscription…</string>
+
+    <string name="home_reconnect">Reconnect</string>
+    <string name="home_acknowledge">Acknowledge</string>
+    <string name="home_recent_requests">Recent requests</string>
+    <string name="home_no_requests">No requests yet</string>
+    <string name="home_no_requests_body">When your computer asks to sign in, the request will appear here.</string>
+    <string name="home_waiting_approval">Waiting for your approval</string>
+    <string name="home_may_have_timed_out">May have timed out</string>
+    <string name="home_request_row_desc">%1$s request from %2$s, %3$s, %4$s</string>
+    <string name="home_clear_log">Clear log</string>
+    <string name="home_clear_log_title">Clear request log?</string>
+    <string name="home_clear_log_body">This removes the request history shown here. Your stored credentials and pairing key are not affected.</string>
+    <string name="home_diagnostics">Diagnostics</string>
+    <string name="home_export_logs">Export logs</string>
+    <string name="home_danger_zone">Danger zone</string>
+    <string name="home_reset_app">Reset app</string>
+    <string name="home_reset_title">Reset app?</string>
+    <string name="home_reset_body">This erases your pairing key and all stored credentials. This can\'t be undone.</string>
+    <string name="home_reset">Reset</string>
+    <string name="home_cancel">Cancel</string>
+    <plurals name="home_more_waiting">
+        <item quantity="one">%1$d more waiting</item>
+        <item quantity="other">%1$d more waiting</item>
+    </plurals>
 </resources>

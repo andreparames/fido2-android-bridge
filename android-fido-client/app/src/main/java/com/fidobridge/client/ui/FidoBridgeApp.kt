@@ -2,18 +2,21 @@ package com.fidobridge.client.ui
 
 import android.content.Intent
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.height
-import androidx.compose.material3.AlertDialog
+import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.SnackbarHost
+import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
@@ -43,27 +46,31 @@ fun FidoBridgeApp() {
         val appViewModel: AppViewModel = hiltViewModel()
         val userMessage by appViewModel.userMessage.collectAsStateWithLifecycle()
         val entitlement by appViewModel.entitlement.collectAsStateWithLifecycle()
+        val snackbarHostState = remember { SnackbarHostState() }
 
         LaunchedEffect(Unit) { appViewModel.refreshEntitlement() }
 
-        // The entitlement gate decides which surface is shown; the NavHost below
-        // keeps a static start destination so navigation is deterministic.
-        when (surfaceFor(BuildConfig.PLAY_BILLING_REQUIRED, entitlement.status)) {
-            AppSurface.LOADING -> LoadingScreen()
-            AppSurface.MAIN -> MainNavHost(appViewModel)
-            AppSurface.SUBSCRIBE -> SubscribeScreen(onEntitled = { appViewModel.refreshEntitlement() })
+        // Transient operation results (export/reset) surface as a snackbar, not a modal.
+        LaunchedEffect(userMessage) {
+            userMessage?.let { message ->
+                snackbarHostState.showSnackbar(message = message, withDismissAction = true)
+                appViewModel.dismissUserMessage()
+            }
         }
 
-        userMessage?.let { message ->
-            AlertDialog(
-                onDismissRequest = { appViewModel.dismissUserMessage() },
-                title = { Text(stringResource(R.string.app_name)) },
-                text = { Text(message) },
-                confirmButton = {
-                    TextButton(onClick = { appViewModel.dismissUserMessage() }) {
-                        Text("OK")
-                    }
-                }
+        // The entitlement gate decides which surface is shown; the NavHost below
+        // keeps a static start destination so navigation is deterministic.
+        Box(modifier = Modifier.fillMaxSize()) {
+            when (surfaceFor(BuildConfig.PLAY_BILLING_REQUIRED, entitlement.status)) {
+                AppSurface.LOADING -> LoadingScreen()
+                AppSurface.MAIN -> MainNavHost(appViewModel)
+                AppSurface.SUBSCRIBE -> SubscribeScreen(onEntitled = { appViewModel.refreshEntitlement() })
+            }
+            SnackbarHost(
+                hostState = snackbarHostState,
+                modifier = Modifier
+                    .align(Alignment.BottomCenter)
+                    .padding(16.dp)
             )
         }
     }
