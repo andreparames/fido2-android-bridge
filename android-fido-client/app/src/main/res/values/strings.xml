@@ -58,4 +58,19 @@
         <item quantity="one">%1$d more waiting</item>
         <item quantity="other">%1$d more waiting</item>
     </plurals>
+
+    <string name="pairing_title">Connect your phone</string>
+    <string name="pairing_subtitle">Scan the pairing code from your computer to connect.</string>
+    <string name="pairing_scanning_label">Scanning for a pairing QR code</string>
+    <string name="pairing_allow_camera_title">Allow camera access to scan the pairing code</string>
+    <string name="pairing_allow_camera_body">Or paste the pairing URI below.</string>
+    <string name="pairing_allow_camera">Allow camera</string>
+    <string name="pairing_camera_denied_title">Camera access is needed to scan the pairing code</string>
+    <string name="pairing_camera_denied_body">You can still pair by pasting the URI below.</string>
+    <string name="pairing_request_again">Request again</string>
+    <string name="pairing_open_settings">Open settings</string>
+    <string name="pairing_field_label">Or paste pairing URI</string>
+    <string name="pairing_invalid_uri">That doesn\'t look like a valid pairing URI.</string>
+    <string name="pairing_pair">Pair</string>
+    <string name="pairing_pairing">Pairing…</string>
 </resources>

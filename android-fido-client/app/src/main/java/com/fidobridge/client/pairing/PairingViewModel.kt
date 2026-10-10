@@ -45,6 +45,7 @@ class PairingViewModel @Inject constructor(
     }
 
     private fun submitUri(uri: String) {
+        if (_uiState.value is PairingUiState.Pairing) return
         _uiState.value = PairingUiState.Pairing
         viewModelScope.launch {
             val result = withContext(Dispatchers.IO) {

@@ -6,6 +6,10 @@ import com.fidobridge.client.billing.FakeEntitlementBackend
 import com.fidobridge.client.billing.FakeSubscriptionRepository
 import com.fidobridge.client.crypto.NoiseSession
 import com.fidobridge.client.util.Base64
+import io.mockk.coEvery
+import io.mockk.coVerify
+import io.mockk.mockk
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.test.UnconfinedTestDispatcher
@@ -198,5 +202,24 @@ class PairingViewModelTest {
         assertTrue(vm.uiState.value is PairingUiState.Error)
         assertTrue(backend.calls.isEmpty())
         assertEquals(null, store.loadChannelId())
+    }
+
+    @Test
+    fun `a scan while a pairing is in flight is ignored`() {
+        val store = FakeIdentityStore()
+        val gate = mockk<ManagedPairingGate>(relaxed = true)
+        coEvery {
+            gate.authorize(any())
+        } coAnswers {
+            CompletableDeferred<Result<Unit>>().await()
+        }
+        val vm = viewModel(store, gate = gate)
+
+        vm.onQrResult(validUri())
+        vm.onQrResult(validUri())
+        vm.onManualSubmit(validUri())
+
+        assertEquals(PairingUiState.Pairing, vm.uiState.value)
+        coVerify(exactly = 1) { gate.authorize(any()) }
     }
 }
