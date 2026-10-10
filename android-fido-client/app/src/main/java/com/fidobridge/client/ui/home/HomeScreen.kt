@@ -1,5 +1,6 @@
 package com.fidobridge.client.ui.home
 
+import androidx.annotation.PluralsRes
 import android.provider.Settings
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
@@ -238,6 +239,12 @@ internal fun HomeContent(
 }
 
 @Composable
+private fun pluralString(quantity: Int, @PluralsRes id: Int): String {
+    val resources = LocalContext.current.resources
+    return remember(quantity, id) { resources.getQuantityString(id, quantity, quantity) }
+}
+
+@Composable
 private fun ConnectionStatusBanner(
     state: BridgeState,
     colors: SemanticColors,
@@ -364,12 +371,9 @@ private fun RequestListHeader(
                 .heading()
         )
         if (pendingCount > 1) {
+            val waiting = pendingCount - 1
             Text(
-                text = stringResource(
-                    R.plurals.home_more_waiting,
-                    pendingCount - 1,
-                    pendingCount - 1
-                ),
+                text = pluralString(waiting, R.plurals.home_more_waiting),
                 style = MaterialTheme.typography.labelMedium,
                 color = colors.warning,
                 modifier = Modifier.padding(end = 8.dp)
