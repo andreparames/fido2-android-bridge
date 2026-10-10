@@ -17,7 +17,7 @@ class KeystoreManagerTest {
     private val alias = "test-signing-key-${System.nanoTime()}"
 
     @Test
-    fun `generated key is inside secure hardware`() {
+    fun generatedKey_isInsideSecureHardware() {
         val manager = KeystoreManager()
         manager.getOrCreateSigningKey(alias)
 
@@ -27,7 +27,7 @@ class KeystoreManagerTest {
     }
 
     @Test
-    fun `key purpose is sign only with EC P-256 and SHA256`() {
+    fun keyPurpose_isSignOnlyWithECP256AndSHA256() {
         val manager = KeystoreManager()
         val keyPair = manager.getOrCreateSigningKey(alias)
         val keyInfo = manager.getKeyInfo(alias)
@@ -38,7 +38,7 @@ class KeystoreManagerTest {
     }
 
     @Test
-    fun `user authentication is required`() {
+    fun userAuthentication_isRequired() {
         val manager = KeystoreManager()
         manager.getOrCreateSigningKey(alias)
 
@@ -48,7 +48,7 @@ class KeystoreManagerTest {
     }
 
     @Test
-    fun `signing without biometric auth throws UserNotAuthenticatedException`() {
+    fun signingWithoutBiometricAuth_throwsUserNotAuthenticatedException() {
         val manager = KeystoreManager()
         manager.getOrCreateSigningKey(alias)
         val signature = manager.createSignature(alias)
@@ -61,7 +61,7 @@ class KeystoreManagerTest {
     }
 
     @Test
-    fun `key is stable across calls`() {
+    fun keyIsStable_acrossCalls() {
         val manager = KeystoreManager()
         val first = manager.getOrCreateSigningKey(alias)
         val second = manager.getOrCreateSigningKey(alias)
