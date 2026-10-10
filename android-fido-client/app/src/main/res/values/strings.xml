@@ -5,6 +5,16 @@
     <string name="subscribe_subtitle">Hardware-backed remote WebAuthn. Subscription includes the managed relay.</string>
     <string name="subscribe_trial_copy">1 month free, then %1$s</string>
     <string name="subscribe_restore">Restore purchases</string>
+    <string name="subscribe_retry">Try again</string>
+    <string name="subscribe_buy_button">Subscribe</string>
+    <string name="subscribe_buy_trial_button">Start free trial</string>
+    <string name="subscribe_buy_desc">Subscribe to %1$s — %2$s</string>
+    <string name="subscribe_buy_trial_desc">Start a free trial of %1$s, then %2$s</string>
+    <string name="subscribe_renewal_disclosure">Subscriptions auto-renew until canceled. Manage or cancel in Google Play.</string>
+    <string name="subscribe_purchasing">Starting purchase…</string>
+    <string name="invite_code_label">Invite code</string>
+    <string name="invite_code_cancel">Cancel</string>
+    <string name="invite_code_submitting">Checking invite code…</string>
     <string name="subscribe_manage">Manage subscription in Play</string>
     <string name="subscribe_billing_unavailable">Google Play Billing is unavailable on this device. Open the Play Store and try again.</string>
     <string name="subscribe_error">Could not load subscription products.</string>
@@ -18,4 +28,34 @@
     <string name="invite_code_activate">Activate</string>
     <string name="subscription_required">Your Gatebridge subscription is not active. Renew in Google Play to use the managed relay.</string>
     <string name="loading_entitlement">Checking subscription…</string>
+
+    <string name="home_reconnect">Reconnect</string>
+    <string name="home_acknowledge">Acknowledge</string>
+    <string name="home_status_waiting">Waiting for WebAuthn requests</string>
+    <string name="home_status_waiting_subtitle">Requests are approved with your fingerprint</string>
+    <string name="home_connecting">Connecting…</string>
+    <string name="home_not_connected">Not connected</string>
+    <string name="home_security_alert_title">Approvals are paused</string>
+    <string name="home_security_alert_subtitle">Corrupted messages were received on the relay connection. This can happen with network interference or a relay problem.</string>
+    <string name="home_recent_requests">Recent requests</string>
+    <string name="home_no_requests">No requests yet</string>
+    <string name="home_no_requests_body">When your computer asks to sign in, the request will appear here.</string>
+    <string name="home_waiting_approval">Waiting for your approval</string>
+    <string name="home_may_have_timed_out">May have timed out</string>
+    <string name="home_request_row_desc">%1$s request from %2$s, %3$s, %4$s</string>
+    <string name="home_clear_log">Clear log</string>
+    <string name="home_clear_log_title">Clear request log?</string>
+    <string name="home_clear_log_body">This removes the request history shown here. Your stored credentials and pairing key are not affected.</string>
+    <string name="home_diagnostics">Diagnostics</string>
+    <string name="home_export_logs">Export logs</string>
+    <string name="home_danger_zone">Danger zone</string>
+    <string name="home_reset_app">Reset app</string>
+    <string name="home_reset_title">Reset app?</string>
+    <string name="home_reset_body">This erases your pairing key and all stored credentials. This can\'t be undone.</string>
+    <string name="home_reset">Reset</string>
+    <string name="home_cancel">Cancel</string>
+    <plurals name="home_more_waiting">
+        <item quantity="one">%1$d more waiting</item>
+        <item quantity="other">%1$d more waiting</item>
+    </plurals>
 </resources>

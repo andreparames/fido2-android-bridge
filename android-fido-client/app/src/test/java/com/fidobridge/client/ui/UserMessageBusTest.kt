@@ -16,4 +16,18 @@ class UserMessageBusTest {
         bus.clear()
         assertNull(bus.message.value)
     }
+
+    @Test
+    fun `clearIf only removes when the message still matches`() {
+        val bus = UserMessageBus()
+        bus.post("one")
+        bus.post("two")
+
+        bus.clearIf("one")
+
+        assertEquals("two", bus.message.value)
+
+        bus.clearIf("two")
+        assertNull(bus.message.value)
+    }
 }

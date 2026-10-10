@@ -6,24 +6,18 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.systemBarsPadding
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.outlined.ErrorOutline
 import androidx.compose.material.icons.outlined.NoPhotography
 import androidx.compose.material.icons.outlined.QrCodeScanner
 import androidx.compose.material3.Button
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
-import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -41,6 +35,9 @@ import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.fidobridge.client.pairing.PairingUiState
 import com.fidobridge.client.pairing.PairingViewModel
+import com.fidobridge.client.ui.components.ScreenScaffold
+import com.fidobridge.client.ui.components.StatusMessage
+import com.fidobridge.client.ui.components.heading
 
 /**
  * Shows QR and manual URI pairing controls within the system bars, including pairing errors.
@@ -59,15 +56,14 @@ fun PairingScreen(
         }
     }
 
-    Column(
-        modifier = Modifier
-            .fillMaxSize()
-            .systemBarsPadding()
-            .padding(16.dp)
+    ScreenScaffold(
+        horizontalAlignment = Alignment.Start,
+        scrollable = false
     ) {
         Text(
             text = "Connect your phone",
-            style = MaterialTheme.typography.headlineSmall
+            style = MaterialTheme.typography.headlineSmall,
+            modifier = Modifier.heading()
         )
         Spacer(Modifier.height(4.dp))
         Text(
@@ -91,7 +87,7 @@ fun PairingScreen(
 
         if (state is PairingUiState.Error) {
             Spacer(Modifier.height(12.dp))
-            ErrorBanner((state as PairingUiState.Error).message)
+            StatusMessage(text = (state as PairingUiState.Error).message)
         }
     }
 }
@@ -227,31 +223,5 @@ private fun ManualPairingField(state: PairingUiState, viewModel: PairingViewMode
         enabled = manualUri.isNotBlank() && state != PairingUiState.Pairing
     ) {
         Text(if (state is PairingUiState.Pairing) "Pairing…" else "Pair")
-    }
-}
-
-@Composable
-private fun ErrorBanner(message: String) {
-    Surface(
-        color = MaterialTheme.colorScheme.errorContainer,
-        shape = RoundedCornerShape(12.dp),
-        modifier = Modifier.fillMaxWidth()
-    ) {
-        Row(
-            modifier = Modifier.padding(12.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Icon(
-                Icons.Outlined.ErrorOutline,
-                contentDescription = null,
-                tint = MaterialTheme.colorScheme.onErrorContainer
-            )
-            Spacer(Modifier.size(8.dp))
-            Text(
-                text = message,
-                style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onErrorContainer
-            )
-        }
     }
 }

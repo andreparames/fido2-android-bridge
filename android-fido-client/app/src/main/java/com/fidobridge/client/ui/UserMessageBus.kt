@@ -3,12 +3,13 @@ package com.fidobridge.client.ui
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.update
 import javax.inject.Inject
 import javax.inject.Singleton
 
 /**
  * Single transient message shown to the user (e.g. a biometric error) rendered
- * as a Material 3 alert dialog by the app's root composable.
+ * by the app's root composable (as a snackbar).
  */
 @Singleton
 class UserMessageBus @Inject constructor() {
@@ -22,5 +23,13 @@ class UserMessageBus @Inject constructor() {
 
     fun clear() {
         _message.value = null
+    }
+
+    /**
+     * Atomically clears the bus only if the current message is [expected].
+     * Lets whoever finished displaying a message avoid wiping out a newer one.
+     */
+    fun clearIf(expected: String) {
+        _message.update { current -> if (current == expected) null else current }
     }
 }
