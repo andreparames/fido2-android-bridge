@@ -78,6 +78,9 @@ import kotlinx.coroutines.delay
 /** Time after which a pending request is likely to have timed out (matches the daemon's 30s). */
 private const val PENDING_TIMEOUT_MS = 30_000L
 
+/** How often the pending-staleness clock refreshes (≤ this after the timeout). */
+private const val PENDING_REFRESH_MS = 5_000L
+
 object HomeTags {
     const val STATUS_BANNER = "home_status_banner"
     const val SECURITY_BANNER = "home_status_security"
@@ -101,7 +104,7 @@ fun HomeScreen(
 
     LaunchedEffect(Unit) {
         while (true) {
-            delay(PENDING_TIMEOUT_MS)
+            delay(PENDING_REFRESH_MS)
             now = System.currentTimeMillis()
         }
     }

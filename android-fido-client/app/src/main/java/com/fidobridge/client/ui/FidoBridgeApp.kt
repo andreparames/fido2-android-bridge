@@ -54,7 +54,7 @@ fun FidoBridgeApp() {
         LaunchedEffect(userMessage) {
             userMessage?.let { message ->
                 snackbarHostState.showSnackbar(message = message, withDismissAction = true)
-                appViewModel.dismissUserMessage()
+                appViewModel.dismissUserMessage(message)
             }
         }
 

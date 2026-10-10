@@ -56,7 +56,10 @@ fun PairingScreen(
         }
     }
 
-    ScreenScaffold(horizontalAlignment = Alignment.Start) {
+    ScreenScaffold(
+        horizontalAlignment = Alignment.Start,
+        scrollable = false
+    ) {
         Text(
             text = "Connect your phone",
             style = MaterialTheme.typography.headlineSmall,

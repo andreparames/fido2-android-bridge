@@ -50,6 +50,9 @@ class AppViewModel @Inject constructor(
 
     fun dismissUserMessage() = userMessageBus.clear()
 
+    /** Clears only if [message] is still the active message (see snackbar completion). */
+    fun dismissUserMessage(message: String) = userMessageBus.clearIf(message)
+
     fun clearLog() = requestLog.clear()
 
     fun acknowledgeSecurityAlert() = pipeline.acknowledgeSecurityAlert()
