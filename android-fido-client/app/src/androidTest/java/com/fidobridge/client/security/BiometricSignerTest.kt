@@ -13,7 +13,7 @@ class BiometricSignerTest {
     private val alias = "test-signer-key-${System.nanoTime()}"
 
     @Test
-    fun `auth failure returns operation denied and does not sign`() {
+    fun authFailure_returnsOperationDenied_andDoesNotSign() {
         val manager = KeystoreManager().apply { getOrCreateSigningKey(alias) }
         val signer = BiometricSigner(manager, FakeBiometricAuthenticator(fail = true))
 
@@ -25,7 +25,7 @@ class BiometricSignerTest {
     }
 
     @Test
-    fun `prompt payload contains the target rpId`() {
+    fun promptPayload_containsTheTargetRpId() {
         val manager = KeystoreManager().apply { getOrCreateSigningKey(alias) }
         val authenticator = FakeBiometricAuthenticator(fail = true)
         val signer = BiometricSigner(manager, authenticator)
@@ -36,7 +36,7 @@ class BiometricSignerTest {
     }
 
     @Test
-    fun `dummy rp probe uses a generic subtitle and never leaks the dummy rpId`() {
+    fun dummyRpProbe_usesGenericSubtitle_andNeverLeaksTheDummyRpId() {
         val manager = KeystoreManager().apply { getOrCreateSigningKey(alias) }
         val authenticator = FakeBiometricAuthenticator(fail = true)
         val signer = BiometricSigner(manager, authenticator)
