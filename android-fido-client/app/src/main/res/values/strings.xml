@@ -31,6 +31,12 @@
 
     <string name="home_reconnect">Reconnect</string>
     <string name="home_acknowledge">Acknowledge</string>
+    <string name="home_status_waiting">Waiting for WebAuthn requests</string>
+    <string name="home_status_waiting_subtitle">Requests are approved with your fingerprint</string>
+    <string name="home_connecting">Connecting…</string>
+    <string name="home_not_connected">Not connected</string>
+    <string name="home_security_alert_title">Approvals are paused</string>
+    <string name="home_security_alert_subtitle">Corrupted messages were received on the relay connection. This can happen with network interference or a relay problem.</string>
     <string name="home_recent_requests">Recent requests</string>
     <string name="home_no_requests">No requests yet</string>
     <string name="home_no_requests_body">When your computer asks to sign in, the request will appear here.</string>

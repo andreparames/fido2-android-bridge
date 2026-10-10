@@ -48,14 +48,15 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.LiveRegionMode
 import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.liveRegion
-import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.fidobridge.client.R
@@ -67,12 +68,26 @@ import com.fidobridge.client.ui.components.StatusMessageTone
 import com.fidobridge.client.ui.components.heading
 import com.fidobridge.client.ui.model.RequestOutcome
 import com.fidobridge.client.ui.model.RequestRecord
+import com.fidobridge.client.ui.model.RequestType
+import com.fidobridge.client.ui.theme.FidoBridgeTheme
 import com.fidobridge.client.ui.theme.SemanticColors
 import com.fidobridge.client.ui.theme.semanticColors
 import kotlinx.coroutines.delay
 
 /** Time after which a pending request is likely to have timed out (matches the daemon's 30s). */
 private const val PENDING_TIMEOUT_MS = 30_000L
+
+object HomeTags {
+    const val STATUS_BANNER = "home_status_banner"
+    const val SECURITY_BANNER = "home_status_security"
+    const val EMPTY = "home_empty"
+    const val CLEAR_LOG = "home_clear_log"
+    const val CLEAR_LOG_CONFIRM = "home_clear_confirm"
+    const val EXPORT = "home_export"
+    const val RESET = "home_reset"
+    const val RESET_CONFIRM = "home_reset_confirm"
+    fun row(id: String) = "home_row_$id"
+}
 
 @Composable
 fun HomeScreen(
@@ -81,9 +96,6 @@ fun HomeScreen(
 ) {
     val requests by viewModel.requests.collectAsStateWithLifecycle()
     val bridgeState by viewModel.bridgeState.collectAsStateWithLifecycle()
-    val colors = semanticColors()
-    var showResetDialog by remember { mutableStateOf(false) }
-    var showClearLogDialog by remember { mutableStateOf(false) }
     var now by remember { mutableLongStateOf(System.currentTimeMillis()) }
 
     LaunchedEffect(Unit) {
@@ -99,12 +111,47 @@ fun HomeScreen(
         if (uri != null) viewModel.exportDiagnostics(uri)
     }
 
+    HomeContent(
+        requests = requests,
+        bridgeState = bridgeState,
+        now = now,
+        onReconnect = viewModel::reconnect,
+        onAcknowledge = viewModel::acknowledgeSecurityAlert,
+        onClearLog = viewModel::clearLog,
+        onExportLogs = {
+            viewModel.checkDiagnosticsAvailable { available ->
+                if (available) {
+                    exportLauncher.launch("gatebridge-diagnostics-${System.currentTimeMillis()}.zip")
+                } else {
+                    viewModel.notifyNoDiagnostics()
+                }
+            }
+        },
+        onReset = { viewModel.reset { success -> if (success) onResetConfirmed() } }
+    )
+}
+
+@Composable
+internal fun HomeContent(
+    requests: List<RequestRecord>,
+    bridgeState: BridgeState,
+    now: Long,
+    onReconnect: () -> Unit,
+    onAcknowledge: () -> Unit,
+    onClearLog: () -> Unit,
+    onExportLogs: () -> Unit,
+    onReset: () -> Unit
+) {
+    val colors = semanticColors()
+    var showResetDialog by remember { mutableStateOf(false) }
+    var showClearLogDialog by remember { mutableStateOf(false) }
+
     ScreenScaffold(scrollable = false) {
         ConnectionStatusBanner(
             state = bridgeState,
             colors = colors,
-            onReconnect = viewModel::reconnect,
-            onAcknowledge = viewModel::acknowledgeSecurityAlert
+            onReconnect = onReconnect,
+            onAcknowledge = onAcknowledge
         )
 
         Spacer(Modifier.height(8.dp))
@@ -132,17 +179,7 @@ fun HomeScreen(
             }
         }
 
-        DiagnosticsSection(
-            onExportClick = {
-                viewModel.checkDiagnosticsAvailable { available ->
-                    if (available) {
-                        exportLauncher.launch("gatebridge-diagnostics-${System.currentTimeMillis()}.zip")
-                    } else {
-                        viewModel.notifyNoDiagnostics()
-                    }
-                }
-            }
-        )
+        DiagnosticsSection(onExportClick = onExportLogs)
 
         ResetSection(onResetClick = { showResetDialog = true })
     }
@@ -156,8 +193,9 @@ fun HomeScreen(
                 TextButton(
                     onClick = {
                         showClearLogDialog = false
-                        viewModel.clearLog()
-                    }
+                        onClearLog()
+                    },
+                    modifier = Modifier.testTag(HomeTags.CLEAR_LOG_CONFIRM)
                 ) {
                     Text(stringResource(R.string.home_clear_log))
                 }
@@ -179,14 +217,13 @@ fun HomeScreen(
                 Button(
                     onClick = {
                         showResetDialog = false
-                        viewModel.reset { success ->
-                            if (success) onResetConfirmed()
-                        }
+                        onReset()
                     },
                     colors = ButtonDefaults.buttonColors(
                         containerColor = MaterialTheme.colorScheme.error,
                         contentColor = MaterialTheme.colorScheme.onError
-                    )
+                    ),
+                    modifier = Modifier.testTag(HomeTags.RESET_CONFIRM)
                 ) {
                     Text(stringResource(R.string.home_reset))
                 }
@@ -208,16 +245,31 @@ private fun ConnectionStatusBanner(
     onAcknowledge: () -> Unit
 ) {
     val status = connectionStatus(state)
+    val title = when (status.kind) {
+        ConnectionStatusKind.CONNECTED -> stringResource(R.string.home_status_waiting)
+        ConnectionStatusKind.CONNECTING -> stringResource(R.string.home_connecting)
+        ConnectionStatusKind.DISCONNECTED -> stringResource(R.string.home_not_connected)
+        ConnectionStatusKind.ERROR -> status.title
+        ConnectionStatusKind.SECURITY_ALERT ->
+            stringResource(R.string.home_security_alert_title)
+    }
+    val subtitle = when (status.kind) {
+        ConnectionStatusKind.CONNECTED ->
+            stringResource(R.string.home_status_waiting_subtitle)
+        ConnectionStatusKind.SECURITY_ALERT ->
+            stringResource(R.string.home_security_alert_subtitle)
+        else -> status.subtitle
+    }
     val reconnectEnabled = state !is BridgeState.Connecting
     val reconnectLabel = stringResource(R.string.home_reconnect)
     val acknowledgeLabel = stringResource(R.string.home_acknowledge)
 
     if (status.kind == ConnectionStatusKind.SECURITY_ALERT) {
         StatusMessage(
-            title = status.title,
-            text = status.subtitle.orEmpty(),
+            title = title,
+            text = subtitle.orEmpty(),
             tone = StatusMessageTone.ERROR,
-            testTag = "home_status_security"
+            testTag = HomeTags.SECURITY_BANNER
         ) {
             val content = MaterialTheme.colorScheme.onErrorContainer
             val actionColors = ButtonDefaults.textButtonColors(contentColor = content)
@@ -242,17 +294,19 @@ private fun ConnectionStatusBanner(
         status.kind == ConnectionStatusKind.CONNECTING || status.kind == ConnectionStatusKind.CONNECTED
 
     Row(
-        modifier = Modifier.fillMaxWidth(),
+        modifier = Modifier
+            .fillMaxWidth()
+            .testTag(HomeTags.STATUS_BANNER),
         verticalAlignment = Alignment.CenterVertically
     ) {
         StatusDot(color = dotColor, pulsing = pulsing)
         Spacer(Modifier.width(12.dp))
         Column(Modifier.weight(1f)) {
-            Text(status.title, style = MaterialTheme.typography.titleMedium)
-            if (status.subtitle != null) {
+            Text(title, style = MaterialTheme.typography.titleMedium)
+            if (subtitle != null) {
                 Spacer(Modifier.height(2.dp))
                 Text(
-                    status.subtitle,
+                    subtitle,
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
@@ -321,7 +375,11 @@ private fun RequestListHeader(
                 modifier = Modifier.padding(end = 8.dp)
             )
         }
-        TextButton(onClick = onClear, enabled = requests.isNotEmpty()) {
+        TextButton(
+            onClick = onClear,
+            enabled = requests.isNotEmpty(),
+            modifier = Modifier.testTag(HomeTags.CLEAR_LOG)
+        ) {
             Text(stringResource(R.string.home_clear_log))
         }
     }
@@ -330,7 +388,9 @@ private fun RequestListHeader(
 @Composable
 private fun EmptyState(modifier: Modifier = Modifier) {
     Column(
-        modifier = modifier.fillMaxWidth(),
+        modifier = modifier
+            .fillMaxWidth()
+            .testTag(HomeTags.EMPTY),
         verticalArrangement = Arrangement.Center,
         horizontalAlignment = Alignment.CenterHorizontally
     ) {
@@ -375,6 +435,7 @@ private fun RequestRow(record: RequestRecord, colors: SemanticColors, now: Long)
         border = if (pending) BorderStroke(1.dp, colors.warning) else null,
         modifier = Modifier
             .fillMaxWidth()
+            .testTag(HomeTags.row(record.id))
             .clearAndSetSemantics {
                 contentDescription = description
                 if (pending) liveRegion = LiveRegionMode.Polite
@@ -465,7 +526,9 @@ private fun DiagnosticsSection(onExportClick: () -> Unit) {
     )
     OutlinedButton(
         onClick = onExportClick,
-        modifier = Modifier.fillMaxWidth()
+        modifier = Modifier
+            .fillMaxWidth()
+            .testTag(HomeTags.EXPORT)
     ) {
         Text(stringResource(R.string.home_export_logs))
     }
@@ -484,11 +547,107 @@ private fun ResetSection(onResetClick: () -> Unit) {
     )
     OutlinedButton(
         onClick = onResetClick,
-        modifier = Modifier.fillMaxWidth(),
+        modifier = Modifier
+            .fillMaxWidth()
+            .testTag(HomeTags.RESET),
         colors = ButtonDefaults.outlinedButtonColors(
             contentColor = MaterialTheme.colorScheme.error
         )
     ) {
         Text(stringResource(R.string.home_reset_app))
+    }
+}
+
+private fun previewRequest(
+    id: String,
+    type: RequestType,
+    rpId: String,
+    outcm: RequestOutcome,
+    timestamp: Long = System.currentTimeMillis()
+) = RequestRecord(
+    id = id,
+    type = type,
+    rpId = rpId,
+    timestamp = timestamp,
+    outcome = outcm
+)
+
+private val noAction: () -> Unit = {}
+
+@Preview(name = "Connected (empty)", showBackground = true, widthDp = 411, heightDp = 800, locale = "en")
+@Composable
+private fun HomePreviewConnectedEmpty() {
+    FidoBridgeTheme {
+        HomeContent(
+            requests = emptyList(),
+            bridgeState = BridgeState.Connected,
+            now = System.currentTimeMillis(),
+            onReconnect = noAction,
+            onAcknowledge = noAction,
+            onClearLog = noAction,
+            onExportLogs = noAction,
+            onReset = noAction
+        )
+    }
+}
+
+@Preview(name = "Disconnected", showBackground = true, widthDp = 411, heightDp = 800, locale = "en")
+@Composable
+private fun HomePreviewDisconnected() {
+    FidoBridgeTheme {
+        HomeContent(
+            requests = listOf(
+                previewRequest("r1", RequestType.SIGN_IN, "example.com", RequestOutcome.ACCEPTED)
+            ),
+            bridgeState = BridgeState.Disconnected,
+            now = System.currentTimeMillis(),
+            onReconnect = noAction,
+            onAcknowledge = noAction,
+            onClearLog = noAction,
+            onExportLogs = noAction,
+            onReset = noAction
+        )
+    }
+}
+
+@Preview(name = "Security alert", showBackground = true, widthDp = 411, heightDp = 800, locale = "en")
+@Composable
+private fun HomePreviewSecurityAlert() {
+    FidoBridgeTheme {
+        HomeContent(
+            requests = emptyList(),
+            bridgeState = BridgeState.SecurityAlert,
+            now = System.currentTimeMillis(),
+            onReconnect = noAction,
+            onAcknowledge = noAction,
+            onClearLog = noAction,
+            onExportLogs = noAction,
+            onReset = noAction
+        )
+    }
+}
+
+@Preview(name = "Pending requests", showBackground = true, widthDp = 411, heightDp = 800, locale = "en")
+@Composable
+private fun HomePreviewPending() {
+    val now = System.currentTimeMillis()
+    FidoBridgeTheme {
+        HomeContent(
+            requests = listOf(
+                previewRequest(
+                    "r1", RequestType.SIGN_IN, "example.com", RequestOutcome.PENDING, timestamp = now - 10_000
+                ),
+                previewRequest(
+                    "r2", RequestType.REGISTER, "shop.example.org", RequestOutcome.PENDING, timestamp = now - 60_000
+                )
+            ),
+            bridgeState = BridgeState.Connected,
+            now = now,
+            onReconnect = noAction,
+            onAcknowledge = noAction,
+            onClearLog = noAction,
+            onExportLogs = noAction,
+            onReset = noAction
+        )
     }
 }
