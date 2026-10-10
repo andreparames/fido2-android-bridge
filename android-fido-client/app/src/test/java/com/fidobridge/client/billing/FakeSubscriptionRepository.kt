@@ -17,6 +17,7 @@ class FakeSubscriptionRepository(
     var restoreCount: Int = 0
     var inviteCode: String? = null
     var onRefresh: () -> Unit = {}
+    var onLaunch: suspend () -> Unit = {}
 
     fun setEntitlement(value: Entitlement) {
         _entitlement.value = value
@@ -28,8 +29,10 @@ class FakeSubscriptionRepository(
 
     override suspend fun queryProducts(): Result<List<SubscriptionProduct>> = products
 
-    override suspend fun launchPurchase(activity: Activity, productId: String): Result<Unit> =
-        launchResult
+    override suspend fun launchPurchase(activity: Activity, productId: String): Result<Unit> {
+        onLaunch()
+        return launchResult
+    }
 
     override suspend fun restorePurchases() {
         restoreCount++

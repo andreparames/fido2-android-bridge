@@ -5,6 +5,16 @@
     <string name="subscribe_subtitle">Hardware-backed remote WebAuthn. Subscription includes the managed relay.</string>
     <string name="subscribe_trial_copy">1 month free, then %1$s</string>
     <string name="subscribe_restore">Restore purchases</string>
+    <string name="subscribe_retry">Try again</string>
+    <string name="subscribe_buy_button">Subscribe</string>
+    <string name="subscribe_buy_trial_button">Start free trial</string>
+    <string name="subscribe_buy_desc">Subscribe to %1$s — %2$s</string>
+    <string name="subscribe_buy_trial_desc">Start a free trial of %1$s, then %2$s</string>
+    <string name="subscribe_renewal_disclosure">Subscriptions auto-renew until canceled. Manage or cancel in Google Play.</string>
+    <string name="subscribe_purchasing">Starting purchase…</string>
+    <string name="invite_code_label">Invite code</string>
+    <string name="invite_code_cancel">Cancel</string>
+    <string name="invite_code_submitting">Checking invite code…</string>
     <string name="subscribe_manage">Manage subscription in Play</string>
     <string name="subscribe_billing_unavailable">Google Play Billing is unavailable on this device. Open the Play Store and try again.</string>
     <string name="subscribe_error">Could not load subscription products.</string>

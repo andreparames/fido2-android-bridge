@@ -57,6 +57,7 @@ import com.fidobridge.client.bridge.BridgeState
 import com.fidobridge.client.ui.AppViewModel
 import com.fidobridge.client.ui.model.RequestOutcome
 import com.fidobridge.client.ui.model.RequestRecord
+import com.fidobridge.client.ui.components.ScreenDimens
 import com.fidobridge.client.ui.theme.SemanticColors
 import com.fidobridge.client.ui.theme.semanticColors
 
@@ -85,7 +86,7 @@ fun HomeScreen(
             Column(
                 modifier = Modifier
                     .fillMaxSize()
-                    .widthIn(max = 600.dp)
+                    .widthIn(max = ScreenDimens.MaxContentWidth)
                     .padding(16.dp)
             ) {
                 ConnectionStatusBanner(

@@ -8,9 +8,13 @@ import com.fidobridge.client.billing.SubscriptionProduct
 import io.mockk.mockk
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.flow.MutableSharedFlow
+import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.test.StandardTestDispatcher
 import kotlinx.coroutines.test.advanceUntilIdle
 import kotlinx.coroutines.test.resetMain
+import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
 import kotlinx.coroutines.test.setMain
 import org.junit.After
@@ -105,6 +109,33 @@ class SubscribeViewModelTest {
         repository.launchResult = Result.success(Unit)
         subscribeViewModel.buy(activity, "gatebridge_individual_monthly")
         advanceUntilIdle()
+        assertFalse(subscribeViewModel.uiState.value.purchaseFailed)
+    }
+
+    @Test
+    fun `buy tracks purchasing while the purchase is in flight`() = runTest(dispatcher) {
+        val repository = FakeSubscriptionRepository().apply {
+            products = Result.success(listOf(product()))
+        }
+        val subscribeViewModel = viewModel(repository)
+        advanceUntilIdle()
+
+        val gate = MutableSharedFlow<Unit>()
+        repository.onLaunch = { gate.first() }
+
+        var purchasingDuringLaunch = false
+        val job = launch {
+            subscribeViewModel.buy(activity, "gatebridge_individual_monthly")
+        }
+        runCurrent()
+        purchasingDuringLaunch = subscribeViewModel.uiState.value.purchasing
+
+        gate.emit(Unit)
+        advanceUntilIdle()
+        job.join()
+
+        assertTrue(purchasingDuringLaunch)
+        assertFalse(subscribeViewModel.uiState.value.purchasing)
         assertFalse(subscribeViewModel.uiState.value.purchaseFailed)
     }
 

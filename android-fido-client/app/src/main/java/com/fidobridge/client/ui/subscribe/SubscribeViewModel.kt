@@ -23,7 +23,8 @@ data class SubscribeUiState(
     val loading: Boolean = true,
     val billingUnavailable: Boolean = false,
     val error: Boolean = false,
-    val purchaseFailed: Boolean = false
+    val purchaseFailed: Boolean = false,
+    val purchasing: Boolean = false
 )
 
 @HiltViewModel
@@ -79,10 +80,15 @@ class SubscribeViewModel @Inject constructor(
 
     fun buy(activity: Activity, productId: String) {
         viewModelScope.launch {
-            _uiState.value = _uiState.value.copy(purchaseFailed = false)
-            repository.launchPurchase(activity, productId).onFailure {
-                _uiState.value = _uiState.value.copy(purchaseFailed = true)
-            }
+            _uiState.value = _uiState.value.copy(purchaseFailed = false, purchasing = true)
+            repository.launchPurchase(activity, productId).fold(
+                onSuccess = {
+                    _uiState.value = _uiState.value.copy(purchasing = false)
+                },
+                onFailure = {
+                    _uiState.value = _uiState.value.copy(purchasing = false, purchaseFailed = true)
+                }
+            )
         }
     }
 
@@ -126,6 +132,4 @@ class SubscribeViewModel @Inject constructor(
             }
         }
     }
-
-    fun openPlaySubscriptions() = Unit
 }
